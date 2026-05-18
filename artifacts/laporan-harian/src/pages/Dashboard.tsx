@@ -1,34 +1,40 @@
-import { useState } from "react";
 import { useGetDashboardSummary, useGetDepartmentProductivity } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Users, CheckCircle, XCircle, ListTodo, TrendingUp, Clock, Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
-} from "recharts";
+  Users,
+  CheckSquare,
+  AlertTriangle,
+  ClipboardList,
+  Clock3,
+  Loader2,
+  FileCheck2,
+  CalendarDays,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import Layout from "@/components/Layout";
 
-const COLORS = ["#2563eb", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
-
-function StatCard({ title, value, icon: Icon, color, description }: {
+type StatCardProps = {
   title: string;
   value: number | string;
   icon: React.ElementType;
-  color: string;
+  iconClass: string;
   description?: string;
-}) {
+};
+
+function StatCard({ title, value, icon: Icon, iconClass, description }: StatCardProps) {
   return (
-    <Card className="border border-border">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between">
+    <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm text-muted-foreground font-medium">{title}</p>
-            <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
-            {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
+            <p className="text-sm font-semibold text-slate-500">{title}</p>
+            <p className="mt-2 text-3xl font-black tracking-tight text-slate-950">{value}</p>
+            {description && <p className="mt-2 text-xs font-semibold text-emerald-600">{description}</p>}
           </div>
-          <div className={`p-2.5 rounded-xl ${color}`}>
-            <Icon className="w-5 h-5" />
+          <div className={`rounded-xl p-3 ${iconClass}`}>
+            <Icon className="h-5 w-5" />
           </div>
         </div>
       </CardContent>
@@ -51,170 +57,154 @@ export default function Dashboard() {
   );
 
   const todayFormatted = new Date().toLocaleDateString("id-ID", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric"
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 
-  const submitPieData = summary ? [
-    { name: "Sudah Submit", value: summary.submittedToday },
-    { name: "Belum Submit", value: summary.notSubmittedToday },
-  ] : [];
-
-  const taskPieData = summary ? [
-    { name: "Selesai", value: summary.tasksCompleted },
-    { name: "Pending", value: summary.tasksPending },
-    { name: "Lainnya", value: Math.max(0, summary.totalTasksToday - summary.tasksCompleted - summary.tasksPending) },
-  ].filter(d => d.value > 0) : [];
+  const chartData = Array.isArray(deptData)
+    ? deptData.map((dept: any) => ({
+        name: dept.departmentName,
+        Submit: dept.submitRate,
+        Progres: dept.avgProgress,
+      }))
+    : [];
 
   return (
     <Layout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
+      <div className="space-y-6 p-6">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">{todayFormatted}</p>
+          <h1 className="text-xl font-bold text-slate-950">Dashboard</h1>
         </div>
 
+        <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-7 py-6 text-white shadow-sm">
+          <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
+          <p className="text-sm font-medium text-blue-100">Selamat datang kembali,</p>
+          <h2 className="mt-1 text-2xl font-black">{user?.name ?? "HR PTAA"} — PT Adiyasa Abadi</h2>
+          <div className="mt-2 flex items-center gap-2 text-sm font-medium text-blue-100">
+            <CalendarDays className="h-4 w-4" />
+            {todayFormatted}
+          </div>
+        </section>
+
         {summaryLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-7 w-7 animate-spin text-[#06258d]" />
           </div>
         ) : summary ? (
           <>
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <StatCard
                 title="Total Karyawan"
                 value={summary.totalEmployees}
                 icon={Users}
-                color="bg-blue-100 text-blue-600"
+                iconClass="bg-blue-50 text-blue-600"
+                description="Data aktif"
               />
               <StatCard
                 title="Sudah Submit"
                 value={summary.submittedToday}
-                icon={CheckCircle}
-                color="bg-green-100 text-green-600"
+                icon={CheckSquare}
+                iconClass="bg-emerald-50 text-emerald-600"
                 description={`${summary.submitRate}% dari total`}
               />
               <StatCard
                 title="Belum Submit"
                 value={summary.notSubmittedToday}
-                icon={XCircle}
-                color="bg-red-100 text-red-600"
+                icon={AlertTriangle}
+                iconClass="bg-amber-50 text-amber-600"
               />
               <StatCard
                 title="Total Tugas"
                 value={summary.totalTasksToday}
-                icon={ListTodo}
-                color="bg-purple-100 text-purple-600"
+                icon={ClipboardList}
+                iconClass="bg-violet-50 text-violet-600"
               />
               <StatCard
                 title="Tugas Selesai"
                 value={summary.tasksCompleted}
-                icon={TrendingUp}
-                color="bg-emerald-100 text-emerald-600"
-                description={`${summary.completionRate}% completion`}
+                icon={FileCheck2}
+                iconClass="bg-green-50 text-green-600"
+                description={`${summary.completionRate}% selesai`}
               />
               <StatCard
                 title="Tugas Pending"
                 value={summary.tasksPending}
-                icon={Clock}
-                color="bg-amber-100 text-amber-600"
+                icon={Clock3}
+                iconClass="bg-orange-50 text-orange-600"
               />
-            </div>
+            </section>
 
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* Department Productivity */}
-              <Card className="border border-border">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Produktivitas Departemen</CardTitle>
-                  <CardDescription>Rata-rata progress tugas per departemen hari ini</CardDescription>
+            <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_470px]">
+              <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-bold text-slate-800">Rekap Laporan Departemen Hari Ini</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {deptLoading ? (
-                    <div className="flex items-center justify-center h-48">
-                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                    <div className="flex h-[285px] items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-[#06258d]" />
                     </div>
-                  ) : deptData && deptData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={deptData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis
-                          dataKey="departmentName"
-                          tick={{ fontSize: 11 }}
-                          tickFormatter={(v) => v.split(" ").map((w: string) => w[0]).join("")}
-                        />
-                        <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
-                        <Tooltip
-                          formatter={(v: number) => [`${v}%`, "Avg Progress"]}
-                          labelFormatter={(label) => label}
-                          contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                        />
-                        <Bar dataKey="avgProgress" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  ) : chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={285}>
+                      <BarChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} domain={[0, 100]} />
+                        <Tooltip contentStyle={{ borderRadius: 12, borderColor: "#e5e7eb", fontSize: 12 }} />
+                        <Bar dataKey="Submit" fill="#06258d" radius={[5, 5, 0, 0]} />
+                        <Bar dataKey="Progres" fill="#ef0012" radius={[5, 5, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-                      Tidak ada data hari ini
+                    <div className="flex h-[285px] items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
+                      Belum ada data laporan hari ini
                     </div>
                   )}
                 </CardContent>
               </Card>
 
-              {/* Submit Rate */}
-              <div className="grid grid-rows-2 gap-5">
-                <Card className="border border-border">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Submit Rate</CardTitle>
-                    <CardDescription>Tingkat pengumpulan laporan hari ini</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex items-center gap-4">
-                    <div className="w-32 h-32">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={submitPieData} cx="50%" cy="50%" innerRadius={28} outerRadius={48} dataKey="value">
-                            {submitPieData.map((_, i) => (
-                              <Cell key={i} fill={i === 0 ? "#2563eb" : "#e5e7eb"} />
-                            ))}
-                          </Pie>
-                        </PieChart>
-                      </ResponsiveContainer>
+              <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-bold text-slate-800">Ringkasan Hari Ini</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">Belum Submit Laporan</p>
+                        <p className="text-xs text-slate-500">Karyawan yang belum mengirim laporan hari ini</p>
+                      </div>
+                      <Badge className="border-amber-300 bg-white text-amber-700">{summary.notSubmittedToday}</Badge>
                     </div>
-                    <div>
-                      <p className="text-3xl font-bold text-primary">{summary.submitRate}%</p>
-                      <p className="text-sm text-muted-foreground">{summary.submittedToday} dari {summary.totalEmployees} karyawan</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                  </div>
 
-                <Card className="border border-border">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Completion Rate</CardTitle>
-                    <CardDescription>Tingkat penyelesaian tugas hari ini</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex items-center gap-4">
-                    <div className="w-32 h-32">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={taskPieData} cx="50%" cy="50%" innerRadius={28} outerRadius={48} dataKey="value">
-                            {taskPieData.map((entry, i) => (
-                              <Cell key={i} fill={entry.name === "Selesai" ? "#10b981" : entry.name === "Pending" ? "#f59e0b" : "#e5e7eb"} />
-                            ))}
-                          </Pie>
-                        </PieChart>
-                      </ResponsiveContainer>
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">Submit Rate</p>
+                        <p className="text-xs text-slate-500">Persentase pengumpulan laporan</p>
+                      </div>
+                      <Badge className="border-blue-300 bg-white text-blue-700">{summary.submitRate}%</Badge>
                     </div>
-                    <div>
-                      <p className="text-3xl font-bold text-emerald-600">{summary.completionRate}%</p>
-                      <p className="text-sm text-muted-foreground">{summary.tasksCompleted} dari {summary.totalTasksToday} tugas selesai</p>
+                  </div>
+
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">Completion Rate</p>
+                        <p className="text-xs text-slate-500">Tingkat penyelesaian tugas</p>
+                      </div>
+                      <Badge className="border-emerald-300 bg-white text-emerald-700">{summary.completionRate}%</Badge>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
           </>
         ) : (
-          <Card className="border border-border p-8 text-center text-muted-foreground">
+          <Card className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
             Gagal memuat data dashboard
           </Card>
         )}
