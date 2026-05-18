@@ -86,7 +86,9 @@ router.get("/me", async (req, res) => {
 });
 
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  const email = String(req.body.email ?? "").trim().toLowerCase();
+  const password = String(req.body.password ?? "");
+
   if (!email || !password) {
     res.status(400).json({ error: "Email dan password diperlukan" });
     return;

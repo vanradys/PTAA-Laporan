@@ -104,7 +104,7 @@ export default function Login() {
                 <p><span className="font-medium text-foreground">HR:</span> ahmad@perusahaan.com</p>
                 <p><span className="font-medium text-foreground">Karyawan:</span> budi@perusahaan.com</p>
                 <p><span className="font-medium text-foreground">Direktur:</span> eko@perusahaan.com</p>
-                <p className="text-muted-foreground/70 mt-1">Password: password123</p>
+                <p className="text-muted-foreground/70 mt-1">Password: password123 </p>
               </div>
             </div>
           </CardContent>
