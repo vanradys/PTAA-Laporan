@@ -1,0 +1,318 @@
+Build a complete “Laporan Harian / Daily Work Report System” feature for my HR Management web application.
+
+IMPORTANT:
+- Use the EXISTING project structure.
+- Do NOT rebuild the whole app.
+- Maintain existing UI style/design system/layout/sidebar.
+- Make the feature production-ready and scalable.
+- Use responsive modern corporate UI.
+- Use Bahasa Indonesia for ALL UI text.
+
+========================================
+MAIN CONCEPT
+========================================
+
+This feature replaces the current WhatsApp-based daily reporting system.
+
+Current manual format:
+
+📌 Laporan Progress Harian - NAMA
+🗓 Hari / Tanggal
+
+✅ Tugas Hari Ini
+📝 Persoalan yang dihadapi
+📝 Catatan Tambahan
+📝 Rencana Besok & Target
+
+Convert this into a modern internal web system.
+
+All employees:
+- Login using their own account
+- Create daily reports
+- Can view reports from other departments
+- Cannot edit reports from other employees
+
+HR/Admin/Director:
+- Can monitor all reports
+- Can review/comment on reports
+- Can filter/search all reports
+
+========================================
+FEATURES REQUIRED
+========================================
+
+1. DAILY REPORT FORM
+
+Create page:
+- “Laporan Harian Saya”
+
+Fields:
+- Nama Karyawan (auto from login)
+- Departemen (auto)
+- Hari (auto)
+- Tanggal (default today)
+- Persoalan yang Dihadapi
+- Catatan Tambahan
+- Rencana Besok & Target
+- Lampiran file/foto optional
+- Status laporan:
+  - Draf
+  - Sudah Dikirim
+  - Direview
+  - Perlu Revisi
+
+========================================
+2. MULTI TASK INPUT
+========================================
+
+User must be able to add unlimited tasks.
+
+Add button:
++ Tambah Tugas
+
+Each task contains:
+- Nama Tugas
+- Project
+- Progress %
+- Status Tugas:
+  - Belum Mulai
+  - Proses
+  - Selesai
+  - Pending
+- Catatan Tugas
+
+Display tasks inside modern cards/table.
+
+========================================
+3. COPY YESTERDAY TASKS
+========================================
+
+Add button:
+“Ambil Tugas Kemarin”
+
+Behavior:
+- Automatically copy unfinished/pending tasks from yesterday
+- User can edit/update progress
+
+========================================
+4. TASK CARRY OVER
+========================================
+
+If task status:
+- Pending
+- Proses
+
+Then allow:
+“Lanjutkan ke Hari Ini”
+
+========================================
+5. DAILY REPORT MONITORING TABLE
+========================================
+
+Create page:
+“Monitoring Laporan Harian”
+
+Display all employees.
+
+Columns:
+- Nama Karyawan
+- Departemen
+- Tanggal
+- Jumlah Tugas
+- Progress Rata-rata
+- Status Laporan
+- Status Submit
+- Detail
+
+IMPORTANT:
+- If employee already submitted report:
+  show GREEN CHECKLIST ICON
+- If employee has not submitted:
+  show RED X ICON
+
+Use visual badges/icons, not text only.
+
+========================================
+6. FILTERS & SEARCH
+========================================
+
+Add filters:
+- Tanggal
+- Bulan
+- Tahun
+- Departemen
+- Nama Karyawan
+- Project
+- Status Laporan
+- Status Tugas
+- Search keyword
+
+========================================
+7. DETAIL REPORT PAGE
+========================================
+
+Create detail page:
+“Detail Laporan Harian”
+
+Show:
+- Employee info
+- Department
+- Date
+- All task list
+- Obstacles
+- Notes
+- Tomorrow plans
+- Attachments
+- Reviewer comments
+
+========================================
+8. REVIEW & COMMENT SYSTEM
+========================================
+
+HR/Admin/Director can:
+- Add comments
+- Mark reviewed
+- Request revision
+
+Employee can read comments.
+
+========================================
+9. DASHBOARD SUMMARY
+========================================
+
+Add summary cards:
+- Total Karyawan
+- Sudah Submit Hari Ini
+- Belum Submit Hari Ini
+- Total Tugas Hari Ini
+- Tugas Selesai
+- Tugas Pending
+
+Add charts if possible:
+- Produktivitas Departemen
+- Submit Rate
+- Completion Rate
+
+========================================
+10. NOTIFICATIONS
+========================================
+
+Create notifications for:
+- Employee has not submitted report
+- Report reviewed
+- Revision requested
+- Mention/tag from another department
+
+Notifications must persist after reload.
+
+========================================
+11. EXPORT FEATURE
+========================================
+
+Add:
+- Export Excel
+- Export PDF
+- Copy WhatsApp Format
+
+========================================
+12. PERMISSION RULES
+========================================
+
+Employees:
+- Can create/edit their own reports
+- Can view other reports
+- Cannot edit/delete other reports
+
+HR/Admin/Director:
+- Can view all reports
+- Can review/comment
+- Can export reports
+
+Backend API must also validate permissions.
+Do not rely only on frontend UI hiding.
+
+========================================
+13. DATABASE / BACKEND
+========================================
+
+If needed, create/update database models.
+
+Suggested models:
+
+DailyReport
+- id
+- userId
+- departmentId
+- date
+- obstacles
+- additionalNotes
+- tomorrowPlan
+- status
+- createdAt
+- updatedAt
+
+DailyTask
+- id
+- reportId
+- title
+- project
+- progress
+- status
+- notes
+- createdAt
+
+ReportComment
+- id
+- reportId
+- userId
+- comment
+- createdAt
+
+Notification
+- id
+- userId
+- title
+- message
+- isRead
+- createdAt
+
+========================================
+14. UI / UX REQUIREMENTS
+========================================
+
+ALL UI MUST USE BAHASA INDONESIA.
+
+Examples:
+- Tambah Tugas
+- Kirim Laporan
+- Cari
+- Filter
+- Reset
+- Sudah Dikirim
+- Belum Submit
+- Tertunda
+- Detail
+
+Use:
+- Modern HR dashboard style
+- Rounded cards
+- Soft shadows
+- Responsive layout
+- Clean table
+- Corporate blue/white theme
+- Modern empty states
+- Smooth hover/transition
+
+========================================
+15. RESPONSE FORMAT
+========================================
+
+When editing code:
+1. Explain briefly what is being added/fixed
+2. Mention files to create/edit
+3. Give full ready-to-paste code
+4. Mention where code should be placed
+5. Include backend/API/Prisma updates if needed
+6. Avoid long theory
+7. No pseudo-code
+8. Keep compatibility with existing project

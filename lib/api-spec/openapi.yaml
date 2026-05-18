@@ -1,0 +1,892 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Laporan Harian - Daily Work Report System API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication
+  - name: reports
+    description: Daily report operations
+  - name: tasks
+    description: Daily task operations
+  - name: comments
+    description: Report comment operations
+  - name: notifications
+    description: Notification operations
+  - name: dashboard
+    description: Dashboard summary operations
+  - name: po
+    description: Project/PO deadline monitoring
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get current user session
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /reports:
+    get:
+      operationId: listReports
+      tags: [reports]
+      summary: List all daily reports with filters
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string }
+        - name: month
+          in: query
+          schema: { type: string }
+        - name: year
+          in: query
+          schema: { type: string }
+        - name: departmentId
+          in: query
+          schema: { type: ["integer", "null"] }
+        - name: userId
+          in: query
+          schema: { type: ["integer", "null"] }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportSummary"
+    post:
+      operationId: createReport
+      tags: [reports]
+      summary: Create a new daily report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+
+  /reports/today:
+    get:
+      operationId: getTodayReport
+      tags: [reports]
+      summary: Get current user's report for today
+      responses:
+        "200":
+          description: Today's report or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+
+  /reports/yesterday-tasks:
+    get:
+      operationId: getYesterdayTasks
+      tags: [reports]
+      summary: Get unfinished/pending tasks from yesterday for copy
+      responses:
+        "200":
+          description: Yesterday's unfinished tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DailyTask"
+
+  /reports/{id}:
+    get:
+      operationId: getReport
+      tags: [reports]
+      summary: Get a single report by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Report detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+    patch:
+      operationId: updateReport
+      tags: [reports]
+      summary: Update a daily report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportUpdate"
+      responses:
+        "200":
+          description: Updated report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+    delete:
+      operationId: deleteReport
+      tags: [reports]
+      summary: Delete a daily report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /reports/{id}/submit:
+    post:
+      operationId: submitReport
+      tags: [reports]
+      summary: Submit a draft report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+
+  /reports/{id}/review:
+    post:
+      operationId: reviewReport
+      tags: [reports]
+      summary: Mark a report as reviewed (HR/Admin/Director only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "200":
+          description: Reviewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+
+  /reports/{id}/tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List tasks for a report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DailyTask"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Add a task to a report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyTask"
+
+  /tasks/{taskId}:
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyTask"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /reports/{id}/comments:
+    get:
+      operationId: listComments
+      tags: [comments]
+      summary: List comments for a report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportComment"
+    post:
+      operationId: createComment
+      tags: [comments]
+      summary: Add a comment to a report
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentInput"
+      responses:
+        "201":
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportComment"
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications for current user
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+
+  /notifications/{notifId}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark a notification as read
+      parameters:
+        - name: notifId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      responses:
+        "200":
+          description: All marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /po:
+    get:
+      operationId: listPo
+      tags: [po]
+      summary: List PO/Projects with filters
+      parameters:
+        - name: month
+          in: query
+          schema: { type: integer }
+        - name: year
+          in: query
+          schema: { type: integer }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: departmentId
+          in: query
+          schema: { type: integer }
+        - name: picUserId
+          in: query
+          schema: { type: integer }
+        - name: customer
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of PO
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PoItem"
+    post:
+      operationId: createPo
+      tags: [po]
+      summary: Create a new PO/Project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PoInput"
+      responses:
+        "201":
+          description: Created PO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoItem"
+
+  /po/summary:
+    get:
+      operationId: getPoSummary
+      tags: [po]
+      summary: Get monthly PO summary stats
+      parameters:
+        - name: month
+          in: query
+          schema: { type: integer }
+        - name: year
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: PO summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoSummary"
+
+  /po/{id}:
+    get:
+      operationId: getPo
+      tags: [po]
+      summary: Get PO detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: PO detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoItem"
+    patch:
+      operationId: updatePo
+      tags: [po]
+      summary: Update a PO/Project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PoUpdate"
+      responses:
+        "200":
+          description: Updated PO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoItem"
+
+  /po/{id}/close:
+    post:
+      operationId: closePo
+      tags: [po]
+      summary: Mark PO as closed/completed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Closed PO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoItem"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/department-productivity:
+    get:
+      operationId: getDepartmentProductivity
+      tags: [dashboard]
+      summary: Get department productivity breakdown
+      parameters:
+        - name: date
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Department productivity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DepartmentProductivity"
+
+  /departments:
+    get:
+      operationId: listDepartments
+      tags: [auth]
+      summary: List departments
+      responses:
+        "200":
+          description: Departments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Department"
+
+  /employees:
+    get:
+      operationId: listEmployees
+      tags: [auth]
+      summary: List employees
+      responses:
+        "200":
+          description: Employees
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string }
+      required: [status]
+
+    SuccessResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+      required: [success]
+
+    Department:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        code: { type: string }
+      required: [id, name, code]
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        departmentId: { type: ["integer", "null"] }
+        departmentName: { type: ["string", "null"] }
+        avatarInitials: { type: string }
+      required: [id, name, email, role, avatarInitials]
+
+    LoginInput:
+      type: object
+      properties:
+        email: { type: string }
+        password: { type: string }
+      required: [email, password]
+
+    DailyTask:
+      type: object
+      properties:
+        id: { type: integer }
+        reportId: { type: integer }
+        title: { type: string }
+        project: { type: ["string", "null"] }
+        progress: { type: integer }
+        status: { type: string }
+        notes: { type: ["string", "null"] }
+        createdAt: { type: string }
+      required: [id, reportId, title, progress, status, createdAt]
+
+    TaskInput:
+      type: object
+      properties:
+        title: { type: string }
+        project: { type: string }
+        progress: { type: integer }
+        status: { type: string }
+        notes: { type: string }
+      required: [title, progress, status]
+
+    TaskUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        project: { type: string }
+        progress: { type: integer }
+        status: { type: string }
+        notes: { type: string }
+
+    ReportComment:
+      type: object
+      properties:
+        id: { type: integer }
+        reportId: { type: integer }
+        userId: { type: integer }
+        userName: { type: string }
+        userRole: { type: string }
+        comment: { type: string }
+        createdAt: { type: string }
+      required: [id, reportId, userId, userName, userRole, comment, createdAt]
+
+    CommentInput:
+      type: object
+      properties:
+        comment: { type: string }
+      required: [comment]
+
+    Report:
+      type: object
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        userName: { type: string }
+        userEmail: { type: string }
+        departmentId: { type: ["integer", "null"] }
+        departmentName: { type: ["string", "null"] }
+        date: { type: string }
+        dayName: { type: string }
+        obstacles: { type: ["string", "null"] }
+        additionalNotes: { type: ["string", "null"] }
+        tomorrowPlan: { type: ["string", "null"] }
+        status: { type: string }
+        tasks: { type: array, items: { $ref: "#/components/schemas/DailyTask" } }
+        comments: { type: array, items: { $ref: "#/components/schemas/ReportComment" } }
+        taskCount: { type: integer }
+        avgProgress: { type: integer }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required: [id, userId, userName, userEmail, date, dayName, status, tasks, comments, taskCount, avgProgress, createdAt, updatedAt]
+
+    ReportSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        userName: { type: string }
+        departmentId: { type: ["integer", "null"] }
+        departmentName: { type: ["string", "null"] }
+        date: { type: string }
+        dayName: { type: string }
+        taskCount: { type: integer }
+        avgProgress: { type: integer }
+        status: { type: string }
+        createdAt: { type: string }
+      required: [id, userId, userName, date, dayName, taskCount, avgProgress, status, createdAt]
+
+    ReportInput:
+      type: object
+      properties:
+        date: { type: string }
+        obstacles: { type: string }
+        additionalNotes: { type: string }
+        tomorrowPlan: { type: string }
+        status: { type: string }
+      required: [date]
+
+    ReportUpdate:
+      type: object
+      properties:
+        date: { type: string }
+        obstacles: { type: string }
+        additionalNotes: { type: string }
+        tomorrowPlan: { type: string }
+        status: { type: string }
+
+    ReviewInput:
+      type: object
+      properties:
+        action: { type: string }
+        comment: { type: string }
+      required: [action]
+
+    Notification:
+      type: object
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        title: { type: string }
+        message: { type: string }
+        isRead: { type: boolean }
+        type: { type: string }
+        relatedReportId: { type: ["integer", "null"] }
+        createdAt: { type: string }
+      required: [id, userId, title, message, isRead, type, createdAt]
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalEmployees: { type: integer }
+        submittedToday: { type: integer }
+        notSubmittedToday: { type: integer }
+        totalTasksToday: { type: integer }
+        tasksCompleted: { type: integer }
+        tasksPending: { type: integer }
+        submitRate: { type: integer }
+        completionRate: { type: integer }
+      required: [totalEmployees, submittedToday, notSubmittedToday, totalTasksToday, tasksCompleted, tasksPending, submitRate, completionRate]
+
+    DepartmentProductivity:
+      type: object
+      properties:
+        departmentId: { type: integer }
+        departmentName: { type: string }
+        employeeCount: { type: integer }
+        submittedCount: { type: integer }
+        avgProgress: { type: integer }
+        submitRate: { type: integer }
+      required: [departmentId, departmentName, employeeCount, submittedCount, avgProgress, submitRate]
+
+    PoItem:
+      type: object
+      properties:
+        id: { type: integer }
+        noPo: { type: string }
+        namaProject: { type: string }
+        customer: { type: ["string", "null"] }
+        tanggalPoMasuk: { type: string }
+        targetPenyelesaian: { type: ["string", "null"] }
+        deadline: { type: string }
+        sisaHari: { type: integer }
+        picUserId: { type: ["integer", "null"] }
+        picName: { type: ["string", "null"] }
+        departmentId: { type: ["integer", "null"] }
+        departmentName: { type: ["string", "null"] }
+        status: { type: string }
+        progress: { type: integer }
+        catatan: { type: ["string", "null"] }
+        createdByUserId: { type: ["integer", "null"] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required: [id, noPo, namaProject, deadline, sisaHari, status, progress, createdAt, updatedAt]
+
+    PoInput:
+      type: object
+      properties:
+        noPo: { type: string }
+        namaProject: { type: string }
+        customer: { type: string }
+        tanggalPoMasuk: { type: string }
+        targetPenyelesaian: { type: string }
+        deadline: { type: string }
+        picUserId: { type: integer }
+        departmentId: { type: integer }
+        status: { type: string }
+        progress: { type: integer }
+        catatan: { type: string }
+      required: [noPo, namaProject, tanggalPoMasuk, deadline]
+
+    PoUpdate:
+      type: object
+      properties:
+        noPo: { type: string }
+        namaProject: { type: string }
+        customer: { type: string }
+        tanggalPoMasuk: { type: string }
+        targetPenyelesaian: { type: string }
+        deadline: { type: string }
+        picUserId: { type: integer }
+        departmentId: { type: integer }
+        status: { type: string }
+        progress: { type: integer }
+        catatan: { type: string }
+
+    PoSummary:
+      type: object
+      properties:
+        totalPo: { type: integer }
+        poSelesai: { type: integer }
+        poBelumSelesai: { type: integer }
+        poDelay: { type: integer }
+        poHampirDeadline: { type: integer }
+        persentasePencapaian: { type: integer }
+        month: { type: integer }
+        year: { type: integer }
+      required: [totalPo, poSelesai, poBelumSelesai, poDelay, poHampirDeadline, persentasePencapaian, month, year]
