@@ -33,6 +33,69 @@ async function getUserFromToken(token: string) {
   return users[0] ?? null;
 }
 
+router.post("/seed-demo-users", async (_req, res) => {
+  const hashedPassword = hashPassword("password123");
+
+  const demoUsers = [
+    {
+      name: "Admin HR PTAA",
+      email: "admin@ptaa.com",
+      password: hashedPassword,
+      role: "admin",
+      departmentId: null,
+    },
+    {
+      name: "Ahmad HR",
+      email: "ahmad@perusahaan.com",
+      password: hashedPassword,
+      role: "hr",
+      departmentId: null,
+    },
+    {
+      name: "Budi Santoso",
+      email: "budi@perusahaan.com",
+      password: hashedPassword,
+      role: "karyawan",
+      departmentId: null,
+    },
+    {
+      name: "Eko Direktur",
+      email: "eko@perusahaan.com",
+      password: hashedPassword,
+      role: "direktur",
+      departmentId: null,
+    },
+  ];
+
+  for (const user of demoUsers) {
+    const existing = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, user.email))
+      .limit(1);
+
+    if (existing[0]) {
+      await db
+        .update(usersTable)
+        .set({
+          name: user.name,
+          password: user.password,
+          role: user.role,
+          departmentId: user.departmentId,
+          updatedAt: new Date(),
+        })
+        .where(eq(usersTable.email, user.email));
+    } else {
+      await db.insert(usersTable).values(user);
+    }
+  }
+
+  res.json({
+    success: true,
+    message: "Akun demo berhasil dibuat/reset. Password semua akun: password123",
+  });
+});
+
 router.get("/me", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) {
