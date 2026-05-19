@@ -679,17 +679,23 @@ components:
         reportId: { type: integer }
         title: { type: string }
         project: { type: ["string", "null"] }
+        deadline: { type: ["string", "null"] }
         progress: { type: integer }
         status: { type: string }
         notes: { type: ["string", "null"] }
+        editCount: { type: integer }
+        remainingActions: { type: integer }
+        isLocked: { type: boolean }
+        isDelay: { type: boolean }
         createdAt: { type: string }
-      required: [id, reportId, title, progress, status, createdAt]
+      required: [id, reportId, title, progress, status, editCount, remainingActions, isLocked, isDelay, createdAt]
 
     TaskInput:
       type: object
       properties:
         title: { type: string }
         project: { type: string }
+        deadline: { type: string }
         progress: { type: integer }
         status: { type: string }
         notes: { type: string }
@@ -700,6 +706,7 @@ components:
       properties:
         title: { type: string }
         project: { type: string }
+        deadline: { type: string }
         progress: { type: integer }
         status: { type: string }
         notes: { type: string }

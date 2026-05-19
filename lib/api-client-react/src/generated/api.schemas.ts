@@ -43,16 +43,23 @@ export interface DailyTask {
   title: string;
   /** @nullable */
   project?: string | null;
+  /** @nullable */
+  deadline?: string | null;
   progress: number;
   status: string;
   /** @nullable */
   notes?: string | null;
+  editCount: number;
+  remainingActions: number;
+  isLocked: boolean;
+  isDelay: boolean;
   createdAt: string;
 }
 
 export interface TaskInput {
   title: string;
   project?: string;
+  deadline?: string;
   progress: number;
   status: string;
   notes?: string;
@@ -61,6 +68,7 @@ export interface TaskInput {
 export interface TaskUpdate {
   title?: string;
   project?: string;
+  deadline?: string;
   progress?: number;
   status?: string;
   notes?: string;

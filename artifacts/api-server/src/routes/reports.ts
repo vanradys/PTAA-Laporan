@@ -19,6 +19,26 @@ function isEmptyText(value: string | null | undefined): boolean {
   return !value || value.trim().length === 0;
 }
 
+const MAX_TASK_ACTIONS = 2;
+
+function getTodayString(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function getRemainingActions(editCount: number): number {
+  return Math.max(0, MAX_TASK_ACTIONS - editCount);
+}
+
+function isTaskLockedByCount(editCount: number): boolean {
+  return getRemainingActions(editCount) <= 0;
+}
+
+function isTaskDelay(deadline: string | null, status: string): boolean {
+  if (!deadline) return false;
+  if (status === "selesai") return false;
+  return deadline < getTodayString();
+}
+
 async function buildReportDetail(reportId: number) {
   const reports = await db
     .select({
@@ -83,11 +103,25 @@ async function buildReportDetail(reportId: number) {
     additionalNotes: r.additionalNotes ?? null,
     tomorrowPlan: r.tomorrowPlan ?? null,
     status: r.status,
-    tasks: tasks.map(t => ({
-      id: t.id, reportId: t.reportId, title: t.title,
-      project: t.project ?? null, progress: t.progress, status: t.status,
-      notes: t.notes ?? null, createdAt: t.createdAt.toISOString(),
-    })),
+    tasks: tasks.map(t => {
+      const editCount = t.editCount ?? 0;
+
+      return {
+        id: t.id,
+        reportId: t.reportId,
+        title: t.title,
+        project: t.project ?? null,
+        deadline: t.deadline ?? null,
+        progress: t.progress,
+        status: t.status,
+        notes: t.notes ?? null,
+        editCount,
+        remainingActions: getRemainingActions(editCount),
+        isLocked: isTaskLockedByCount(editCount),
+        isDelay: isTaskDelay(t.deadline, t.status),
+        createdAt: t.createdAt.toISOString(),
+      };
+    }),
     comments: comments.map(c => ({
       id: c.id, reportId: c.reportId, userId: c.userId,
       userName: c.userName ?? "", userRole: c.userRole ?? "",
@@ -281,11 +315,25 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
       )
     ));
 
-  res.json(tasks.map(t => ({
-    id: t.id, reportId: t.reportId, title: t.title,
-    project: t.project ?? null, progress: t.progress, status: t.status,
-    notes: t.notes ?? null, createdAt: t.createdAt.toISOString(),
-  })));
+  res.json(tasks.map(t => {
+    const editCount = t.editCount ?? 0;
+
+    return {
+      id: t.id,
+      reportId: t.reportId,
+      title: t.title,
+      project: t.project ?? null,
+      deadline: t.deadline ?? null,
+      progress: t.progress,
+      status: t.status,
+      notes: t.notes ?? null,
+      editCount,
+      remainingActions: getRemainingActions(editCount),
+      isLocked: isTaskLockedByCount(editCount),
+      isDelay: isTaskDelay(t.deadline, t.status),
+      createdAt: t.createdAt.toISOString(),
+    };
+  }));
 });
 
 router.get("/reports/:id", async (req, res) => {

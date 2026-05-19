@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -46,6 +46,7 @@ function getReportStatusInfo(status: string) {
 interface TaskForm {
   title: string;
   project: string;
+  deadline: string;
   progress: number;
   status: string;
   notes: string;
@@ -60,14 +61,20 @@ interface ExistingTask {
   reportId: number;
   title: string;
   project: string | null;
+  deadline: string | null;
   progress: number;
   status: string;
   notes: string | null;
+  editCount: number;
+  remainingActions: number;
+  isLocked: boolean;
+  isDelay: boolean;
   createdAt: string;
 }
 
 interface ReportData {
   id: number;
+  date: string;
   status: string;
   tasks?: ExistingTask[];
   obstacles?: string | null;
@@ -101,11 +108,24 @@ export default function LaporanSaya() {
   const [expandedTasks, setExpandedTasks] = useState<Set<string | number>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const hasAutoCopiedYesterdayTasks = useRef(false);
 
   const report = (isError ? null : todayReport) as ReportData | null;
   const existingTasks: ExistingTask[] = report?.tasks ?? [];
-  const isLocked = report?.status === "dikirim" || report?.status === "direview";
+const isSubmitted = report?.status === "dikirim";
+const isReviewed = report?.status === "direview";
+const isPastReport = !!report?.date && report.date !== today;
 
+const isLocked = isReviewed || isPastReport;
+
+const canEditReportFields =
+  !report || report.status === "draf" || report.status === "perlu_revisi";
+
+const canModifyExistingTasks =
+  !!report && !isReviewed && !isPastReport;
+
+const canAddNewTasks = canEditReportFields;
+const showSubmitActions = canEditReportFields && !isLocked;
    const { register, handleSubmit, setValue, getValues, watch } = useForm({
     defaultValues: {
       obstacles: "",
@@ -133,29 +153,65 @@ export default function LaporanSaya() {
   }, [report, setValue]);
 
   const addNewTask = () => {
-    const id = Date.now().toString();
-    setNewTasks(prev => [...prev, { id, title: "", project: "", progress: 0, status: "belum_mulai", notes: "" }]);
-    setExpandedTasks(prev => new Set([...prev, id]));
-  };
+  const id = Date.now().toString();
+
+  setNewTasks(prev => [
+  ...prev,
+  {
+    id,
+    title: "",
+    project: "",
+    deadline: "",
+    progress: 0,
+    status: "belum_mulai",
+    notes: "",
+  },
+]);
+
+  setExpandedTasks(prev => new Set([...prev, id]));
+};
 
   const removeNewTask = (id: string) => setNewTasks(prev => prev.filter(t => t.id !== id));
 
   const updateNewTask = (id: string, field: keyof TaskForm, value: string | number) =>
     setNewTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
 
-  const handleCopyYesterday = () => {
-    if (!yesterdayTasks || !Array.isArray(yesterdayTasks)) return;
-    const copies = (yesterdayTasks as ExistingTask[]).map(t => ({
-      id: Date.now().toString() + Math.random(),
-      title: t.title,
-      project: t.project ?? "",
-      progress: t.progress,
-      status: t.status === "selesai" ? "belum_mulai" : t.status,
-      notes: t.notes ?? "",
-    }));
-    setNewTasks(prev => [...prev, ...copies]);
-    toast({ title: "Berhasil", description: `${copies.length} tugas dari kemarin berhasil disalin` });
-  };
+  const copyYesterdayTasksToToday = (showToast = true) => {
+  if (!yesterdayTasks || !Array.isArray(yesterdayTasks)) return;
+
+  const copies = (yesterdayTasks as ExistingTask[]).map(t => ({
+  id: Date.now().toString() + Math.random(),
+  title: t.title,
+  project: t.project ?? "",
+  deadline: t.deadline ?? "",
+  progress: t.progress,
+  status: t.status === "selesai" ? "belum_mulai" : t.status,
+  notes: t.notes ?? "",
+}));
+
+  setNewTasks(prev => [...prev, ...copies]);
+  setExpandedTasks(prev => new Set([...prev, ...copies.map(t => t.id)]));
+
+  if (showToast) {
+    toast({
+      title: "Tugas kemarin ditambahkan",
+      description: `${copies.length} tugas yang belum selesai otomatis masuk ke laporan hari ini.`,
+    });
+  }
+};
+
+const handleCopyYesterday = () => {
+  copyYesterdayTasksToToday(true);
+};
+
+useEffect(() => {
+  if (hasAutoCopiedYesterdayTasks.current) return;
+  if (report) return;
+  if (!yesterdayTasks || !Array.isArray(yesterdayTasks) || yesterdayTasks.length === 0) return;
+
+  hasAutoCopiedYesterdayTasks.current = true;
+  copyYesterdayTasksToToday(true);
+}, [yesterdayTasks, report]);
 
     const validateRequiredReportFields = (data: {
     obstacles: string;
@@ -203,7 +259,14 @@ export default function LaporanSaya() {
       if (!task.title.trim()) continue;
       await createTask.mutateAsync({
         id: reportId,
-        data: { title: task.title, project: task.project, progress: task.progress, status: task.status, notes: task.notes }
+      data: {
+        title: task.title,
+        project: task.project,
+        deadline: task.deadline || undefined,
+        progress: task.progress,
+        status: task.status,
+        notes: task.notes,
+      }
       });
     }
     setNewTasks([]);
@@ -246,23 +309,57 @@ export default function LaporanSaya() {
   };
 
   const handleUpdateExistingTask = async (taskId: number, field: string, value: string | number) => {
-    try {
-      await updateTask.mutateAsync({ taskId, data: { [field]: value } });
-      queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
-    } catch {
-      toast({ title: "Gagal", description: "Gagal memperbarui tugas", variant: "destructive" });
-    }
-  };
+  const task = existingTasks.find(t => t.id === taskId);
+
+  if (!task || !canModifyExistingTasks || task.isLocked || task.remainingActions <= 0) {
+    toast({
+      title: "Tugas terkunci",
+      description: "Tugas ini sudah tidak bisa diedit. Batas edit/hapus 2x sudah habis atau tanggal laporan sudah berganti.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  try {
+    await updateTask.mutateAsync({ taskId, data: { [field]: value } });
+    queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
+    toast({
+      title: "Tugas diperbarui",
+      description: `Sisa kesempatan edit/hapus: ${Math.max(0, task.remainingActions - 1)}x.`,
+    });
+  } catch (error) {
+    toast({
+      title: "Gagal",
+      description: error instanceof Error ? error.message : "Gagal memperbarui tugas",
+      variant: "destructive",
+    });
+  }
+};
 
   const handleDeleteExistingTask = async (taskId: number) => {
-    try {
-      await deleteTask.mutateAsync({ taskId });
-      queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
-      toast({ title: "Berhasil", description: "Tugas berhasil dihapus" });
-    } catch {
-      toast({ title: "Gagal", description: "Gagal menghapus tugas", variant: "destructive" });
-    }
-  };
+  const task = existingTasks.find(t => t.id === taskId);
+
+  if (!task || !canModifyExistingTasks || task.isLocked || task.remainingActions <= 0) {
+    toast({
+      title: "Tugas terkunci",
+      description: "Tugas ini sudah tidak bisa dihapus. Batas edit/hapus 2x sudah habis atau tanggal laporan sudah berganti.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  try {
+    await deleteTask.mutateAsync({ taskId });
+    queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
+    toast({ title: "Berhasil", description: "Tugas berhasil dihapus" });
+  } catch (error) {
+    toast({
+      title: "Gagal",
+      description: error instanceof Error ? error.message : "Gagal menghapus tugas",
+      variant: "destructive",
+    });
+  }
+};
 
   const toggleExpand = (id: string | number) => {
     setExpandedTasks(prev => {
@@ -291,8 +388,8 @@ export default function LaporanSaya() {
             <p className="text-sm text-muted-foreground">{todayFormatted}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{user?.name} &bull; {user?.departmentName ?? "—"}</p>
           </div>
-          {!isLocked && (
-            <div className="flex gap-2">
+              {showSubmitActions && (
+              <div className="flex gap-2">
               <Button
             variant="outline"
             onClick={handleSubmit(handleSaveReport)}
@@ -405,6 +502,19 @@ export default function LaporanSaya() {
           /* Editable form */
           <form onSubmit={handleSubmit(handleSaveReport)}>
             <div className="space-y-5">
+              {isSubmitted && (
+                <Card className="border border-blue-200 bg-blue-50">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Clock className="w-5 h-5 text-blue-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-blue-800">Laporan sudah dikirim</p>
+                      <p className="text-xs text-blue-600 mt-0.5">
+                        Anda masih bisa edit/hapus tugas hari ini maksimal 2x per tugas. Setelah berganti hari, tugas akan terkunci.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
               {/* Perlu Revisi banner */}
               {report?.status === "perlu_revisi" && (
                 <Card className="border border-orange-200 bg-orange-50">
@@ -419,8 +529,8 @@ export default function LaporanSaya() {
               )}
 
               {/* Tasks Section */}
-              <Card className="border border-border">
-                <CardHeader className="pb-3">
+                <Card className="border border-border bg-white">
+                  <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">
                       Daftar Tugas Hari Ini <span className="text-destructive">*</span>
@@ -431,10 +541,12 @@ export default function LaporanSaya() {
                           Ambil Tugas Kemarin
                         </Button>
                       )}
-                      <Button type="button" variant="outline" size="sm" onClick={addNewTask}>
-                        <Plus className="w-3.5 h-3.5 mr-1.5" />
-                        Tambah Tugas
-                      </Button>
+                      {canAddNewTasks && (
+                        <Button type="button" variant="outline" size="sm" onClick={addNewTask}>
+                          <Plus className="w-3.5 h-3.5 mr-1.5" />
+                          Tambah Tugas
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -451,11 +563,43 @@ export default function LaporanSaya() {
                     const statusInfo = getStatusInfo(task.status);
                     const isExpanded = expandedTasks.has(task.id);
                     return (
-                      <div key={task.id} className="border border-border rounded-lg overflow-hidden">
-                        <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(task.id)}>
-                          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 ${statusInfo.color}`}>{statusInfo.label}</span>
+                          <div key={task.id} className="border border-border rounded-lg overflow-hidden bg-white">                        
+                          <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(task.id)}>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 ${statusInfo.color}`}>
+                              {statusInfo.label}
+                            </span>
+
+                            {task.isDelay && (
+                              <span className="text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 bg-red-100 text-red-700 border-red-200">
+                                Delay
+                              </span>
+                            )}
+
+                            {task.remainingActions <= 0 && (
+                              <span className="text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 bg-slate-100 text-slate-700 border-slate-200">
+                                Terkunci
+                              </span>
+                            )}
+                          </div>
                           <span className="text-sm font-medium text-foreground flex-1 truncate">{task.title}</span>
-                          {task.project && <span className="text-xs text-muted-foreground hidden sm:block">{task.project}</span>}
+                            <div className="flex flex-wrap items-center gap-2">
+                              {task.project && (
+                                <span className="text-xs text-muted-foreground">
+                                  Project: {task.project}
+                                </span>
+                              )}
+
+                              {task.deadline && (
+                                <span className={`text-xs ${task.isDelay ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                                  Deadline: {task.deadline}
+                                </span>
+                              )}
+
+                              <span className="text-xs text-muted-foreground">
+                                Sisa edit/hapus: {task.remainingActions}x
+                              </span>
+                            </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs font-semibold text-primary">{task.progress}%</span>
                             {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
@@ -463,21 +607,55 @@ export default function LaporanSaya() {
                         </div>
                         {isExpanded && (
                           <div className="p-4 bg-muted/20 border-t border-border space-y-3">
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Nama Tugas</Label>
-                                <Input defaultValue={task.title} onBlur={e => handleUpdateExistingTask(task.id, "title", e.target.value)} className="h-8 text-sm" />
+                            {(() => {
+                          const taskLocked = !canModifyExistingTasks || task.isLocked || task.remainingActions <= 0;
+
+                          return (
+                            <>
+                              <div className="grid grid-cols-3 gap-3">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Nama Tugas</Label>
+                                  <Input
+                                    defaultValue={task.title}
+                                    disabled={taskLocked}
+                                    onBlur={e => handleUpdateExistingTask(task.id, "title", e.target.value)}
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Project</Label>
+                                  <Input
+                                    defaultValue={task.project ?? ""}
+                                    disabled={taskLocked}
+                                    onBlur={e => handleUpdateExistingTask(task.id, "project", e.target.value)}
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Deadline</Label>
+                                  <Input
+                                    type="date"
+                                    defaultValue={task.deadline ?? ""}
+                                    disabled={taskLocked}
+                                    onBlur={e => handleUpdateExistingTask(task.id, "deadline", e.target.value)}
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Project</Label>
-                                <Input defaultValue={task.project ?? ""} onBlur={e => handleUpdateExistingTask(task.id, "project", e.target.value)} className="h-8 text-sm" />
+
+                              <div className={`rounded-md border p-2 text-xs ${taskLocked ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
+                                {taskLocked
+                                  ? "Tugas terkunci. Batas edit/hapus sudah habis atau tanggal laporan sudah berganti."
+                                  : `Sisa kesempatan edit/hapus tugas ini: ${task.remainingActions}x.`}
                               </div>
-                            </div>
+                            </>
+                          );
+                        })()}
                             <div className="grid grid-cols-2 gap-3">
                               <div className="space-y-1">
                                 <Label className="text-xs">Status</Label>
-                                <Select defaultValue={task.status} onValueChange={v => handleUpdateExistingTask(task.id, "status", v)}>
-                                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                                  <Select disabled={task.isLocked || task.remainingActions <= 0 || !canModifyExistingTasks} defaultValue={task.status} onValueChange={v => handleUpdateExistingTask(task.id, "status", v)}>
+                                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     {TASK_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                                   </SelectContent>
@@ -486,17 +664,38 @@ export default function LaporanSaya() {
                               <div className="space-y-1">
                                 <Label className="text-xs">Progress ({task.progress}%)</Label>
                                 <div className="pt-2">
-                                  <Slider defaultValue={[task.progress]} min={0} max={100} step={5} onValueCommit={v => handleUpdateExistingTask(task.id, "progress", v[0])} />
-                                </div>
+                                  <Slider
+                                    disabled={task.isLocked || task.remainingActions <= 0 || !canModifyExistingTasks}
+                                    defaultValue={[task.progress]}
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    onValueCommit={v => handleUpdateExistingTask(task.id, "progress", v[0])}
+                                  /> 
+                                 </div>
                               </div>
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Catatan Tugas</Label>
-                              <Input defaultValue={task.notes ?? ""} onBlur={e => handleUpdateExistingTask(task.id, "notes", e.target.value)} className="h-8 text-sm" placeholder="Catatan opsional..." />
+                                <Input
+                                  defaultValue={task.notes ?? ""}
+                                  disabled={task.isLocked || task.remainingActions <= 0 || !canModifyExistingTasks}
+                                  onBlur={e => handleUpdateExistingTask(task.id, "notes", e.target.value)}
+                                  className="h-8 text-sm"
+                                  placeholder="Catatan opsional..."
+                                /> 
                             </div>
                             <div className="flex justify-end">
-                              <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteExistingTask(task.id)}>
-                                <Trash2 className="w-3.5 h-3.5 mr-1.5" />Hapus Tugas
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={task.isLocked || task.remainingActions <= 0 || !canModifyExistingTasks}
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                onClick={() => handleDeleteExistingTask(task.id)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                                Hapus Tugas
                               </Button>
                             </div>
                           </div>
@@ -507,23 +706,45 @@ export default function LaporanSaya() {
 
                   {/* New Tasks */}
                   {newTasks.map(task => (
-                    <div key={task.id} className="border border-primary/30 rounded-lg bg-primary/5 p-4 space-y-3">
-                      <div className="flex items-center justify-between mb-1">
+                        <div key={task.id} className="border border-border rounded-lg bg-white p-4 space-y-3">
+                        <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-medium text-primary">Tugas Baru</span>
-                        <Button type="button" variant="ghost" size="icon" className="w-6 h-6 text-muted-foreground hover:text-destructive" onClick={() => removeNewTask(task.id)}>
+                        <Button type="button" variant="ghost" size="icon" className="w-6 h-6 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeNewTask(task.id)}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Nama Tugas *</Label>
-                          <Input value={task.title} onChange={e => updateNewTask(task.id, "title", e.target.value)} placeholder="Nama tugas..." className="h-8 text-sm" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Project</Label>
-                          <Input value={task.project} onChange={e => updateNewTask(task.id, "project", e.target.value)} placeholder="Nama project..." className="h-8 text-sm" />
-                        </div>
+                      <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nama Tugas *</Label>
+                        <Input
+                          value={task.title}
+                          onChange={e => updateNewTask(task.id, "title", e.target.value)}
+                          placeholder="Nama tugas..."
+                          className="h-8 text-sm"
+                        />
                       </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs">Project</Label>
+                        <Input
+                          value={task.project}
+                          onChange={e => updateNewTask(task.id, "project", e.target.value)}
+                          placeholder="Nama project..."
+                          className="h-8 text-sm"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs">Deadline</Label>
+                        <Input
+                          type="date"
+                          value={task.deadline}
+                          onChange={e => updateNewTask(task.id, "deadline", e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs">Status</Label>
