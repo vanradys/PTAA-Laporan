@@ -33,7 +33,147 @@ async function getUserFromToken(token: string) {
   return users[0] ?? null;
 }
 
+router.post("/seed-ptaa-users", async (req, res) => {
+  const seedSecret = req.headers["x-seed-secret"];
 
+  if (!process.env.SEED_SECRET || seedSecret !== process.env.SEED_SECRET) {
+    res.status(403).json({ error: "Akses seed tidak diizinkan" });
+    return;
+  }
+
+  const ptaaUsers = [
+    {
+      name: "Admin HR PTAA",
+      email: "admin@adiyasa.com",
+      password: "AdiyasaFamily",
+      role: "admin",
+      department: "HR",
+    },
+    {
+      name: "Marketing PTAA",
+      email: "marketing@adiyasa.com",
+      password: "MarketingPTAA",
+      role: "karyawan",
+      department: "Marketing",
+    },
+    {
+      name: "Finance and Accounting PTAA",
+      email: "finance@adiyasa.com",
+      password: "FinancePTAA",
+      role: "karyawan",
+      department: "Finance and Accounting",
+    },
+    {
+      name: "HR PTAA",
+      email: "hr@adiyasa.com",
+      password: "HRPTAA",
+      role: "hr",
+      department: "HR",
+    },
+    {
+      name: "Director PTAA",
+      email: "director@adiyasa.com",
+      password: "DirectorAdiyasa",
+      role: "direktur",
+      department: "Management",
+    },
+    {
+      name: "GA PTAA",
+      email: "ga@adiyasa.com",
+      password: "GAPTAA",
+      role: "karyawan",
+      department: "General Affairs",
+    },
+    {
+      name: "Purchasing PTAA",
+      email: "purchasing@adiyasa.com",
+      password: "PurchasingPTAA",
+      role: "karyawan",
+      department: "Purchasing",
+    },
+    {
+      name: "Engineering 1 PTAA",
+      email: "engineering1@adiyasa.com",
+      password: "Engineering1PTAA",
+      role: "karyawan",
+      department: "Engineering",
+    },
+    {
+      name: "Engineering 2 PTAA",
+      email: "engineering2@adiyasa.com",
+      password: "Engineering2PTAA",
+      role: "karyawan",
+      department: "Engineering",
+    },
+    {
+      name: "Engineering 3 PTAA",
+      email: "engineering3@adiyasa.com",
+      password: "Engineering3PTAA",
+      role: "karyawan",
+      department: "Engineering",
+    },
+  ];
+
+  for (const item of ptaaUsers) {
+    const existingDepartment = await db
+      .select({ id: departmentsTable.id })
+      .from(departmentsTable)
+      .where(eq(departmentsTable.name, item.department))
+      .limit(1);
+
+    let departmentId = existingDepartment[0]?.id;
+
+    if (!departmentId) {
+      const insertedDepartment = await db
+        .insert(departmentsTable)
+        .values({
+          name: item.department,
+        })
+        .returning({ id: departmentsTable.id });
+
+      departmentId = insertedDepartment[0].id;
+    }
+
+    const existingUser = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, item.email))
+      .limit(1);
+
+    const hashedPassword = hashPassword(item.password);
+
+    if (existingUser[0]) {
+      await db
+        .update(usersTable)
+        .set({
+          name: item.name,
+          password: hashedPassword,
+          role: item.role,
+          departmentId,
+        })
+        .where(eq(usersTable.email, item.email));
+    } else {
+      await db.insert(usersTable).values({
+        name: item.name,
+        email: item.email,
+        password: hashedPassword,
+        role: item.role,
+        departmentId,
+      });
+    }
+  }
+
+  res.json({
+    success: true,
+    message: "User PTAA berhasil dibuat / diupdate",
+    users: ptaaUsers.map((item) => ({
+      email: item.email,
+      password: item.password,
+      department: item.department,
+      role: item.role,
+    })),
+  });
+});
 
 router.get("/me", async (req, res) => {
   const token = req.cookies?.session_token;
