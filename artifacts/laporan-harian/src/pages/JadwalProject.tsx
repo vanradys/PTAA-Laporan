@@ -95,6 +95,7 @@ const EMPTY_FORM: PoFormState = {
   noPo: "", namaProject: "", customer: "", tanggalPoMasuk: "", targetPenyelesaian: "",
   deadline: "", picUserId: "", departmentId: "", status: "belum_mulai", progress: "0", catatan: ""
 };
+const NONE_VALUE = "none";
 
 const today = new Date();
 
