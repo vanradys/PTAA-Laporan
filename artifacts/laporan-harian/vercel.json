@@ -1,16 +1,8 @@
 {
-  "version": 2,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "https://workspaceapi-server-production-22d4.up.railway.app/api/$1"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/api/:path*",
+      "destination": "https://workspaceapi-server-production-22d4.up.railway.app/api/:path*"
     }
   ]
 }
