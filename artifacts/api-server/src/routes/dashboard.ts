@@ -1,12 +1,12 @@
-import { Router } from "express";
 import {
   db, dailyReportsTable, dailyTasksTable,
   usersTable, departmentsTable
 } from "@workspace/db";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { getUserFromToken } from "./auth";
+import { Router, type Router as ExpressRouter } from "express";
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 router.get("/dashboard/summary", async (req, res) => {
   const token = req.cookies?.session_token;

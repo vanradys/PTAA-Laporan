@@ -1,11 +1,7 @@
-import { Router } from "express";
-import {
-  db, dailyReportsTable, dailyTasksTable, reportCommentsTable,
-  usersTable, departmentsTable, notificationsTable
-} from "@workspace/db";
+import { db, dailyReportsTable, dailyTasksTable, reportCommentsTable, usersTable, departmentsTable, notificationsTable } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte, ilike, or, inArray } from "drizzle-orm";
 import { getUserFromToken } from "./auth";
-import type { Router as ExpressRouter } from "express";
+import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
 

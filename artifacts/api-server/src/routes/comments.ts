@@ -1,9 +1,9 @@
-import { Router } from "express";
 import { db, reportCommentsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getUserFromToken } from "./auth";
+import { Router, type Router as ExpressRouter } from "express";
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 router.get("/reports/:id/comments", async (req, res) => {
   const token = req.cookies?.session_token;

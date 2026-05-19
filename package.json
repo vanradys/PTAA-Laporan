@@ -10,7 +10,9 @@
   },
   "private": true,
   "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.4",
     "@types/node": "catalog:",
+    "lightningcss-win32-x64-msvc": "^1.32.0",
     "prettier": "^3.8.3",
     "typescript": "~5.9.3"
   }

@@ -1,10 +1,9 @@
-import { Router } from "express";
 import { db, notificationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getUserFromToken } from "./auth";
+import { Router, type Router as ExpressRouter } from "express";
 
-const router = Router();
-
+const router: ExpressRouter = Router();
 router.get("/notifications", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }

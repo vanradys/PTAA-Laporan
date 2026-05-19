@@ -1,8 +1,7 @@
-import { Router } from "express";
 import { db, usersTable, departmentsTable, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
-import type { Router as ExpressRouter } from "express";
+import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
 
