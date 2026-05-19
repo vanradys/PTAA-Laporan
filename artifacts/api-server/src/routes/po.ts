@@ -5,8 +5,9 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, like, or, sql } from "drizzle-orm";
 import { getUserFromToken } from "./auth";
+import type { Router as ExpressRouter } from "express";
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 const PO_STATUSES = ["belum_mulai", "proses", "hampir_deadline", "delay", "selesai", "close"] as const;
 
@@ -27,6 +28,7 @@ function autoStatus(current: string, deadline: string, sisaHari: number): string
 
 async function buildPoItem(po: typeof projectsPoTable.$inferSelect) {
   const sisaHari = calcSisaHari(po.deadline);
+  const computedStatus = autoStatus(po.status, po.deadline, sisaHari);
   let picName: string | null = null;
   let deptName: string | null = null;
   if (po.picUserId) {
@@ -50,7 +52,7 @@ async function buildPoItem(po: typeof projectsPoTable.$inferSelect) {
     picName,
     departmentId: po.departmentId,
     departmentName: deptName,
-    status: po.status,
+    status: computedStatus,
     progress: po.progress,
     catatan: po.catatan,
     createdByUserId: po.createdByUserId,
@@ -148,7 +150,6 @@ router.get("/po", async (req, res) => {
     conditions.push(gte(projectsPoTable.deadline, startDate));
     conditions.push(lte(projectsPoTable.deadline, endDate));
   }
-  if (status && status !== "semua") conditions.push(eq(projectsPoTable.status, status as string));
   if (departmentId) conditions.push(eq(projectsPoTable.departmentId, parseInt(departmentId as string)));
   if (picUserId) conditions.push(eq(projectsPoTable.picUserId, parseInt(picUserId as string)));
   if (search) {
@@ -170,7 +171,13 @@ router.get("/po", async (req, res) => {
   }
 
   const items = await Promise.all(pos.map(buildPoItem));
-  res.json(items);
+
+  const filteredItems =
+    status && status !== "semua"
+      ? items.filter((item) => item.status === status)
+      : items;
+
+  res.json(filteredItems);
 });
 
 router.post("/po", async (req, res) => {

@@ -106,13 +106,23 @@ export default function LaporanSaya() {
   const existingTasks: ExistingTask[] = report?.tasks ?? [];
   const isLocked = report?.status === "dikirim" || report?.status === "direview";
 
-  const { register, handleSubmit, setValue, getValues } = useForm({
+   const { register, handleSubmit, setValue, getValues, watch } = useForm({
     defaultValues: {
       obstacles: "",
       additionalNotes: "",
       tomorrowPlan: "",
     }
   });
+
+  const watchedTomorrowPlan = watch("tomorrowPlan") ?? "";
+
+  const hasRequiredTask =
+    existingTasks.some((task) => task.title.trim().length > 0) ||
+    newTasks.some((task) => task.title.trim().length > 0);
+
+  const hasRequiredTomorrowPlan = watchedTomorrowPlan.trim().length > 0;
+
+  const isReportIncomplete = !hasRequiredTask || !hasRequiredTomorrowPlan;
 
   useEffect(() => {
     if (report) {
@@ -147,6 +157,36 @@ export default function LaporanSaya() {
     toast({ title: "Berhasil", description: `${copies.length} tugas dari kemarin berhasil disalin` });
   };
 
+    const validateRequiredReportFields = (data: {
+    obstacles: string;
+    additionalNotes: string;
+    tomorrowPlan: string;
+  }) => {
+    const hasExistingTask = existingTasks.some((task) => task.title.trim().length > 0);
+    const hasNewTask = newTasks.some((task) => task.title.trim().length > 0);
+    const hasTask = hasExistingTask || hasNewTask;
+
+    if (!hasTask) {
+      toast({
+        title: "Laporan belum lengkap",
+        description: "Daftar Tugas Hari Ini wajib diisi minimal 1 tugas.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (!data.tomorrowPlan.trim()) {
+      toast({
+        title: "Laporan belum lengkap",
+        description: "Rencana Besok & Target wajib diisi.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
   // Core save: returns the reportId after saving report + all pending new tasks
   const saveAll = async (data: { obstacles: string; additionalNotes: string; tomorrowPlan: string }): Promise<number> => {
     let reportId: number;
@@ -170,7 +210,9 @@ export default function LaporanSaya() {
     return reportId;
   };
 
-  const handleSaveReport = async (data: { obstacles: string; additionalNotes: string; tomorrowPlan: string }) => {
+   const handleSaveReport = async (data: { obstacles: string; additionalNotes: string; tomorrowPlan: string }) => {
+    if (!validateRequiredReportFields(data)) return;
+
     setIsSaving(true);
     try {
       await saveAll(data);
@@ -184,10 +226,14 @@ export default function LaporanSaya() {
   };
 
   // Submit = auto-save then submit in one click
-  const handleSubmitReport = async () => {
+    const handleSubmitReport = async () => {
+    const formData = getValues();
+
+    if (!validateRequiredReportFields(formData)) return;
+
     setIsSubmitting(true);
     try {
-      const formData = getValues();
+
       const reportId = await saveAll(formData);
       await submitReport.mutateAsync({ id: reportId });
       queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
@@ -247,14 +293,21 @@ export default function LaporanSaya() {
           </div>
           {!isLocked && (
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleSubmit(handleSaveReport)} disabled={isSaving || isSubmitting}>
-                {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                Simpan Draf
-              </Button>
-              <Button onClick={handleSubmitReport} disabled={isSubmitting || isSaving}>
-                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                Kirim Laporan
-              </Button>
+              <Button
+            variant="outline"
+            onClick={handleSubmit(handleSaveReport)}
+            disabled={isSaving || isSubmitting || isReportIncomplete}
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+            Simpan Draf
+          </Button>
+          <Button
+            onClick={handleSubmitReport}
+            disabled={isSubmitting || isSaving || isReportIncomplete}
+          >
+            {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+            Kirim Laporan
+          </Button>
             </div>
           )}
         </div>
@@ -369,8 +422,9 @@ export default function LaporanSaya() {
               <Card className="border border-border">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Daftar Tugas Hari Ini</CardTitle>
-                    <div className="flex gap-2">
+                    <CardTitle className="text-base">
+                      Daftar Tugas Hari Ini <span className="text-destructive">*</span>
+                    </CardTitle>                    <div className="flex gap-2">
                       {yesterdayTasks && Array.isArray(yesterdayTasks) && yesterdayTasks.length > 0 && (
                         <Button type="button" variant="outline" size="sm" onClick={handleCopyYesterday}>
                           <Copy className="w-3.5 h-3.5 mr-1.5" />
@@ -511,22 +565,41 @@ export default function LaporanSaya() {
                   </CardContent>
                 </Card>
                 <Card className="border border-border">
-                  <CardHeader className="pb-3"><CardTitle className="text-base">Rencana Besok & Target</CardTitle></CardHeader>
-                  <CardContent>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">
+                      Rencana Besok & Target <span className="text-destructive">*</span>
+                    </CardTitle>
+                  </CardHeader>                  <CardContent>
                     <Textarea {...register("tomorrowPlan")} placeholder="Tuliskan rencana dan target untuk hari besok..." rows={3} className="resize-none" />
                   </CardContent>
                 </Card>
               </div>
-
+              
+              {isReportIncomplete && (
+                <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
+                    Lengkapi minimal 1 tugas hari ini dan isi Rencana Besok & Target sebelum menyimpan atau mengirim laporan.
+                  </p>
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-2">
-                <Button type="submit" variant="outline" disabled={isSaving || isSubmitting}>
-                  {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                  Simpan Draf
-                </Button>
-                <Button type="button" onClick={handleSubmitReport} disabled={isSubmitting || isSaving}>
-                  {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                  Kirim Laporan
-                </Button>
+                <Button
+                type="submit"
+                variant="outline"
+                disabled={isSaving || isSubmitting || isReportIncomplete}
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Simpan Draf
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSubmitReport}
+                disabled={isSubmitting || isSaving || isReportIncomplete}
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                Kirim Laporan
+              </Button>
               </div>
             </div>
           </form>

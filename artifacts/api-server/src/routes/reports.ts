@@ -5,10 +5,19 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, sql, gte, lte, ilike, or, inArray } from "drizzle-orm";
 import { getUserFromToken } from "./auth";
+import type { Router as ExpressRouter } from "express";
 
-const router = Router();
+const router: ExpressRouter = Router();
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+function isReportLocked(status: string): boolean {
+  return ["dikirim", "direview"].includes(status);
+}
+
+function isEmptyText(value: string | null | undefined): boolean {
+  return !value || value.trim().length === 0;
+}
 
 async function buildReportDetail(reportId: number) {
   const reports = await db
@@ -184,6 +193,11 @@ router.post("/reports", async (req, res) => {
   const { date, obstacles, additionalNotes, tomorrowPlan, status } = req.body;
   if (!date) { res.status(400).json({ error: "Tanggal diperlukan" }); return; }
 
+  if (isEmptyText(tomorrowPlan)) {
+    res.status(400).json({ error: "Rencana Besok & Target wajib diisi" });
+    return;
+  }
+
   // Prevent duplicate: if report exists for this user+date, return existing (upsert pattern)
   const existing = await db.select().from(dailyReportsTable)
     .where(and(eq(dailyReportsTable.userId, user.id), eq(dailyReportsTable.date, date)))
@@ -298,6 +312,12 @@ router.patch("/reports/:id", async (req, res) => {
   if (existing[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
   const { date, obstacles, additionalNotes, tomorrowPlan, status } = req.body;
+
+  if (tomorrowPlan !== undefined && isEmptyText(tomorrowPlan)) {
+    res.status(400).json({ error: "Rencana Besok & Target wajib diisi" });
+    return;
+  }
+
   await db.update(dailyReportsTable)
     .set({
       ...(date !== undefined && { date }),
@@ -338,8 +358,26 @@ router.post("/reports/:id/submit", async (req, res) => {
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   if (existing[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
+  if (isEmptyText(existing[0].tomorrowPlan)) {
+    res.status(400).json({ error: "Rencana Besok & Target wajib diisi sebelum laporan dikirim" });
+    return;
+  }
+
+  const tasks = await db
+    .select()
+    .from(dailyTasksTable)
+    .where(eq(dailyTasksTable.reportId, id));
+
+  const hasTask = tasks.some((task) => task.title.trim().length > 0);
+
+  if (!hasTask) {
+    res.status(400).json({ error: "Daftar Tugas Hari Ini wajib diisi minimal 1 tugas sebelum laporan dikirim" });
+    return;
+  }
+
   await db.update(dailyReportsTable)
     .set({ status: "dikirim" })
+    
     .where(eq(dailyReportsTable.id, id));
 
   const detail = await buildReportDetail(id);

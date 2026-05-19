@@ -310,11 +310,25 @@ export default function JadwalProject() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Departemen</Label>
-                <Select value={filterDept} onValueChange={setFilterDept}>
-                  <SelectTrigger className="h-8 w-40 text-sm"><SelectValue /></SelectTrigger>
+                <Select
+                  value={form.departmentId || NONE_VALUE}
+                  onValueChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      departmentId: v === NONE_VALUE ? "" : v,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Pilih dept..." />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="semua">Semua Dept</SelectItem>
-                    {depts.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
+                    <SelectItem value={NONE_VALUE}>Tidak ada</SelectItem>
+                    {depts.map((d) => (
+                      <SelectItem key={d.id} value={String(d.id)}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -461,23 +475,51 @@ export default function JadwalProject() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">PIC (Person In Charge)</Label>
-                  <Select value={form.picUserId} onValueChange={v => setForm(f => ({ ...f, picUserId: v }))}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Pilih PIC..." /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Tidak ada</SelectItem>
-                      {emps.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Select
+                  value={form.picUserId || NONE_VALUE}
+                  onValueChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      picUserId: v === NONE_VALUE ? "" : v,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Pilih PIC..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE_VALUE}>Tidak ada</SelectItem>
+                    {emps.map((e) => (
+                      <SelectItem key={e.id} value={String(e.id)}>
+                        {e.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">Departemen</Label>
-                  <Select value={form.departmentId} onValueChange={v => setForm(f => ({ ...f, departmentId: v }))}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Pilih dept..." /></SelectTrigger>
+                  <Select
+                    value={form.departmentId || NONE_VALUE}
+                    onValueChange={(v) =>
+                      setForm((f) => ({
+                        ...f,
+                        departmentId: v === NONE_VALUE ? "" : v,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Pilih dept..." />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Tidak ada</SelectItem>
-                      {depts.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
+                      <SelectItem value={NONE_VALUE}>Tidak ada</SelectItem>
+                      {depts.map((d) => (
+                        <SelectItem key={d.id} value={String(d.id)}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
