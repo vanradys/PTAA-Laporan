@@ -38,6 +38,17 @@ const REPORT_STATUSES = [
 
 const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 
+const REMOVED_EMPLOYEE_EMAILS = new Set([
+  "admin@ptaa.com",
+  "ahmad@perusahaan.com",
+  "budi@perusahaan.com",
+  "eko@perusahaan.com",
+  "engineering3@adiyasa.com",
+  "mkspec@adiyasa.com",
+]);
+
+const NON_REPORTING_ROLES = new Set(["admin", "hr", "direktur", "director"]);
+
 type EmployeeOption = {
   id: number;
   name: string;
@@ -184,7 +195,13 @@ export default function Monitoring() {
 
   const { data: reports, isLoading: isLoadingReports } = useListReports(params);
 
-  const employeeList: EmployeeOption[] = Array.isArray(employees) ? (employees as EmployeeOption[]) : [];
+  const employeeList: EmployeeOption[] = Array.isArray(employees)
+    ? (employees as EmployeeOption[]).filter((employee) => {
+      const email = String(employee.email ?? "").toLowerCase();
+      const role = String(employee.role ?? "").toLowerCase();
+      return !REMOVED_EMPLOYEE_EMAILS.has(email) && !NON_REPORTING_ROLES.has(role);
+    })
+    : [];
   const reportList: ReportSummaryLike[] = Array.isArray(reports) ? (reports as ReportSummaryLike[]) : [];
 
   const reportRows = useMemo(() => {
@@ -303,22 +320,12 @@ export default function Monitoring() {
     try {
       const result: SendReminderResult = await sendReminder.mutateAsync({ date: reminderDate });
 
-      queryClient.setQueryData<MissingDailyReportUser[]>(missingDailyReportsQueryKey(reminderDate), (currentData) => {
-        const currentList = Array.isArray(currentData) ? currentData : missingList;
-        const sentByUserId = new Map(result.sentUsers.map((sentUser) => [sentUser.id, sentUser]));
-
-        return currentList.map((item) => {
-          const sentUser = sentByUserId.get(item.id);
-          return sentUser ? { ...item, ...sentUser } : item;
-        });
-      });
-
-      await queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey(reminderDate) });
+      queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey(reminderDate) });
       queryClient.invalidateQueries();
 
       toast({
-        title: result.sentCount > 0 ? "Reminder berhasil dikirim" : "Reminder sudah pernah dikirim",
-        description: `${result.message} Notifikasi aplikasi tersimpan di akun karyawan masing-masing.`,
+        title: "Reminder berhasil diproses",
+        description: `${result.message} Notifikasi aplikasi dikirim ke akun masing-masing karyawan.`,
       });
     } catch (error) {
       toast({

@@ -1,4 +1,4 @@
-import { db, usersTable, departmentsTable, sessionsTable, eq, REMOVED_USER_EMAILS } from "@workspace/db";
+import { db, usersTable, departmentsTable, sessionsTable, eq } from "@workspace/db";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 
@@ -39,6 +39,11 @@ router.post("/seed-ptaa-users", async (req, res) => {
   try {
     const seedSecret = String(req.headers["x-seed-secret"] ?? "");
 
+    const allowedSeedSecret =
+  process.env.SEED_SECRET ||
+  process.env.SEED_PTAA_SECRET ||
+  "ptaa-seed-2026";
+
     if (!process.env.SEED_SECRET || seedSecret !== process.env.SEED_SECRET) {
       res.status(403).json({ error: "Akses seed tidak diizinkan" });
       return;
@@ -63,8 +68,8 @@ router.post("/seed-ptaa-users", async (req, res) => {
       },
       {
         name: "MKT Specialist",
-        email: "mkpec@adiyasa.com",
-        password: "MKSPTAA",
+        email: "mkt.specialist@adiyasa.com",
+        password: "MKTPTAA",
         role: "karyawan",
         department: "Marketing",
         departmentCode: "MKT",
@@ -187,7 +192,16 @@ router.post("/seed-ptaa-users", async (req, res) => {
     }
 
 
-    for (const inactiveEmail of REMOVED_USER_EMAILS) {
+    const inactiveEmails = [
+      "admin@ptaa.com",
+      "ahmad@perusahaan.com",
+      "budi@perusahaan.com",
+      "eko@perusahaan.com",
+      "engineering3@adiyasa.com",
+      "mkspec@adiyasa.com",
+    ];
+
+    for (const inactiveEmail of inactiveEmails) {
       await db
         .update(usersTable)
         .set({ isActive: false })

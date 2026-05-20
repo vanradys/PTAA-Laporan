@@ -2,23 +2,21 @@ export type ApiRequestOptions = RequestInit & {
   responseType?: "json" | "text" | "blob";
 };
 
-function applyApiBaseUrl(input: RequestInfo | URL): RequestInfo | URL {
-  const baseUrl = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+function getApiBaseUrl(): string {
+  return String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+}
 
-  if (!baseUrl) {
+function buildApiUrl(input: RequestInfo | URL): RequestInfo | URL {
+  if (typeof input !== "string") {
     return input;
   }
 
-  if (typeof input === "string") {
-    return input.startsWith("/") ? `${baseUrl}${input}` : input;
+  if (!input.startsWith("/api")) {
+    return input;
   }
 
-  if (input instanceof URL) {
-    const url = input.toString();
-    return url.startsWith("/") ? new URL(`${baseUrl}${url}`) : input;
-  }
-
-  return input;
+  const baseUrl = getApiBaseUrl();
+  return baseUrl ? `${baseUrl}${input}` : input;
 }
 
 export async function apiRequest<T = unknown>(
@@ -27,7 +25,7 @@ export async function apiRequest<T = unknown>(
 ): Promise<T> {
   const { responseType = "json", headers, ...init } = options;
 
-  const response = await fetch(applyApiBaseUrl(input), {
+  const response = await fetch(buildApiUrl(input), {
     ...init,
     headers,
     credentials: init.credentials ?? "include",
@@ -38,10 +36,15 @@ export async function apiRequest<T = unknown>(
 
     try {
       const errorData = await response.json();
+
       if (typeof errorData?.message === "string") {
         message = errorData.message;
       } else if (typeof errorData?.error === "string") {
         message = errorData.error;
+      }
+
+      if (typeof errorData?.detail === "string") {
+        message = `${message} - ${errorData.detail}`;
       }
     } catch {
       // Response error bukan JSON, pakai message default dari status HTTP.

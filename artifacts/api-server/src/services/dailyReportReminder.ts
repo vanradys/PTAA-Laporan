@@ -8,8 +8,6 @@ import {
   and,
   eq,
   sql,
-  notInArray,
-  REMOVED_USER_EMAILS,
   type SQL,
 } from "@workspace/db";
 import { sendPushNotificationToUser } from "./pushNotification";
@@ -18,8 +16,15 @@ const REMINDER_TITLE = "Reminder Laporan Harian";
 const REMINDER_TYPE = "daily_report";
 const REMINDER_MESSAGE = "Anda belum mengisi laporan harian hari ini. Silakan segera mengisi laporan.";
 const FULL_ACCESS_ROLES = ["admin", "hr", "direktur", "director"];
-const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
 const DEPARTMENT_LEADER_ROLES = ["atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
+const REMOVED_USER_EMAILS = [
+  "admin@ptaa.com",
+  "ahmad@perusahaan.com",
+  "budi@perusahaan.com",
+  "eko@perusahaan.com",
+  "engineering3@adiyasa.com",
+  "mkspec@adiyasa.com",
+];
 
 export interface ReminderActor {
   id: number;
@@ -122,11 +127,18 @@ export function activeUserCondition(): SQL {
 }
 
 export function reportingUserCondition(): SQL {
-  return and(
-    sql`${usersTable.isActive} is distinct from false`,
-    sql`lower(${usersTable.role}) not in ('admin', 'hr', 'direktur', 'director')`,
-    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
-  ) as SQL;
+  return sql`
+    ${usersTable.isActive} is distinct from false
+    and lower(${usersTable.role}) not in ('admin', 'hr', 'direktur', 'director')
+    and lower(${usersTable.email}) not in (
+      'admin@ptaa.com',
+      'ahmad@perusahaan.com',
+      'budi@perusahaan.com',
+      'eko@perusahaan.com',
+      'engineering3@adiyasa.com',
+      'mkspec@adiyasa.com'
+    )
+  `;
 }
 
 export function submittedReportCondition(reportDate: string): SQL {
@@ -223,6 +235,38 @@ export async function getMissingDailyReportUsers(
     });
 }
 
+async function createInAppReminderNotification(options: {
+  userId: number;
+  sentBy: number | null;
+  reportDate: string;
+}) {
+  const insertedLog = await db
+    .insert(dailyReportReminderLogsTable)
+    .values({
+      userId: options.userId,
+      reportDate: options.reportDate,
+      reminderType: REMINDER_TYPE,
+      sentBy: options.sentBy,
+    })
+    .onConflictDoNothing()
+    .returning({ sentAt: dailyReportReminderLogsTable.sentAt });
+
+  const sentAt = insertedLog[0]?.sentAt ?? null;
+
+  if (!sentAt) {
+    return null;
+  }
+
+  await db.insert(notificationsTable).values({
+    userId: options.userId,
+    title: REMINDER_TITLE,
+    message: REMINDER_MESSAGE,
+    type: REMINDER_TYPE,
+  });
+
+  return sentAt;
+}
+
 export async function sendDailyReportReminders(options: {
   sentBy: number | null;
   scope?: ReminderScope;
@@ -237,42 +281,24 @@ export async function sendDailyReportReminders(options: {
   let pushInvalidTokenRemovedCount = 0;
 
   for (const user of targetUsers) {
-    const insertedSentAt = await db.transaction(async (tx) => {
-      const insertedLog = await tx
-        .insert(dailyReportReminderLogsTable)
-        .values({
-          userId: user.id,
-          reportDate,
-          reminderType: REMINDER_TYPE,
-          sentBy: options.sentBy,
-        })
-        .onConflictDoNothing()
-        .returning({ sentAt: dailyReportReminderLogsTable.sentAt });
-
-      const sentAt = insertedLog[0]?.sentAt;
-
-      if (!sentAt) {
-        return null;
-      }
-
-      await tx.insert(notificationsTable).values({
-        userId: user.id,
-        title: REMINDER_TITLE,
-        message: REMINDER_MESSAGE,
-        type: REMINDER_TYPE,
-      });
-
-      return sentAt;
+    const insertedSentAt = await createInAppReminderNotification({
+      userId: user.id,
+      sentBy: options.sentBy,
+      reportDate,
     });
 
-    if (insertedSentAt) {
-      sentUsers.push({
-        ...user,
-        reminderSent: true,
-        reminderSentAt: insertedSentAt.toISOString(),
-        reminderStatusText: `Sudah dikirim pada pukul ${formatJakartaTime(insertedSentAt)}`,
-      });
+    if (!insertedSentAt) {
+      continue;
+    }
 
+    sentUsers.push({
+      ...user,
+      reminderSent: true,
+      reminderSentAt: insertedSentAt.toISOString(),
+      reminderStatusText: `Sudah dikirim pada pukul ${formatJakartaTime(insertedSentAt)}`,
+    });
+
+    try {
       const pushResult = await sendPushNotificationToUser({
         userId: user.id,
         title: REMINDER_TITLE,
@@ -284,6 +310,9 @@ export async function sendDailyReportReminders(options: {
       pushSuccessCount += pushResult.successCount;
       pushFailedCount += pushResult.failedCount;
       pushInvalidTokenRemovedCount += pushResult.removedInvalidTokenCount;
+    } catch (error) {
+      pushFailedCount += 1;
+      console.warn("Push notification gagal, tetapi in-app notification tetap tersimpan:", error);
     }
   }
 
