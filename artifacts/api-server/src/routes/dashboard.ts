@@ -1,41 +1,27 @@
 import {
-  and,
   db,
   dailyReportsTable,
   dailyTasksTable,
+  usersTable,
   departmentsTable,
+  and,
   eq,
   inArray,
   sql,
-  usersTable,
-  type SQL,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
+import { getJakartaDateString } from "../services/dailyReportReminder";
 
 const router: ExpressRouter = Router();
 
-function getJakartaDateString(date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const day = parts.find((part) => part.type === "day")?.value;
-
-  if (!year || !month || !day) {
-    return date.toISOString().split("T")[0];
-  }
-
-  return `${year}-${month}-${day}`;
+function activeUserCondition() {
+  return sql`${usersTable.isActive} is distinct from false`;
 }
 
-function activeUserCondition(): SQL {
-  return sql`${usersTable.isActive} is distinct from false`;
+function normalizeDashboardDate(value: unknown): string {
+  const date = typeof value === "string" ? value.trim() : "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getJakartaDateString();
 }
 
 router.get("/dashboard/summary", async (req, res) => {
@@ -44,7 +30,7 @@ router.get("/dashboard/summary", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const date = (req.query.date as string) || getJakartaDateString();
+  const date = normalizeDashboardDate(req.query.date);
 
   const activeUsers = await db
     .select({ id: usersTable.id })
@@ -54,21 +40,18 @@ router.get("/dashboard/summary", async (req, res) => {
   const activeUserIds = activeUsers.map((item) => item.id);
   const totalEmployees = activeUserIds.length;
 
-  const submittedReports = activeUserIds.length > 0
+  const submittedReports = totalEmployees > 0
     ? await db
       .select({ id: dailyReportsTable.id, userId: dailyReportsTable.userId })
       .from(dailyReportsTable)
-      .where(
-        and(
-          eq(dailyReportsTable.date, date),
-          sql`${dailyReportsTable.status} != 'draf'`,
-          inArray(dailyReportsTable.userId, activeUserIds),
-        ),
-      )
+      .where(and(
+        eq(dailyReportsTable.date, date),
+        sql`${dailyReportsTable.status} <> 'draf'`,
+        inArray(dailyReportsTable.userId, activeUserIds),
+      ))
     : [];
 
-  const submittedUserIds = new Set(submittedReports.map((report) => report.userId));
-  const submittedToday = submittedUserIds.size;
+  const submittedToday = new Set(submittedReports.map((report) => report.userId)).size;
   const notSubmittedToday = Math.max(0, totalEmployees - submittedToday);
 
   let totalTasksToday = 0;
@@ -76,14 +59,14 @@ router.get("/dashboard/summary", async (req, res) => {
   let tasksPending = 0;
 
   if (submittedReports.length > 0) {
-    const ids = submittedReports.map((report) => report.id);
+    const reportIds = submittedReports.map((report) => report.id);
     const taskStats = await db
       .select({
         status: dailyTasksTable.status,
         count: sql<number>`count(*)::int`,
       })
       .from(dailyTasksTable)
-      .where(inArray(dailyTasksTable.reportId, ids))
+      .where(inArray(dailyTasksTable.reportId, reportIds))
       .groupBy(dailyTasksTable.status);
 
     for (const stat of taskStats) {
@@ -114,43 +97,38 @@ router.get("/dashboard/department-productivity", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const date = (req.query.date as string) || getJakartaDateString();
-
+  const date = normalizeDashboardDate(req.query.date);
   const departments = await db.select().from(departmentsTable).orderBy(departmentsTable.name);
 
   const result = await Promise.all(departments.map(async (dept) => {
-    const departmentUsers = await db
-      .select({ id: usersTable.id })
+    const [employeeCountResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
       .from(usersTable)
-      .where(and(activeUserCondition(), eq(usersTable.departmentId, dept.id)));
+      .where(and(eq(usersTable.departmentId, dept.id), activeUserCondition()));
 
-    const employeeCount = departmentUsers.length;
-    const userIds = departmentUsers.map((item) => item.id);
+    const employeeCount = employeeCountResult?.count ?? 0;
 
-    const submittedReports = userIds.length > 0
-      ? await db
-        .select({ id: dailyReportsTable.id, userId: dailyReportsTable.userId })
-        .from(dailyReportsTable)
-        .where(
-          and(
-            eq(dailyReportsTable.departmentId, dept.id),
-            eq(dailyReportsTable.date, date),
-            sql`${dailyReportsTable.status} != 'draf'`,
-            inArray(dailyReportsTable.userId, userIds),
-          ),
-        )
-      : [];
+    const submittedReports = await db
+      .select({ id: dailyReportsTable.id })
+      .from(dailyReportsTable)
+      .leftJoin(usersTable, eq(dailyReportsTable.userId, usersTable.id))
+      .where(and(
+        eq(dailyReportsTable.departmentId, dept.id),
+        eq(dailyReportsTable.date, date),
+        sql`${dailyReportsTable.status} <> 'draf'`,
+        activeUserCondition(),
+      ));
 
-    const submittedCount = new Set(submittedReports.map((report) => report.userId)).size;
+    const submittedCount = submittedReports.length;
 
     let avgProgress = 0;
     if (submittedReports.length > 0) {
       const ids = submittedReports.map((report) => report.id);
-      const [progResult] = await db
+      const [progressResult] = await db
         .select({ avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int` })
         .from(dailyTasksTable)
         .where(inArray(dailyTasksTable.reportId, ids));
-      avgProgress = progResult?.avg ?? 0;
+      avgProgress = progressResult?.avg ?? 0;
     }
 
     return {

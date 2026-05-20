@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { customFetch } from "@workspace/api-client-react";
+import { apiRequest } from "@/lib/apiRequest";
 
 export interface MissingDailyReportUser {
   id: number;
@@ -11,6 +11,10 @@ export interface MissingDailyReportUser {
   reportDate: string;
   status: "Belum Mengisi";
   reminderSent: boolean;
+}
+
+export interface SendReminderInput {
+  date: string;
 }
 
 export interface SendReminderResult {
@@ -26,7 +30,7 @@ export interface SendReminderResult {
   message: string;
 }
 
-export const missingDailyReportsQueryKey = (date?: string) => ["missing-daily-reports-today", date ?? "today"] as const;
+export const missingDailyReportsQueryKey = (date?: string) => ["missing-daily-reports", date ?? "today"] as const;
 
 function buildMissingReportsUrl(date?: string) {
   const params = new URLSearchParams();
@@ -43,17 +47,18 @@ export function useMissingDailyReportsToday(enabled = true, date?: string) {
   return useQuery({
     queryKey: missingDailyReportsQueryKey(date),
     enabled,
-    queryFn: () => customFetch<MissingDailyReportUser[]>(buildMissingReportsUrl(date)),
+    retry: 1,
+    queryFn: () => apiRequest<MissingDailyReportUser[]>(buildMissingReportsUrl(date)),
   });
 }
 
 export function useSendMissingDailyReportReminder() {
-  return useMutation<SendReminderResult, Error, { date?: string }>({
-    mutationFn: (payload) =>
-      customFetch<SendReminderResult>("/api/daily-reports/remind-missing", {
+  return useMutation<SendReminderResult, Error, SendReminderInput>({
+    mutationFn: (input) =>
+      apiRequest<SendReminderResult>("/api/daily-reports/remind-missing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: payload.date }),
+        body: JSON.stringify(input),
       }),
   });
 }

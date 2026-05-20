@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useListReports, useListDepartments, useListEmployees } from "@workspace/api-client-react";
@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { getJakartaDateString } from "@/lib/date";
+import { formatIndonesianDate, getJakartaDateString } from "@/lib/date";
 import {
   missingDailyReportsQueryKey,
   type MissingDailyReportUser,
@@ -26,6 +26,8 @@ const MONTHS = [
   "Juli", "Agustus", "September", "Oktober", "November", "Desember",
 ];
 
+const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
 const REPORT_STATUSES = [
   { value: "belum_submit", label: "Belum Submit", color: "bg-red-50 text-red-700 border-red-200" },
   { value: "draf", label: "Draf", color: "bg-gray-100 text-gray-600 border-gray-200" },
@@ -36,52 +38,107 @@ const REPORT_STATUSES = [
 
 const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 
-type MonitoringReportRow = {
+type EmployeeOption = {
   id: number;
-  reportId?: number | null;
+  name: string;
+  email: string;
+  role: string;
+  departmentId?: number | null;
+  departmentName?: string | null;
+};
+
+type ReportSummaryLike = {
+  id: number;
   userId: number;
   userName: string;
+  departmentId?: number | null;
+  departmentName?: string | null;
+  date: string;
+  dayName: string;
+  taskCount: number;
+  avgProgress: number;
+  status: string;
+};
+
+type MonitoringReportRow = {
+  id: number;
+  reportId: number | null;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  departmentId: number | null;
   departmentName: string | null;
   date: string;
   dayName: string;
   taskCount: number;
   avgProgress: number;
   status: string;
-  hasReport?: boolean;
-  isSubmitted?: boolean;
+  hasReport: boolean;
+  isSubmitted: boolean;
 };
 
 function getStatusInfo(status: string) {
-  return REPORT_STATUSES.find((s) => s.value === status) ?? REPORT_STATUSES[1];
+  return REPORT_STATUSES.find((item) => item.value === status) ?? REPORT_STATUSES[0];
 }
 
 function isSubmittedStatus(status: string) {
   return status !== "draf" && status !== "belum_submit";
 }
 
-function getUniqueDepartmentNames(users: MissingDailyReportUser[]) {
-  return Array.from(
-    new Set(
-      users.map((item) => item.departmentName?.trim() || item.name).filter(Boolean),
-    ),
-  );
+function getDayName(date: string) {
+  const dateObject = new Date(`${date}T00:00:00`);
+  return DAY_NAMES[dateObject.getDay()] ?? "-";
 }
 
-function buildMissingDepartmentText(users: MissingDailyReportUser[]) {
-  const names = getUniqueDepartmentNames(users);
+function buildMissingSummary(users: MissingDailyReportUser[], totalEmployees: number, reportDate: string) {
+  const formattedDate = formatIndonesianDate(reportDate);
 
-  if (names.length === 0) {
-    return "Semua user aktif sudah mengisi laporan hari ini.";
+  if (users.length === 0) {
+    return `Semua karyawan sudah mengisi laporan harian pada tanggal ${formattedDate}.`;
   }
 
-  return `${names.join(", ")} belum mengisi laporan harian hari ini.`;
+  if (totalEmployees > 0 && users.length === totalEmployees) {
+    return `Seluruh karyawan belum mengisi laporan harian pada tanggal ${formattedDate}.`;
+  }
+
+  const departmentNames = Array.from(
+    new Set(users.map((user) => user.departmentName?.trim() || user.name).filter(Boolean)),
+  );
+
+  return `${departmentNames.join(", ")} belum mengisi laporan harian pada tanggal ${formattedDate}.`;
 }
 
-function formatReportDate(date: string) {
-  return new Date(`${date}T00:00:00`).toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
+function buildRowsFromEmployeesAndReports(
+  employees: EmployeeOption[],
+  reports: ReportSummaryLike[],
+  reportDate: string,
+): MonitoringReportRow[] {
+  const reportByUserId = new Map<number, ReportSummaryLike>();
+
+  for (const report of reports) {
+    reportByUserId.set(report.userId, report);
+  }
+
+  return employees.map((employee) => {
+    const report = reportByUserId.get(employee.id);
+    const status = report?.status ?? "belum_submit";
+
+    return {
+      id: report?.id ?? -employee.id,
+      reportId: report?.id ?? null,
+      userId: employee.id,
+      userName: report?.userName ?? employee.name,
+      userEmail: employee.email,
+      departmentId: report?.departmentId ?? employee.departmentId ?? null,
+      departmentName: report?.departmentName ?? employee.departmentName ?? null,
+      date: report?.date ?? reportDate,
+      dayName: report?.dayName ?? getDayName(reportDate),
+      taskCount: report?.taskCount ?? 0,
+      avgProgress: report?.avgProgress ?? 0,
+      status,
+      hasReport: !!report,
+      isSubmitted: isSubmittedStatus(status),
+    };
   });
 }
 
@@ -102,12 +159,16 @@ export default function Monitoring() {
   });
   const [showFilters, setShowFilters] = useState(false);
 
-  const canManageReminder = !!user && REMINDER_ACCESS_ROLES.includes(user.role);
+  const userRole = user?.role?.toLowerCase() ?? "";
+  const canManageReminder = REMINDER_ACCESS_ROLES.includes(userRole);
+  const reminderDate = filters.date || todayString;
 
   const { data: departments } = useListDepartments();
-  const { data: employees } = useListEmployees();
-  const reminderDate = filters.date || todayString;
-  const { data: missingUsers, isLoading: isLoadingMissing } = useMissingDailyReportsToday(canManageReminder, reminderDate);
+  const { data: employees, isLoading: isLoadingEmployees } = useListEmployees();
+  const {
+    data: missingUsersFromApi,
+    isLoading: isLoadingMissing,
+  } = useMissingDailyReportsToday(canManageReminder, reminderDate);
   const sendReminder = useSendMissingDailyReportReminder();
 
   const params: Record<string, string> = {};
@@ -121,10 +182,86 @@ export default function Monitoring() {
   }
   if (filters.departmentId) params.departmentId = filters.departmentId;
   if (filters.userId) params.userId = filters.userId;
-  if (filters.status) params.status = filters.status;
   if (filters.search) params.search = filters.search;
 
-  const { data: reports, isLoading } = useListReports(params);
+  const { data: reports, isLoading: isLoadingReports } = useListReports(params);
+
+  const employeeList: EmployeeOption[] = Array.isArray(employees) ? (employees as EmployeeOption[]) : [];
+  const reportList: ReportSummaryLike[] = Array.isArray(reports) ? (reports as ReportSummaryLike[]) : [];
+
+  const reportRows = useMemo(() => {
+    const hasSpecificDate = !!filters.date;
+
+    if (hasSpecificDate && employeeList.length > 0) {
+      return buildRowsFromEmployeesAndReports(employeeList, reportList, filters.date);
+    }
+
+    return reportList.map((report) => ({
+      id: report.id,
+      reportId: report.id,
+      userId: report.userId,
+      userName: report.userName,
+      userEmail: "",
+      departmentId: report.departmentId ?? null,
+      departmentName: report.departmentName ?? null,
+      date: report.date,
+      dayName: report.dayName,
+      taskCount: report.taskCount,
+      avgProgress: report.avgProgress,
+      status: report.status,
+      hasReport: true,
+      isSubmitted: isSubmittedStatus(report.status),
+    }));
+  }, [employeeList, filters.date, reportList]);
+
+  const filteredRows = useMemo(() => {
+    return reportRows.filter((row) => {
+      if (filters.departmentId && String(row.departmentId ?? "") !== filters.departmentId) return false;
+      if (filters.userId && String(row.userId) !== filters.userId) return false;
+      if (filters.search && !row.userName.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      if (filters.status && row.status !== filters.status) return false;
+      return true;
+    });
+  }, [filters.departmentId, filters.search, filters.status, filters.userId, reportRows]);
+
+  const fallbackMissingList: MissingDailyReportUser[] = useMemo(() => {
+    return reportRows
+      .filter((row) => !row.isSubmitted)
+      .map((row) => ({
+        id: row.userId,
+        name: row.userName,
+        email: row.userEmail,
+        role: "karyawan",
+        departmentId: row.departmentId,
+        departmentName: row.departmentName,
+        reportDate: reminderDate,
+        status: "Belum Mengisi",
+        reminderSent: false,
+      }));
+  }, [reminderDate, reportRows]);
+
+  const missingList = useMemo(() => {
+    const apiList = Array.isArray(missingUsersFromApi) ? missingUsersFromApi : [];
+    const apiReminderByUserId = new Map(apiList.map((item) => [item.id, item.reminderSent]));
+
+    return fallbackMissingList.map((item) => ({
+      ...item,
+      reminderSent: apiReminderByUserId.get(item.id) ?? item.reminderSent,
+    }));
+  }, [fallbackMissingList, missingUsersFromApi]);
+
+  const missingSummaryText = buildMissingSummary(missingList, employeeList.length, reminderDate);
+  const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;
+  const years = Array.from({ length: 5 }, (_, index) => String(today.getFullYear() - index));
+  const isLoading = isLoadingReports || isLoadingEmployees;
+  const hasActiveFilters =
+    filters.date !== todayString ||
+    !!filters.month ||
+    !!filters.year ||
+    !!filters.departmentId ||
+    !!filters.userId ||
+    !!filters.status ||
+    !!filters.search;
 
   const setFilter = (key: string, value: string) => {
     setFilters((prev) => {
@@ -158,27 +295,15 @@ export default function Monitoring() {
 
   const handleSendReminder = async () => {
     const result: SendReminderResult = await sendReminder.mutateAsync({ date: reminderDate });
+
     queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey(reminderDate) });
+    queryClient.invalidateQueries();
+
     toast({
       title: "Reminder diproses",
       description: `${result.message} Notifikasi aplikasi dikirim ke akun masing-masing karyawan.`,
     });
   };
-
-  const years = Array.from({ length: 5 }, (_, i) => String(today.getFullYear() - i));
-  const missingList: MissingDailyReportUser[] = Array.isArray(missingUsers) ? missingUsers : [];
-  const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;
-  const missingSummaryText = buildMissingDepartmentText(missingList);
-  const missingDateText = formatReportDate(reminderDate);
-  const reportRows: MonitoringReportRow[] = Array.isArray(reports) ? (reports as MonitoringReportRow[]) : [];
-  const hasActiveFilters =
-    filters.date !== todayString ||
-    !!filters.month ||
-    !!filters.year ||
-    !!filters.departmentId ||
-    !!filters.userId ||
-    !!filters.status ||
-    !!filters.search;
 
   return (
     <Layout>
@@ -227,15 +352,15 @@ export default function Monitoring() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {isLoadingMissing ? (
+              {isLoadingMissing || isLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
                 </div>
               ) : missingList.length === 0 ? (
                 <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
                   <div>
-                    <p className="text-sm font-semibold text-green-700">Semua user aktif sudah mengisi laporan hari ini.</p>
-                    <p className="text-xs text-green-600">Tidak ada reminder yang perlu dikirim untuk tanggal {missingDateText}.</p>
+                    <p className="text-sm font-semibold text-green-700">{missingSummaryText}</p>
+                    <p className="text-xs text-green-600">Tidak ada reminder yang perlu dikirim.</p>
                   </div>
                   <CheckCircle className="h-5 w-5 text-green-600" />
                 </div>
@@ -266,7 +391,7 @@ export default function Monitoring() {
                           <tr key={item.id} className="border-b border-border last:border-0">
                             <td className="px-4 py-3">
                               <p className="font-semibold text-foreground">{item.name}</p>
-                              <p className="text-xs text-muted-foreground">{item.email}</p>
+                              <p className="text-xs text-muted-foreground">{item.email || "-"}</p>
                             </td>
                             <td className="px-4 py-3 text-muted-foreground">{item.departmentName ?? "—"}</td>
                             <td className="px-4 py-3">
@@ -308,72 +433,74 @@ export default function Monitoring() {
                   <Input
                     type="date"
                     value={filters.date}
-                    onChange={(e) => setFilter("date", e.target.value)}
+                    onChange={(event) => setFilter("date", event.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Bulan</Label>
-                  <Select value={filters.month} onValueChange={(v) => setFilter("month", v)}>
+                  <Select value={filters.month || "none"} onValueChange={(value) => setFilter("month", value === "none" ? "" : value)}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Pilih bulan" />
                     </SelectTrigger>
                     <SelectContent>
-                      {MONTHS.map((m, i) => (
-                        <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                      <SelectItem value="none">Pilih bulan</SelectItem>
+                      {MONTHS.map((month, index) => (
+                        <SelectItem key={month} value={String(index + 1)}>{month}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Tahun</Label>
-                  <Select value={filters.year} onValueChange={(v) => setFilter("year", v)}>
+                  <Select value={filters.year || "none"} onValueChange={(value) => setFilter("year", value === "none" ? "" : value)}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Pilih tahun" />
                     </SelectTrigger>
                     <SelectContent>
-                      {years.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                      <SelectItem value="none">Pilih tahun</SelectItem>
+                      {years.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Departemen</Label>
-                  <Select value={filters.departmentId} onValueChange={(v) => setFilter("departmentId", v === "all" ? "" : v)}>
+                  <Select value={filters.departmentId || "all"} onValueChange={(value) => setFilter("departmentId", value === "all" ? "" : value)}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Semua" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Semua Departemen</SelectItem>
-                      {Array.isArray(departments) && departments.map((d: { id: number; name: string }) => (
-                        <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
+                      {Array.isArray(departments) && departments.map((department: { id: number; name: string }) => (
+                        <SelectItem key={department.id} value={String(department.id)}>{department.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Karyawan</Label>
-                  <Select value={filters.userId} onValueChange={(v) => setFilter("userId", v === "all" ? "" : v)}>
+                  <Select value={filters.userId || "all"} onValueChange={(value) => setFilter("userId", value === "all" ? "" : value)}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Semua" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Semua Karyawan</SelectItem>
-                      {Array.isArray(employees) && employees.map((e: { id: number; name: string }) => (
-                        <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
+                      {employeeList.map((employee) => (
+                        <SelectItem key={employee.id} value={String(employee.id)}>{employee.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Status Laporan</Label>
-                  <Select value={filters.status} onValueChange={(v) => setFilter("status", v === "all" ? "" : v)}>
+                  <Select value={filters.status || "all"} onValueChange={(value) => setFilter("status", value === "all" ? "" : value)}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Semua" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Semua Status</SelectItem>
-                      {REPORT_STATUSES.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      {REPORT_STATUSES.map((status) => (
+                        <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -384,7 +511,7 @@ export default function Monitoring() {
                     <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={filters.search}
-                      onChange={(e) => setFilter("search", e.target.value)}
+                      onChange={(event) => setFilter("search", event.target.value)}
                       placeholder="Cari nama karyawan..."
                       className="h-8 text-sm pl-8"
                     />
@@ -401,7 +528,7 @@ export default function Monitoring() {
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-5 h-5 animate-spin text-primary" />
               </div>
-            ) : reportRows.length === 0 ? (
+            ) : filteredRows.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <FileText className="w-8 h-8 mb-2 opacity-40" />
                 <p className="text-sm">Tidak ada data monitoring yang ditemukan</p>
@@ -422,10 +549,8 @@ export default function Monitoring() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportRows.map((report) => {
+                    {filteredRows.map((report) => {
                       const statusInfo = getStatusInfo(report.status);
-                      const submitted = report.isSubmitted ?? isSubmittedStatus(report.status);
-                      const reportId = report.reportId ?? (report.hasReport === false ? null : report.id);
                       return (
                         <tr key={`${report.userId}-${report.date}-${report.id}`} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                           <td className="px-4 py-3">
@@ -433,7 +558,7 @@ export default function Monitoring() {
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">{report.departmentName ?? "—"}</td>
                           <td className="px-4 py-3">
-                            <p className="text-foreground">{new Date(report.date + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}</p>
+                            <p className="text-foreground">{new Date(`${report.date}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}</p>
                             <p className="text-xs text-muted-foreground">{report.dayName}</p>
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -456,15 +581,15 @@ export default function Monitoring() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            {submitted ? (
+                            {report.isSubmitted ? (
                               <CheckCircle className="w-5 h-5 text-green-500 mx-auto" />
                             ) : (
                               <XCircle className="w-5 h-5 text-red-500 mx-auto" />
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
-                            {reportId ? (
-                              <Link href={`/laporan/${reportId}`}>
+                            {report.reportId ? (
+                              <Link href={`/laporan/${report.reportId}`}>
                                 <Button variant="ghost" size="icon" className="w-7 h-7">
                                   <Eye className="w-3.5 h-3.5" />
                                 </Button>

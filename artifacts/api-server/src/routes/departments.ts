@@ -3,6 +3,11 @@ import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
+
+function activeUserCondition() {
+  return sql`${usersTable.isActive} is distinct from false`;
+}
+
 router.get("/departments", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
@@ -30,13 +35,13 @@ router.get("/employees", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(sql`${usersTable.isActive} is distinct from false`)
+    .where(activeUserCondition())
     .orderBy(usersTable.name);
 
-  res.json(employees.map(e => ({
-    ...e,
-    departmentName: e.departmentName ?? null,
-    avatarInitials: e.name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2),
+  res.json(employees.map((employee) => ({
+    ...employee,
+    departmentName: employee.departmentName ?? null,
+    avatarInitials: employee.name.split(" ").map((word: string) => word[0]).join("").toUpperCase().slice(0, 2),
   })));
 });
 

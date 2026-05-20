@@ -21,9 +21,11 @@ export async function apiRequest<T = unknown>(
       const errorData = await response.json();
       if (typeof errorData?.message === "string") {
         message = errorData.message;
+      } else if (typeof errorData?.error === "string") {
+        message = errorData.error;
       }
     } catch {
-      // Response error bukan JSON, pakai pesan default HTTP.
+      // Response error bukan JSON, pakai message default dari status HTTP.
     }
 
     throw new Error(message);
