@@ -1,0 +1,17 @@
+{
+  "name": "Laporan Harian PTAA",
+  "short_name": "PTAA Laporan",
+  "description": "Aplikasi Laporan Harian PT Adiyasa Abadi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#001E8A",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

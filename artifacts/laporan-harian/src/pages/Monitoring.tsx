@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   useListReports, useListDepartments, useListEmployees
 } from "@workspace/api-client-react";
-import { CheckCircle, XCircle, Eye, Search, Filter, X, Loader2, FileText } from "lucide-react";
+import { CheckCircle, XCircle, Eye, Search, Filter, X, Loader2, FileText, BellRing, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Layout from "@/components/Layout";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import {
+  missingDailyReportsQueryKey,
+  type MissingDailyReportUser,
+  type SendReminderResult,
+  useMissingDailyReportsToday,
+  useSendMissingDailyReportReminder,
+} from "@/hooks/use-daily-report-reminder";
 
 const MONTHS = [
   "Januari","Februari","Maret","April","Mei","Juni",
@@ -24,12 +34,17 @@ const REPORT_STATUSES = [
   { value: "perlu_revisi", label: "Perlu Revisi", color: "bg-orange-100 text-orange-700 border-orange-200" },
 ];
 
+const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
+
 function getStatusInfo(status: string) {
   return REPORT_STATUSES.find(s => s.value === status) ?? REPORT_STATUSES[0];
 }
 
 export default function Monitoring() {
   const today = new Date();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState({
     date: "",
     month: String(today.getMonth() + 1),
@@ -41,8 +56,12 @@ export default function Monitoring() {
   });
   const [showFilters, setShowFilters] = useState(false);
 
+  const canManageReminder = !!user && REMINDER_ACCESS_ROLES.includes(user.role);
+
   const { data: departments } = useListDepartments();
   const { data: employees } = useListEmployees();
+  const { data: missingUsers, isLoading: isLoadingMissing } = useMissingDailyReportsToday(canManageReminder);
+  const sendReminder = useSendMissingDailyReportReminder();
 
   const params: Record<string, string> = {};
   if (filters.date) params.date = filters.date;
@@ -69,27 +88,118 @@ export default function Monitoring() {
     });
   };
 
-  const years = Array.from({ length: 5 }, (_, i) => String(today.getFullYear() - i));
+  const handleSendReminder = async () => {
+    const result: SendReminderResult = await sendReminder.mutateAsync();
+    queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey });
+    toast({
+      title: "Reminder diproses",
+      description: `${result.message} Push berhasil: ${result.pushSuccessCount}, gagal: ${result.pushFailedCount}.`,
+    });
+  };
 
+  const years = Array.from({ length: 5 }, (_, i) => String(today.getFullYear() - i));
   const isSubmitted = (status: string) => status !== "draf";
+  const missingList: MissingDailyReportUser[] = Array.isArray(missingUsers) ? missingUsers : [];
+  const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;
 
   return (
     <Layout>
       <div className="p-6 space-y-5">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-foreground">Monitoring Laporan Harian</h1>
             <p className="text-sm text-muted-foreground">Pantau laporan harian seluruh karyawan</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-            <Filter className="w-4 h-4 mr-2" />
-            Filter
-            {Object.values(filters).some(v => v !== "" && v !== String(today.getMonth() + 1) && v !== String(today.getFullYear())) && (
-              <Badge className="ml-2 h-4 w-4 p-0 flex items-center justify-center text-xs bg-primary text-primary-foreground border-none">!</Badge>
+          <div className="flex items-center gap-2">
+            {canManageReminder && (
+              <Button
+                size="sm"
+                className="bg-[#E30613] hover:bg-[#c90010]"
+                onClick={handleSendReminder}
+                disabled={sendReminder.isPending || unsentReminderCount === 0}
+              >
+                {sendReminder.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BellRing className="w-4 h-4 mr-2" />}
+                Kirim Reminder
+              </Button>
             )}
-          </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
+              <Filter className="w-4 h-4 mr-2" />
+              Filter
+              {Object.values(filters).some(v => v !== "" && v !== String(today.getMonth() + 1) && v !== String(today.getFullYear())) && (
+                <Badge className="ml-2 h-4 w-4 p-0 flex items-center justify-center text-xs bg-primary text-primary-foreground border-none">!</Badge>
+              )}
+            </Button>
+          </div>
         </div>
+
+        {canManageReminder && (
+          <Card className="border border-border bg-white">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between text-sm">
+                <span>Reminder Belum Isi Laporan Hari Ini</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey })}
+                >
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                  Refresh
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoadingMissing ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                </div>
+              ) : missingList.length === 0 ? (
+                <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-green-700">Semua user sudah mengisi laporan hari ini.</p>
+                    <p className="text-xs text-green-600">Tidak ada reminder yang perlu dikirim.</p>
+                  </div>
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Nama</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Departemen</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Status Laporan</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Status Reminder</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {missingList.map((item) => (
+                        <tr key={item.id} className="border-b border-border last:border-0">
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-foreground">{item.name}</p>
+                            <p className="text-xs text-muted-foreground">{item.email}</p>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{item.departmentName ?? "—"}</td>
+                          <td className="px-4 py-3">
+                            <Badge className="border-red-200 bg-red-50 text-red-700 hover:bg-red-50">Belum Mengisi</Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            {item.reminderSent ? (
+                              <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">Reminder Terkirim</Badge>
+                            ) : (
+                              <Badge variant="outline">Belum Dikirim</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         {showFilters && (

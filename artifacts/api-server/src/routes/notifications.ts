@@ -1,60 +1,109 @@
-import { db, notificationsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, deviceTokensTable, notificationsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { getUserFromToken } from "./auth";
-import { Router, type Router as ExpressRouter } from "express";
+import { Router, type Request, type Response, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
-router.get("/notifications", async (req, res) => {
-  const token = req.cookies?.session_token;
-  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  const user = await getUserFromToken(token);
-  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const notifs = await db.select().from(notificationsTable)
+async function getAuthenticatedUser(req: Request) {
+  const token = req.cookies?.session_token;
+  if (!token) return null;
+  return getUserFromToken(token);
+}
+
+function mapNotification(notification: typeof notificationsTable.$inferSelect) {
+  return {
+    id: notification.id,
+    userId: notification.userId,
+    title: notification.title,
+    message: notification.message,
+    isRead: notification.isRead,
+    type: notification.type,
+    relatedReportId: notification.relatedReportId ?? null,
+    createdAt: notification.createdAt.toISOString(),
+  };
+}
+
+router.get("/notifications", async (req, res) => {
+  const user = await getAuthenticatedUser(req);
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+
+  const notifications = await db
+    .select()
+    .from(notificationsTable)
     .where(eq(notificationsTable.userId, user.id))
     .orderBy(notificationsTable.createdAt);
 
-  res.json(notifs.map(n => ({
-    id: n.id, userId: n.userId, title: n.title, message: n.message,
-    isRead: n.isRead, type: n.type,
-    relatedReportId: n.relatedReportId ?? null,
-    createdAt: n.createdAt.toISOString(),
-  })).reverse());
+  res.json(notifications.map(mapNotification).reverse());
 });
 
-router.post("/notifications/:notifId/read", async (req, res) => {
-  const token = req.cookies?.session_token;
-  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  const user = await getUserFromToken(token);
-  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+async function markNotificationRead(req: Request, res: Response) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
-  const notifId = parseInt(req.params.notifId);
-  const [updated] = await db.update(notificationsTable)
+  const notificationId = Number(req.params.notifId);
+  if (!Number.isInteger(notificationId)) {
+    res.status(400).json({ error: "ID notifikasi tidak valid" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(notificationsTable)
     .set({ isRead: true })
-    .where(and(eq(notificationsTable.id, notifId), eq(notificationsTable.userId, user.id)))
+    .where(and(eq(notificationsTable.id, notificationId), eq(notificationsTable.userId, user.id)))
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Notifikasi tidak ditemukan" }); return; }
 
-  res.json({
-    id: updated.id, userId: updated.userId, title: updated.title, message: updated.message,
-    isRead: updated.isRead, type: updated.type,
-    relatedReportId: updated.relatedReportId ?? null,
-    createdAt: updated.createdAt.toISOString(),
-  });
-});
+  res.json(mapNotification(updated));
+}
 
-router.post("/notifications/read-all", async (req, res) => {
-  const token = req.cookies?.session_token;
-  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  const user = await getUserFromToken(token);
-  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+async function markAllNotificationsRead(req: Request, res: Response) {
+  const user = await getAuthenticatedUser(req);
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
-  await db.update(notificationsTable)
+  await db
+    .update(notificationsTable)
     .set({ isRead: true })
     .where(eq(notificationsTable.userId, user.id));
 
   res.json({ success: true, message: "Semua notifikasi ditandai sudah dibaca" });
+}
+
+router.patch("/notifications/:notifId/read", markNotificationRead);
+router.post("/notifications/:notifId/read", markNotificationRead);
+
+router.patch("/notifications/read-all", markAllNotificationsRead);
+router.post("/notifications/read-all", markAllNotificationsRead);
+
+router.post("/notifications/register-token", async (req, res) => {
+  const user = await getAuthenticatedUser(req);
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+
+  const token = String(req.body.token ?? "").trim();
+  const platform = String(req.body.platform ?? "web").trim() || "web";
+
+  if (!token) {
+    res.status(400).json({ error: "Token notifikasi diperlukan" });
+    return;
+  }
+
+  const existing = await db
+    .select({ id: deviceTokensTable.id })
+    .from(deviceTokensTable)
+    .where(eq(deviceTokensTable.token, token))
+    .limit(1);
+
+  if (existing[0]) {
+    await db
+      .update(deviceTokensTable)
+      .set({ userId: user.id, platform })
+      .where(eq(deviceTokensTable.id, existing[0].id));
+  } else {
+    await db.insert(deviceTokensTable).values({ userId: user.id, token, platform });
+  }
+
+  res.json({ success: true, message: "Token notifikasi berhasil disimpan" });
 });
 
 export default router;

@@ -77,7 +77,7 @@ export default function Notifikasi() {
         ) : notifs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <Bell className="w-10 h-10 mb-3 opacity-30" />
-            <p className="text-sm">Tidak ada notifikasi</p>
+            <p className="text-sm">Belum ada notifikasi.</p>
           </div>
         ) : (
           <div className="space-y-2">

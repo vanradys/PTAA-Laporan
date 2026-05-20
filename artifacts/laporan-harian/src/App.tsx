@@ -11,6 +11,7 @@ import DetailLaporan from "@/pages/DetailLaporan";
 import Notifikasi from "@/pages/Notifikasi";
 import JadwalProject from "@/pages/JadwalProject";
 import { Loader2 } from "lucide-react";
+import NotificationPermissionPrompt from "@/components/NotificationPermissionPrompt";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,7 @@ function App() {
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <AppRoutes />
           </WouterRouter>
+          <NotificationPermissionPrompt />
           <Toaster />
         </AuthProvider>
       </TooltipProvider>

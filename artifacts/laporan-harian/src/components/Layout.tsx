@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import NotificationBell from "@/components/NotificationBell";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -114,12 +115,7 @@ export default function Layout({ children }: LayoutProps) {
           </div>
 
           <div className="flex items-center gap-5">
-            <Link href="/notifikasi" className="relative text-slate-600 hover:text-[#06258d]">
-              <Bell className="h-5 w-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-[#ef0012] ring-2 ring-white" />
-              )}
-            </Link>
+            <NotificationBell />
 
             <div className="flex items-center gap-3">
               <Avatar className="h-9 w-9">
