@@ -3,7 +3,6 @@ import { getUserFromToken } from "./auth";
 import {
   canManageDailyReportReminder,
   getMissingDailyReportUsers,
-  getReminderActorLabel,
   getReminderScope,
   normalizeReportDate,
   sendDailyReportReminders,
@@ -43,7 +42,6 @@ router.post("/daily-reports/remind-missing", async (req, res) => {
   const reportDate = normalizeReportDate(req.body?.date);
   const result = await sendDailyReportReminders({
     sentBy: user.id,
-    actorLabel: getReminderActorLabel(user.role),
     scope: getReminderScope(user),
     reportDate,
   });
@@ -60,7 +58,7 @@ router.post("/daily-reports/remind-missing/auto", async (req, res) => {
   }
 
   const reportDate = normalizeReportDate(req.body?.date);
-  const result = await sendDailyReportReminders({ sentBy: null, actorLabel: "Sistem", reportDate });
+  const result = await sendDailyReportReminders({ sentBy: null, reportDate });
   res.json(result);
 });
 

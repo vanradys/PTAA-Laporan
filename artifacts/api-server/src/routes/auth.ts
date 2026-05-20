@@ -1,19 +1,8 @@
-import { and, db, departmentsTable, eq, inArray, notInArray, REMOVED_USER_EMAILS, sessionsTable, sql, usersTable } from "@workspace/db";
+import { db, usersTable, departmentsTable, sessionsTable, eq } from "@workspace/db";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
-async function deactivateRemovedUsers() {
-  await db
-    .update(usersTable)
-    .set({ isActive: false, updatedAt: new Date() })
-    .where(inArray(usersTable.email, [...REMOVED_USER_EMAILS]));
-}
-
-function activeUserCondition() {
-  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS]));
-}
-
 
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
@@ -35,12 +24,15 @@ async function getUserFromToken(token: string) {
     role: usersTable.role,
     departmentId: usersTable.departmentId,
     password: usersTable.password,
+    isActive: usersTable.isActive,
     departmentName: departmentsTable.name,
   }).from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(and(eq(usersTable.id, session.userId), activeUserCondition()))
+    .where(eq(usersTable.id, session.userId))
     .limit(1);
-  return users[0] ?? null;
+  const user = users[0];
+  if (!user || user.isActive === false) return null;
+  return user;
 }
 
 router.post("/seed-ptaa-users", async (req, res) => {
@@ -51,8 +43,6 @@ router.post("/seed-ptaa-users", async (req, res) => {
       res.status(403).json({ error: "Akses seed tidak diizinkan" });
       return;
     }
-
-    await deactivateRemovedUsers();
 
     const ptaaUsers = [
       {
@@ -67,6 +57,14 @@ router.post("/seed-ptaa-users", async (req, res) => {
         name: "Marketing PTAA",
         email: "marketing@adiyasa.com",
         password: "MKTPTAA",
+        role: "karyawan",
+        department: "Marketing",
+        departmentCode: "MKT",
+      },
+      {
+        name: "MKT Specialist",
+        email: "mkt.specialist@adiyasa.com",
+        password: "MKTSPTAA",
         role: "karyawan",
         department: "Marketing",
         departmentCode: "MKT",
@@ -188,6 +186,26 @@ router.post("/seed-ptaa-users", async (req, res) => {
       }
     }
 
+
+    await db
+      .update(usersTable)
+      .set({ isActive: false })
+      .where(eq(usersTable.email, "admin@ptaa.com"));
+
+    const inactiveEmails = [
+      "ahmad@perusahaan.com",
+      "budi@perusahaan.com",
+      "eko@perusahaan.com",
+      "engineering3@adiyasa.com",
+    ];
+
+    for (const inactiveEmail of inactiveEmails) {
+      await db
+        .update(usersTable)
+        .set({ isActive: false })
+        .where(eq(usersTable.email, inactiveEmail));
+    }
+
     res.json({
       success: true,
       message: "User PTAA berhasil dibuat / diupdate",
@@ -198,38 +216,12 @@ router.post("/seed-ptaa-users", async (req, res) => {
         departmentCode: item.departmentCode,
         role: item.role,
       })),
-      removedUsersDeactivated: REMOVED_USER_EMAILS,
     });
   } catch (error) {
     console.error("Seed PTAA users error:", error);
 
     res.status(500).json({
       error: "Gagal membuat user PTAA",
-      detail: error instanceof Error ? error.message : String(error),
-    });
-  }
-});
-
-router.post("/cleanup-removed-users", async (req, res) => {
-  try {
-    const seedSecret = String(req.headers["x-seed-secret"] ?? "");
-
-    if (!process.env.SEED_SECRET || seedSecret !== process.env.SEED_SECRET) {
-      res.status(403).json({ error: "Akses cleanup tidak diizinkan" });
-      return;
-    }
-
-    await deactivateRemovedUsers();
-
-    res.json({
-      success: true,
-      message: "Akun demo/lama berhasil dinonaktifkan",
-      deactivatedEmails: REMOVED_USER_EMAILS,
-    });
-  } catch (error) {
-    console.error("Cleanup removed users error:", error);
-    res.status(500).json({
-      error: "Gagal menonaktifkan akun demo/lama",
       detail: error instanceof Error ? error.message : String(error),
     });
   }
@@ -256,15 +248,16 @@ router.get("/me", async (req, res) => {
       email: usersTable.email,
       role: usersTable.role,
       departmentId: usersTable.departmentId,
+      isActive: usersTable.isActive,
       departmentName: departmentsTable.name,
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(and(eq(usersTable.id, session.userId), activeUserCondition()))
+    .where(eq(usersTable.id, session.userId))
     .limit(1);
 
-  if (!user[0]) {
-    res.status(401).json({ error: "Pengguna tidak ditemukan" });
+  if (!user[0] || user[0].isActive === false) {
+    res.status(401).json({ error: "Pengguna tidak ditemukan atau sudah tidak aktif" });
     return;
   }
 
@@ -304,16 +297,17 @@ router.post("/login", async (req, res) => {
       role: usersTable.role,
       departmentId: usersTable.departmentId,
       password: usersTable.password,
+      isActive: usersTable.isActive,
       departmentName: departmentsTable.name,
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(and(eq(usersTable.email, email), activeUserCondition()))
+    .where(eq(usersTable.email, email))
     .limit(1);
 
   const user = users[0];
-  if (!user || user.password !== hashPassword(password)) {
-    res.status(401).json({ error: "Email atau password salah" });
+  if (!user || user.password !== hashPassword(password) || user.isActive === false) {
+    res.status(401).json({ error: "Email atau password salah atau akun sudah tidak aktif" });
     return;
   }
 

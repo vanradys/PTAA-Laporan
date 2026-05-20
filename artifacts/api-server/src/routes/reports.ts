@@ -11,9 +11,7 @@ import {
   inArray,
   lte,
   notificationsTable,
-  notInArray,
   or,
-  REMOVED_USER_EMAILS,
   reportCommentsTable,
   sql,
   usersTable,
@@ -21,6 +19,7 @@ import {
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
+import { reportingUserCondition, isSubmittedReportStatus } from "../services/dailyReportReminder";
 
 const router: ExpressRouter = Router();
 
@@ -45,14 +44,8 @@ function getJakartaDateString(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
-
-function activeReportingUserCondition(): SQL {
-  return and(
-    sql`${usersTable.isActive} is distinct from false`,
-    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
-    sql`lower(${usersTable.role}) not in (${sql.join(NON_REPORTING_ROLES.map((role) => sql`${role}`), sql`, `)})`,
-  ) as SQL;
+function activeUserCondition(): SQL {
+  return reportingUserCondition();
 }
 
 function getDayName(date: string): string {
@@ -60,7 +53,7 @@ function getDayName(date: string): string {
 }
 
 function isSubmittedStatus(status: string): boolean {
-  return status !== "draf" && status !== "belum_submit";
+  return isSubmittedReportStatus(status);
 }
 
 function isReportLocked(status: string): boolean {
@@ -195,7 +188,7 @@ router.get("/reports", async (req, res) => {
   const { date, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
 
   if (date) {
-    const userConditions: SQL[] = [activeReportingUserCondition()];
+    const userConditions: SQL[] = [activeUserCondition()];
 
     if (departmentId) userConditions.push(eq(usersTable.departmentId, parseInt(departmentId)));
     if (userId) userConditions.push(eq(usersTable.id, parseInt(userId)));
@@ -285,7 +278,7 @@ router.get("/reports", async (req, res) => {
       })
       .filter((row) => {
         if (!status) return true;
-        if (status === "belum_submit") return !row.hasReport;
+        if (status === "belum_submit") return !row.isSubmitted;
         return row.status === status;
       });
 
@@ -293,7 +286,7 @@ router.get("/reports", async (req, res) => {
     return;
   }
 
-  const conditions: SQL[] = [activeReportingUserCondition()];
+  const conditions: SQL[] = [activeUserCondition()];
 
   if (month && year) {
     const m = month.padStart(2, "0");

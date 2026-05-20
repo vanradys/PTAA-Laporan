@@ -7,29 +7,17 @@ import {
   and,
   eq,
   inArray,
-  notInArray,
-  REMOVED_USER_EMAILS,
   sql,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
-import { getJakartaDateString } from "../services/dailyReportReminder";
+import {
+  getJakartaDateString,
+  reportingUserCondition,
+  submittedReportCondition,
+} from "../services/dailyReportReminder";
 
 const router: ExpressRouter = Router();
-
-const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
-
-function submittedReportCondition() {
-  return sql`${dailyReportsTable.status} not in ('draf', 'belum_submit')`;
-}
-
-function activeReportingUserCondition() {
-  return and(
-    sql`${usersTable.isActive} is distinct from false`,
-    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
-    sql`lower(${usersTable.role}) not in (${sql.join(NON_REPORTING_ROLES.map((role) => sql`${role}`), sql`, `)})`,
-  );
-}
 
 function normalizeDashboardDate(value: unknown): string {
   const date = typeof value === "string" ? value.trim() : "";
@@ -44,22 +32,21 @@ router.get("/dashboard/summary", async (req, res) => {
 
   const date = normalizeDashboardDate(req.query.date);
 
-  const activeUsers = await db
+  const reportingUsers = await db
     .select({ id: usersTable.id })
     .from(usersTable)
-    .where(activeReportingUserCondition());
+    .where(reportingUserCondition());
 
-  const activeUserIds = activeUsers.map((item) => item.id);
-  const totalEmployees = activeUserIds.length;
+  const reportingUserIds = reportingUsers.map((item) => item.id);
+  const totalEmployees = reportingUserIds.length;
 
   const submittedReports = totalEmployees > 0
     ? await db
       .select({ id: dailyReportsTable.id, userId: dailyReportsTable.userId })
       .from(dailyReportsTable)
       .where(and(
-        eq(dailyReportsTable.date, date),
-        submittedReportCondition(),
-        inArray(dailyReportsTable.userId, activeUserIds),
+        submittedReportCondition(date),
+        inArray(dailyReportsTable.userId, reportingUserIds),
       ))
     : [];
 
@@ -116,9 +103,13 @@ router.get("/dashboard/department-productivity", async (req, res) => {
     const [employeeCountResult] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(usersTable)
-      .where(and(eq(usersTable.departmentId, dept.id), activeReportingUserCondition()));
+      .where(and(eq(usersTable.departmentId, dept.id), reportingUserCondition()));
 
     const employeeCount = employeeCountResult?.count ?? 0;
+
+    if (employeeCount === 0) {
+      return null;
+    }
 
     const submittedReports = await db
       .select({ id: dailyReportsTable.id })
@@ -126,9 +117,8 @@ router.get("/dashboard/department-productivity", async (req, res) => {
       .leftJoin(usersTable, eq(dailyReportsTable.userId, usersTable.id))
       .where(and(
         eq(dailyReportsTable.departmentId, dept.id),
-        eq(dailyReportsTable.date, date),
-        submittedReportCondition(),
-        activeReportingUserCondition(),
+        submittedReportCondition(date),
+        reportingUserCondition(),
       ));
 
     const submittedCount = submittedReports.length;
@@ -153,7 +143,7 @@ router.get("/dashboard/department-productivity", async (req, res) => {
     };
   }));
 
-  res.json(result);
+  res.json(result.filter(Boolean));
 });
 
 export default router;

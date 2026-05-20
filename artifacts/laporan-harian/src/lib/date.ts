@@ -27,6 +27,21 @@ export function formatJakartaDateLong(date = new Date()): string {
   }).format(date);
 }
 
+export function formatJakartaTime(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date).replace(".", ":");
+}
+
 export function formatIndonesianDate(dateString: string): string {
   const [year, month, day] = dateString.split("-").map(Number);
 

@@ -5,10 +5,8 @@ import {
   departmentsTable,
   notificationsTable,
   usersTable,
-  REMOVED_USER_EMAILS,
   and,
   eq,
-  notInArray,
   sql,
   type SQL,
 } from "@workspace/db";
@@ -16,9 +14,10 @@ import { sendPushNotificationToUser } from "./pushNotification";
 
 const REMINDER_TITLE = "Reminder Laporan Harian";
 const REMINDER_TYPE = "daily_report";
+const REMINDER_MESSAGE = "Anda belum mengisi laporan harian hari ini. Silakan segera mengisi laporan.";
 const FULL_ACCESS_ROLES = ["admin", "hr", "direktur", "director"];
-const DEPARTMENT_LEADER_ROLES = ["atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
+const DEPARTMENT_LEADER_ROLES = ["atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 
 export interface ReminderActor {
   id: number;
@@ -37,6 +36,7 @@ export interface MissingDailyReportUser {
   status: "Belum Mengisi";
   reminderSent: boolean;
   reminderSentAt: string | null;
+  reminderStatusText: string | null;
 }
 
 interface ReminderScope {
@@ -77,6 +77,15 @@ export function formatIndonesianDate(dateString: string): string {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+export function formatJakartaTime(date: Date): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date).replace(".", ":");
+}
+
 export function normalizeReportDate(value: unknown): string {
   const date = typeof value === "string" ? value.trim() : "";
 
@@ -85,24 +94,6 @@ export function normalizeReportDate(value: unknown): string {
   }
 
   return getJakartaDateString();
-}
-
-export function getReminderActorLabel(role: string): string {
-  const normalizedRole = role.toLowerCase();
-
-  if (normalizedRole === "hr") return "HR";
-  if (normalizedRole === "admin") return "Admin";
-  if (normalizedRole === "direktur" || normalizedRole === "director") return "Direktur";
-
-  if (DEPARTMENT_LEADER_ROLES.includes(normalizedRole)) {
-    return "Atasan";
-  }
-
-  return "Admin";
-}
-
-export function buildReminderMessage(actorLabel: string, reportDate: string): string {
-  return `${actorLabel} telah mengirim anda reminder untuk mengisi laporan harian tanggal ${formatIndonesianDate(reportDate)}.`;
 }
 
 export function canManageDailyReportReminder(actor: ReminderActor): boolean {
@@ -124,32 +115,37 @@ export function getReminderScope(actor: ReminderActor): ReminderScope {
   return { departmentId: -1 };
 }
 
-function activeReportingUserCondition(): SQL {
+export function activeUserCondition(): SQL {
+  return sql`${usersTable.isActive} is distinct from false`;
+}
+
+export function reportingUserCondition(): SQL {
+  return sql`${usersTable.isActive} is distinct from false and lower(${usersTable.role}) not in ('admin', 'hr', 'direktur', 'director')`;
+}
+
+export function submittedReportCondition(reportDate: string): SQL {
   return and(
-    sql`${usersTable.isActive} is distinct from false`,
-    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
-    sql`lower(${usersTable.role}) not in (${sql.join(NON_REPORTING_ROLES.map((role) => sql`${role}`), sql`, `)})`,
+    eq(dailyReportsTable.date, reportDate),
+    sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
   ) as SQL;
 }
 
-function submittedReportCondition(reportDate: string): SQL {
-  return and(
-    eq(dailyReportsTable.date, reportDate),
-    sql`${dailyReportsTable.status} not in ('draf', 'belum_submit')`,
-  ) as SQL;
+export function isSubmittedReportStatus(status: string | null | undefined): boolean {
+  const normalizedStatus = String(status ?? "").toLowerCase();
+  return normalizedStatus.length > 0 && !["draf", "belum_submit"].includes(normalizedStatus);
 }
 
 export async function getMissingDailyReportUsers(
   scope: ReminderScope = {},
   reportDate = getJakartaDateString(),
 ): Promise<MissingDailyReportUser[]> {
-  const userConditions: SQL[] = [activeReportingUserCondition()];
+  const userConditions: SQL[] = [reportingUserCondition()];
 
   if (scope.departmentId !== undefined) {
     userConditions.push(eq(usersTable.departmentId, scope.departmentId));
   }
 
-  const activeUsers = await db
+  const reportingUsers = await db
     .select({
       id: usersTable.id,
       name: usersTable.name,
@@ -163,11 +159,11 @@ export async function getMissingDailyReportUsers(
     .where(and(...userConditions))
     .orderBy(usersTable.name);
 
-  if (activeUsers.length === 0) {
+  if (reportingUsers.length === 0) {
     return [];
   }
 
-  const activeUserIds = new Set(activeUsers.map((user) => user.id));
+  const reportingUserIds = new Set(reportingUsers.map((user) => user.id));
 
   const submittedReports = await db
     .select({ userId: dailyReportsTable.userId })
@@ -189,38 +185,44 @@ export async function getMissingDailyReportUsers(
 
   const submittedUserIds = new Set(
     submittedReports
-      .filter((report) => activeUserIds.has(report.userId))
+      .filter((report) => reportingUserIds.has(report.userId))
       .map((report) => report.userId),
   );
-  const reminderLogByUserId = new Map(
-    reminderLogs.map((log) => [log.userId, log.sentAt instanceof Date ? log.sentAt.toISOString() : String(log.sentAt)]),
-  );
 
-  return activeUsers
+  const reminderLogByUserId = new Map<number, Date>();
+  for (const log of reminderLogs) {
+    if (!reminderLogByUserId.has(log.userId)) {
+      reminderLogByUserId.set(log.userId, log.sentAt);
+    }
+  }
+
+  return reportingUsers
     .filter((user) => !submittedUserIds.has(user.id))
-    .map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      departmentId: user.departmentId ?? null,
-      departmentName: user.departmentName ?? null,
-      reportDate,
-      status: "Belum Mengisi",
-      reminderSent: reminderLogByUserId.has(user.id),
-      reminderSentAt: reminderLogByUserId.get(user.id) ?? null,
-    }));
+    .map((user) => {
+      const sentAt = reminderLogByUserId.get(user.id) ?? null;
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        departmentId: user.departmentId ?? null,
+        departmentName: user.departmentName ?? null,
+        reportDate,
+        status: "Belum Mengisi",
+        reminderSent: !!sentAt,
+        reminderSentAt: sentAt ? sentAt.toISOString() : null,
+        reminderStatusText: sentAt ? `Sudah dikirim pada pukul ${formatJakartaTime(sentAt)}` : null,
+      };
+    });
 }
 
 export async function sendDailyReportReminders(options: {
   sentBy: number | null;
-  actorLabel?: string;
   scope?: ReminderScope;
   reportDate?: string;
 }) {
   const reportDate = options.reportDate ?? getJakartaDateString();
-  const actorLabel = options.actorLabel ?? "Sistem";
-  const reminderMessage = buildReminderMessage(actorLabel, reportDate);
   const missingUsers = await getMissingDailyReportUsers(options.scope ?? {}, reportDate);
   const targetUsers = missingUsers.filter((user) => !user.reminderSent);
   const sentUsers: MissingDailyReportUser[] = [];
@@ -229,7 +231,7 @@ export async function sendDailyReportReminders(options: {
   let pushInvalidTokenRemovedCount = 0;
 
   for (const user of targetUsers) {
-    const didSend = await db.transaction(async (tx) => {
+    const insertedSentAt = await db.transaction(async (tx) => {
       const insertedLog = await tx
         .insert(dailyReportReminderLogsTable)
         .values({
@@ -239,29 +241,36 @@ export async function sendDailyReportReminders(options: {
           sentBy: options.sentBy,
         })
         .onConflictDoNothing()
-        .returning({ id: dailyReportReminderLogsTable.id });
+        .returning({ sentAt: dailyReportReminderLogsTable.sentAt });
 
-      if (!insertedLog[0]) {
-        return false;
+      const sentAt = insertedLog[0]?.sentAt;
+
+      if (!sentAt) {
+        return null;
       }
 
       await tx.insert(notificationsTable).values({
         userId: user.id,
         title: REMINDER_TITLE,
-        message: reminderMessage,
+        message: REMINDER_MESSAGE,
         type: REMINDER_TYPE,
       });
 
-      return true;
+      return sentAt;
     });
 
-    if (didSend) {
-      sentUsers.push({ ...user, reminderSent: true, reminderSentAt: new Date().toISOString() });
+    if (insertedSentAt) {
+      sentUsers.push({
+        ...user,
+        reminderSent: true,
+        reminderSentAt: insertedSentAt.toISOString(),
+        reminderStatusText: `Sudah dikirim pada pukul ${formatJakartaTime(insertedSentAt)}`,
+      });
 
       const pushResult = await sendPushNotificationToUser({
         userId: user.id,
         title: REMINDER_TITLE,
-        message: reminderMessage,
+        message: REMINDER_MESSAGE,
         type: REMINDER_TYPE,
         url: "/notifikasi",
       });
@@ -286,6 +295,6 @@ export async function sendDailyReportReminders(options: {
       ? `Reminder berhasil dikirim ke ${sentUsers.length} karyawan.`
       : missingUsers.length > 0
         ? `Reminder tanggal ${formatIndonesianDate(reportDate)} sudah pernah dikirim ke semua karyawan yang belum mengisi.`
-        : `Semua karyawan sudah mengisi laporan harian tanggal ${formatIndonesianDate(reportDate)}.`,
+        : `Semua karyawan wajib laporan sudah mengisi laporan harian tanggal ${formatIndonesianDate(reportDate)}.`,
   };
 }

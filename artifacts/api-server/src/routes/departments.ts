@@ -1,18 +1,9 @@
-import { and, db, departmentsTable, eq, notInArray, REMOVED_USER_EMAILS, sql, usersTable } from "@workspace/db";
+import { db, departmentsTable, usersTable, eq } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
+import { reportingUserCondition } from "../services/dailyReportReminder";
 
 const router: ExpressRouter = Router();
-
-const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
-
-function activeReportingUserCondition() {
-  return and(
-    sql`${usersTable.isActive} is distinct from false`,
-    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
-    sql`lower(${usersTable.role}) not in (${sql.join(NON_REPORTING_ROLES.map((role) => sql`${role}`), sql`, `)})`,
-  );
-}
 
 router.get("/departments", async (req, res) => {
   const token = req.cookies?.session_token;
@@ -41,7 +32,7 @@ router.get("/employees", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(activeReportingUserCondition())
+    .where(reportingUserCondition())
     .orderBy(usersTable.name);
 
   res.json(employees.map((employee) => ({

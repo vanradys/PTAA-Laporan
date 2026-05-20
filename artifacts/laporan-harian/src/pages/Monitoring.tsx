@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { formatIndonesianDate, getJakartaDateString } from "@/lib/date";
+import { formatIndonesianDate, formatJakartaTime, getJakartaDateString } from "@/lib/date";
 import {
   missingDailyReportsQueryKey,
   type MissingDailyReportUser,
@@ -37,7 +37,6 @@ const REPORT_STATUSES = [
 ];
 
 const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
-const NON_REPORTING_ROLES = new Set(["admin", "hr", "direktur", "director"]);
 
 type EmployeeOption = {
   id: number;
@@ -91,36 +90,20 @@ function getDayName(date: string) {
   return DAY_NAMES[dateObject.getDay()] ?? "-";
 }
 
-function formatJakartaTime(value: string | null | undefined) {
-  if (!value) return "";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  return new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date).replace(":", ".");
-}
-
 function buildMissingSummary(users: MissingDailyReportUser[], totalEmployees: number, reportDate: string) {
   const formattedDate = formatIndonesianDate(reportDate);
 
   if (users.length === 0) {
-    return `Semua karyawan sudah mengisi laporan harian pada tanggal ${formattedDate}.`;
+    return `Semua karyawan yang wajib submit sudah mengisi laporan harian pada tanggal ${formattedDate}.`;
   }
 
   if (totalEmployees > 0 && users.length === totalEmployees) {
     return `Seluruh karyawan belum mengisi laporan harian pada tanggal ${formattedDate}.`;
   }
 
-  const departmentNames = Array.from(
-    new Set(users.map((user) => user.departmentName?.trim() || user.name).filter(Boolean)),
-  );
+  const names = users.map((user) => user.name).filter(Boolean);
 
-  return `${departmentNames.join(", ")} belum mengisi laporan harian pada tanggal ${formattedDate}.`;
+  return `${names.join(", ")} belum mengisi laporan harian pada tanggal ${formattedDate}.`;
 }
 
 function buildRowsFromEmployeesAndReports(
@@ -201,9 +184,7 @@ export default function Monitoring() {
 
   const { data: reports, isLoading: isLoadingReports } = useListReports(params);
 
-  const employeeList: EmployeeOption[] = Array.isArray(employees)
-    ? (employees as EmployeeOption[]).filter((employee) => !NON_REPORTING_ROLES.has(employee.role?.toLowerCase?.() ?? ""))
-    : [];
+  const employeeList: EmployeeOption[] = Array.isArray(employees) ? (employees as EmployeeOption[]) : [];
   const reportList: ReportSummaryLike[] = Array.isArray(reports) ? (reports as ReportSummaryLike[]) : [];
 
   const reportRows = useMemo(() => {
@@ -255,21 +236,24 @@ export default function Monitoring() {
         status: "Belum Mengisi",
         reminderSent: false,
         reminderSentAt: null,
+        reminderStatusText: null,
       }));
   }, [reminderDate, reportRows]);
 
   const missingList = useMemo(() => {
     const apiList = Array.isArray(missingUsersFromApi) ? missingUsersFromApi : [];
-    const apiByUserId = new Map(apiList.map((item) => [item.id, item]));
+    const apiReminderByUserId = new Map(apiList.map((item) => [item.id, item]));
 
-    if (fallbackMissingList.length > 0) {
-      return fallbackMissingList.map((item) => {
-        const apiItem = apiByUserId.get(item.id);
-        return apiItem ? { ...item, ...apiItem } : item;
-      });
-    }
+    return fallbackMissingList.map((item) => {
+      const apiItem = apiReminderByUserId.get(item.id);
 
-    return apiList;
+      return {
+        ...item,
+        reminderSent: apiItem?.reminderSent ?? item.reminderSent,
+        reminderSentAt: apiItem?.reminderSentAt ?? item.reminderSentAt,
+        reminderStatusText: apiItem?.reminderStatusText ?? item.reminderStatusText,
+      };
+    });
   }, [fallbackMissingList, missingUsersFromApi]);
 
   const missingSummaryText = buildMissingSummary(missingList, employeeList.length, reminderDate);
@@ -344,7 +328,7 @@ export default function Monitoring() {
                 disabled={sendReminder.isPending || unsentReminderCount === 0}
               >
                 {sendReminder.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BellRing className="w-4 h-4 mr-2" />}
-                Kirim Reminder
+                {unsentReminderCount === 0 && missingList.length > 0 ? "Reminder Sudah Dikirim" : "Kirim Reminder"}
               </Button>
             )}
             <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
@@ -422,7 +406,7 @@ export default function Monitoring() {
                             <td className="px-4 py-3">
                               {item.reminderSent ? (
                                 <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
-                                  Sudah dikirim{formatJakartaTime(item.reminderSentAt) ? ` pada pukul ${formatJakartaTime(item.reminderSentAt)}` : ""}
+                                  {item.reminderStatusText ?? (item.reminderSentAt ? `Sudah dikirim pada pukul ${formatJakartaTime(item.reminderSentAt)}` : "Sudah dikirim")}
                                 </Badge>
                               ) : (
                                 <Badge variant="outline">Belum Dikirim</Badge>

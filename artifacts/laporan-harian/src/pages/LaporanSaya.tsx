@@ -143,6 +143,13 @@ const showSubmitActions = canEditReportFields && !isLocked;
 
   const isReportIncomplete = !hasRequiredTask || !hasRequiredTomorrowPlan;
 
+  const refreshDashboardAndMonitoring = () => {
+    queryClient.invalidateQueries({ queryKey: ["dashboard-summary", today] });
+    queryClient.invalidateQueries({ queryKey: ["dept-productivity", today] });
+    queryClient.invalidateQueries({ queryKey: ["missing-daily-reports", today] });
+    queryClient.invalidateQueries();
+  };
+
   useEffect(() => {
     if (report) {
       setValue("obstacles", report.obstacles ?? "");
@@ -279,6 +286,7 @@ useEffect(() => {
     try {
       await saveAll(data);
       queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
+      refreshDashboardAndMonitoring();
       toast({ title: "Tersimpan", description: "Laporan berhasil disimpan sebagai draf" });
     } catch {
       toast({ title: "Gagal", description: "Gagal menyimpan laporan", variant: "destructive" });
@@ -299,6 +307,7 @@ useEffect(() => {
       const reportId = await saveAll(formData);
       await submitReport.mutateAsync({ id: reportId });
       queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
+      refreshDashboardAndMonitoring();
       toast({ title: "Laporan Terkirim!", description: "Laporan harian Anda berhasil dikirim ke HR" });
     } catch {
       toast({ title: "Gagal", description: "Gagal mengirim laporan", variant: "destructive" });

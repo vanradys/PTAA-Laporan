@@ -92,11 +92,11 @@ export default function Dashboard() {
           <>
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <StatCard
-                title="Total Karyawan"
+                title="Total Karyawan yang Harus Submit Laporan"
                 value={summary.totalEmployees}
                 icon={Users}
                 iconClass="bg-blue-50 text-blue-600"
-                description="Data aktif"
+                description="Wajib submit laporan"
               />
               <StatCard
                 title="Sudah Submit"
