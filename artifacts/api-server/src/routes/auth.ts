@@ -63,7 +63,7 @@ router.post("/seed-ptaa-users", async (req, res) => {
       },
       {
         name: "MKT Specialist",
-        email: "mkspec@adiyasa.com",
+        email: "mkpec@adiyasa.com",
         password: "MKSPTAA",
         role: "karyawan",
         department: "Marketing",
