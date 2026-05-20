@@ -7,6 +7,8 @@ import {
   and,
   eq,
   inArray,
+  notInArray,
+  REMOVED_USER_EMAILS,
   sql,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
@@ -16,7 +18,7 @@ import { getJakartaDateString } from "../services/dailyReportReminder";
 const router: ExpressRouter = Router();
 
 function activeUserCondition() {
-  return sql`${usersTable.isActive} is distinct from false`;
+  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS]));
 }
 
 function normalizeDashboardDate(value: unknown): string {

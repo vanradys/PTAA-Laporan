@@ -5,8 +5,10 @@ import {
   departmentsTable,
   notificationsTable,
   usersTable,
+  REMOVED_USER_EMAILS,
   and,
   eq,
+  notInArray,
   sql,
   type SQL,
 } from "@workspace/db";
@@ -33,6 +35,7 @@ export interface MissingDailyReportUser {
   reportDate: string;
   status: "Belum Mengisi";
   reminderSent: boolean;
+  reminderSentAt: string | null;
 }
 
 interface ReminderScope {
@@ -121,7 +124,7 @@ export function getReminderScope(actor: ReminderActor): ReminderScope {
 }
 
 function activeUserCondition(): SQL {
-  return sql`${usersTable.isActive} is distinct from false`;
+  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS])) as SQL;
 }
 
 function submittedReportCondition(reportDate: string): SQL {
@@ -167,7 +170,10 @@ export async function getMissingDailyReportUsers(
     .where(submittedReportCondition(reportDate));
 
   const reminderLogs = await db
-    .select({ userId: dailyReportReminderLogsTable.userId })
+    .select({
+      userId: dailyReportReminderLogsTable.userId,
+      sentAt: dailyReportReminderLogsTable.sentAt,
+    })
     .from(dailyReportReminderLogsTable)
     .where(
       and(
@@ -181,7 +187,9 @@ export async function getMissingDailyReportUsers(
       .filter((report) => activeUserIds.has(report.userId))
       .map((report) => report.userId),
   );
-  const remindedUserIds = new Set(reminderLogs.map((log) => log.userId));
+  const reminderLogByUserId = new Map(
+    reminderLogs.map((log) => [log.userId, log.sentAt instanceof Date ? log.sentAt.toISOString() : String(log.sentAt)]),
+  );
 
   return activeUsers
     .filter((user) => !submittedUserIds.has(user.id))
@@ -194,7 +202,8 @@ export async function getMissingDailyReportUsers(
       departmentName: user.departmentName ?? null,
       reportDate,
       status: "Belum Mengisi",
-      reminderSent: remindedUserIds.has(user.id),
+      reminderSent: reminderLogByUserId.has(user.id),
+      reminderSentAt: reminderLogByUserId.get(user.id) ?? null,
     }));
 }
 
@@ -242,7 +251,7 @@ export async function sendDailyReportReminders(options: {
     });
 
     if (didSend) {
-      sentUsers.push(user);
+      sentUsers.push({ ...user, reminderSent: true, reminderSentAt: new Date().toISOString() });
 
       const pushResult = await sendPushNotificationToUser({
         userId: user.id,

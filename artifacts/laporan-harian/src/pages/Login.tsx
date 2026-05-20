@@ -97,16 +97,6 @@ export default function Login() {
                 )}
               </Button>
             </form>
-
-            <div className="mt-5 p-3 rounded-lg bg-muted/50 border border-border">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Akun Demo:</p>
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <p><span className="font-medium text-foreground">HR:</span> ahmad@perusahaan.com</p>
-                <p><span className="font-medium text-foreground">Karyawan:</span> budi@perusahaan.com</p>
-                <p><span className="font-medium text-foreground">Direktur:</span> eko@perusahaan.com</p>
-                <p className="text-muted-foreground/70 mt-1">Password: password123 </p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>

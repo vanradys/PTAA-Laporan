@@ -11,6 +11,7 @@ export interface MissingDailyReportUser {
   reportDate: string;
   status: "Belum Mengisi";
   reminderSent: boolean;
+  reminderSentAt: string | null;
 }
 
 export interface SendReminderInput {

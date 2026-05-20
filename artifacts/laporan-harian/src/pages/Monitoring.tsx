@@ -90,6 +90,20 @@ function getDayName(date: string) {
   return DAY_NAMES[dateObject.getDay()] ?? "-";
 }
 
+function formatJakartaTime(value: string | null | undefined) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date).replace(":", ".");
+}
+
 function buildMissingSummary(users: MissingDailyReportUser[], totalEmployees: number, reportDate: string) {
   const formattedDate = formatIndonesianDate(reportDate);
 
@@ -237,18 +251,19 @@ export default function Monitoring() {
         reportDate: reminderDate,
         status: "Belum Mengisi",
         reminderSent: false,
+        reminderSentAt: null,
       }));
   }, [reminderDate, reportRows]);
 
   const missingList = useMemo(() => {
     const apiList = Array.isArray(missingUsersFromApi) ? missingUsersFromApi : [];
-    const apiReminderByUserId = new Map(apiList.map((item) => [item.id, item.reminderSent]));
 
-    return fallbackMissingList.map((item) => ({
-      ...item,
-      reminderSent: apiReminderByUserId.get(item.id) ?? item.reminderSent,
-    }));
-  }, [fallbackMissingList, missingUsersFromApi]);
+    if (!isLoadingMissing) {
+      return apiList;
+    }
+
+    return fallbackMissingList;
+  }, [fallbackMissingList, isLoadingMissing, missingUsersFromApi]);
 
   const missingSummaryText = buildMissingSummary(missingList, employeeList.length, reminderDate);
   const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;
@@ -399,7 +414,9 @@ export default function Monitoring() {
                             </td>
                             <td className="px-4 py-3">
                               {item.reminderSent ? (
-                                <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">Reminder Terkirim</Badge>
+                                <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
+                                  Sudah dikirim{formatJakartaTime(item.reminderSentAt) ? ` pada pukul ${formatJakartaTime(item.reminderSentAt)}` : ""}
+                                </Badge>
                               ) : (
                                 <Badge variant="outline">Belum Dikirim</Badge>
                               )}

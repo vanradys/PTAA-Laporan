@@ -11,7 +11,9 @@ import {
   inArray,
   lte,
   notificationsTable,
+  notInArray,
   or,
+  REMOVED_USER_EMAILS,
   reportCommentsTable,
   sql,
   usersTable,
@@ -44,7 +46,7 @@ function getJakartaDateString(date = new Date()): string {
 }
 
 function activeUserCondition(): SQL {
-  return sql`${usersTable.isActive} is distinct from false`;
+  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS])) as SQL;
 }
 
 function getDayName(date: string): string {

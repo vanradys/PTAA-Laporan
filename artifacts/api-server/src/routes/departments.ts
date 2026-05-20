@@ -1,11 +1,11 @@
-import { db, departmentsTable, usersTable, eq, sql } from "@workspace/db";
+import { and, db, departmentsTable, eq, notInArray, REMOVED_USER_EMAILS, sql, usersTable } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
 
 function activeUserCondition() {
-  return sql`${usersTable.isActive} is distinct from false`;
+  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS]));
 }
 
 router.get("/departments", async (req, res) => {

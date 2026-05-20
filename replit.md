@@ -51,9 +51,7 @@ Aplikasi web HR untuk membuat, mengirim, dan memonitor laporan harian karyawan d
 
 ## Demo Accounts
 
-- HR: `ahmad@perusahaan.com` / `password123`
-- Karyawan: `budi@perusahaan.com` / `password123`
-- Direktur: `eko@perusahaan.com` / `password123`
+- Login produksi: gunakan akun yang dibuat di database perusahaan.
 
 ## User preferences
 

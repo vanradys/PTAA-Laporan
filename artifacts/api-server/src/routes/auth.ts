@@ -1,8 +1,19 @@
-import { db, usersTable, departmentsTable, sessionsTable, eq } from "@workspace/db";
+import { and, db, departmentsTable, eq, inArray, notInArray, REMOVED_USER_EMAILS, sessionsTable, sql, usersTable } from "@workspace/db";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
+async function deactivateRemovedUsers() {
+  await db
+    .update(usersTable)
+    .set({ isActive: false, updatedAt: new Date() })
+    .where(inArray(usersTable.email, [...REMOVED_USER_EMAILS]));
+}
+
+function activeUserCondition() {
+  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS]));
+}
+
 
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
@@ -27,7 +38,7 @@ async function getUserFromToken(token: string) {
     departmentName: departmentsTable.name,
   }).from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(eq(usersTable.id, session.userId))
+    .where(and(eq(usersTable.id, session.userId), activeUserCondition()))
     .limit(1);
   return users[0] ?? null;
 }
@@ -40,6 +51,8 @@ router.post("/seed-ptaa-users", async (req, res) => {
       res.status(403).json({ error: "Akses seed tidak diizinkan" });
       return;
     }
+
+    await deactivateRemovedUsers();
 
     const ptaaUsers = [
       {
@@ -114,14 +127,6 @@ router.post("/seed-ptaa-users", async (req, res) => {
         department: "Engineering",
         departmentCode: "ENG",
       },
-      {
-        name: "Engineering 3 PTAA",
-        email: "engineering3@adiyasa.com",
-        password: "ENG3PTAA",
-        role: "karyawan",
-        department: "Engineering",
-        departmentCode: "ENG",
-      },
     ];
 
     for (const item of ptaaUsers) {
@@ -168,6 +173,7 @@ router.post("/seed-ptaa-users", async (req, res) => {
             password: hashedPassword,
             role: item.role,
             departmentId,
+            isActive: true,
           })
           .where(eq(usersTable.email, item.email));
       } else {
@@ -177,6 +183,7 @@ router.post("/seed-ptaa-users", async (req, res) => {
           password: hashedPassword,
           role: item.role,
           departmentId,
+          isActive: true,
         });
       }
     }
@@ -191,12 +198,38 @@ router.post("/seed-ptaa-users", async (req, res) => {
         departmentCode: item.departmentCode,
         role: item.role,
       })),
+      removedUsersDeactivated: REMOVED_USER_EMAILS,
     });
   } catch (error) {
     console.error("Seed PTAA users error:", error);
 
     res.status(500).json({
       error: "Gagal membuat user PTAA",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+router.post("/cleanup-removed-users", async (req, res) => {
+  try {
+    const seedSecret = String(req.headers["x-seed-secret"] ?? "");
+
+    if (!process.env.SEED_SECRET || seedSecret !== process.env.SEED_SECRET) {
+      res.status(403).json({ error: "Akses cleanup tidak diizinkan" });
+      return;
+    }
+
+    await deactivateRemovedUsers();
+
+    res.json({
+      success: true,
+      message: "Akun demo/lama berhasil dinonaktifkan",
+      deactivatedEmails: REMOVED_USER_EMAILS,
+    });
+  } catch (error) {
+    console.error("Cleanup removed users error:", error);
+    res.status(500).json({
+      error: "Gagal menonaktifkan akun demo/lama",
       detail: error instanceof Error ? error.message : String(error),
     });
   }
@@ -227,7 +260,7 @@ router.get("/me", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(eq(usersTable.id, session.userId))
+    .where(and(eq(usersTable.id, session.userId), activeUserCondition()))
     .limit(1);
 
   if (!user[0]) {
@@ -275,7 +308,7 @@ router.post("/login", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(eq(usersTable.email, email))
+    .where(and(eq(usersTable.email, email), activeUserCondition()))
     .limit(1);
 
   const user = users[0];
