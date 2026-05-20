@@ -35,196 +35,239 @@ async function getUserFromToken(token: string) {
   return user;
 }
 
+const defaultDepartments = [
+  { code: "DIR", name: "Director" },
+  { code: "HR", name: "Human Resources" },
+  { code: "GA", name: "General Affairs" },
+  { code: "ACC", name: "Accounting" },
+  { code: "FIN", name: "Finance" },
+  { code: "AAF", name: "Finance & Accounting" },
+  { code: "PUR", name: "Purchasing" },
+  { code: "MKT", name: "Marketing" },
+  { code: "MKS", name: "Marketing Support" },
+  { code: "ENG", name: "Engineering" },
+  { code: "PRD", name: "Production" },
+  { code: "WRH", name: "Warehouse" },
+  { code: "LOG", name: "Logistic" },
+  { code: "QA", name: "Quality Assurance" },
+  { code: "QC", name: "Quality Control" },
+  { code: "HDP", name: "Head Production" },
+  { code: "FDS", name: "Field Service" },
+  { code: "SPV", name: "Supervisor" },
+];
+
+const ptaaUsers = [
+  {
+    name: "Admin HR PTAA",
+    email: "admin@adiyasa.com",
+    password: "AdiyasaFamily",
+    role: "admin",
+    departmentCode: "HR",
+  },
+  {
+    name: "HR PTAA",
+    email: "hr@adiyasa.com",
+    password: "HRPTAA",
+    role: "hr",
+    departmentCode: "HR",
+  },
+  {
+    name: "Director PTAA",
+    email: "director@adiyasa.com",
+    password: "DIRPTAA",
+    role: "direktur",
+    departmentCode: "DIR",
+  },
+  {
+    name: "Marketing PTAA",
+    email: "marketing@adiyasa.com",
+    password: "MKTPTAA",
+    role: "karyawan",
+    departmentCode: "MKT",
+  },
+  {
+    name: "Marketing Specialist",
+    email: "mkt.specialist@adiyasa.com",
+    password: "MKTPTAA",
+    role: "karyawan",
+    departmentCode: "MKT",
+  },
+  {
+    name: "Finance & Accounting PTAA",
+    email: "finance@adiyasa.com",
+    password: "ACCPTAA",
+    role: "karyawan",
+    departmentCode: "AAF",
+  },
+  {
+    name: "General Affairs PTAA",
+    email: "ga@adiyasa.com",
+    password: "GAPTAA",
+    role: "karyawan",
+    departmentCode: "GA",
+  },
+  {
+    name: "Purchasing PTAA",
+    email: "purchasing@adiyasa.com",
+    password: "PURPTAA",
+    role: "karyawan",
+    departmentCode: "PUR",
+  },
+  {
+    name: "Engineering 1 PTAA",
+    email: "engineering1@adiyasa.com",
+    password: "ENG1PTAA",
+    role: "karyawan",
+    departmentCode: "ENG",
+  },
+  {
+    name: "Engineering 2 PTAA",
+    email: "engineering2@adiyasa.com",
+    password: "ENG2PTAA",
+    role: "karyawan",
+    departmentCode: "ENG",
+  },
+];
+
+const inactiveEmails = [
+  "admin@ptaa.com",
+  "ahmad@perusahaan.com",
+  "budi@perusahaan.com",
+  "eko@perusahaan.com",
+  "engineering3@adiyasa.com",
+  "mkspec@adiyasa.com",
+];
+
+function getSeedSecret(): string {
+  return process.env.SEED_SECRET || process.env.SEED_PTAA_SECRET || "ptaa-seed-2026";
+}
+
+function getSchemaSetupHelp(error: unknown): string | null {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (
+    message.includes('relation "departments" does not exist') ||
+    message.includes('relation "users" does not exist') ||
+    message.includes("Failed query: select") ||
+    message.includes("Failed query: insert")
+  ) {
+    return "Tabel database belum siap. Jalankan: cd C:\\Laporan Harian PTAA lalu pnpm --filter @workspace/db push-force, kemudian restart backend dan seed ulang.";
+  }
+
+  return null;
+}
+
+async function seedDepartments() {
+  for (const department of defaultDepartments) {
+    await db
+      .insert(departmentsTable)
+      .values(department)
+      .onConflictDoUpdate({
+        target: departmentsTable.code,
+        set: {
+          name: department.name,
+        },
+      });
+  }
+}
+
+async function getDepartmentIdByCode(code: string): Promise<number> {
+  const result = await db
+    .select({ id: departmentsTable.id })
+    .from(departmentsTable)
+    .where(eq(departmentsTable.code, code))
+    .limit(1);
+
+  const departmentId = result[0]?.id;
+
+  if (!departmentId) {
+    throw new Error(`Departemen dengan kode ${code} tidak ditemukan setelah proses seed departments.`);
+  }
+
+  return departmentId;
+}
+
+async function seedUsers() {
+  const seededUsers = [];
+
+  for (const user of ptaaUsers) {
+    const departmentId = await getDepartmentIdByCode(user.departmentCode);
+    const hashedPassword = hashPassword(user.password);
+
+    await db
+      .insert(usersTable)
+      .values({
+        name: user.name,
+        email: user.email,
+        password: hashedPassword,
+        role: user.role,
+        departmentId,
+        isActive: true,
+      })
+      .onConflictDoUpdate({
+        target: usersTable.email,
+        set: {
+          name: user.name,
+          password: hashedPassword,
+          role: user.role,
+          departmentId,
+          isActive: true,
+        },
+      });
+
+    const department = defaultDepartments.find((item) => item.code === user.departmentCode);
+
+    seededUsers.push({
+      name: user.name,
+      email: user.email,
+      password: user.password,
+      role: user.role,
+      department: department?.name ?? user.departmentCode,
+      departmentCode: user.departmentCode,
+    });
+  }
+
+  return seededUsers;
+}
+
+async function deactivateOldDummyUsers() {
+  for (const email of inactiveEmails) {
+    await db
+      .update(usersTable)
+      .set({ isActive: false })
+      .where(eq(usersTable.email, email));
+  }
+}
+
 router.post("/seed-ptaa-users", async (req, res) => {
   try {
     const seedSecret = String(req.headers["x-seed-secret"] ?? "");
+    const allowedSeedSecret = getSeedSecret();
 
-    const allowedSeedSecret =
-  process.env.SEED_SECRET ||
-  process.env.SEED_PTAA_SECRET ||
-  "ptaa-seed-2026";
-
-    if (!process.env.SEED_SECRET || seedSecret !== process.env.SEED_SECRET) {
+    if (seedSecret !== allowedSeedSecret) {
       res.status(403).json({ error: "Akses seed tidak diizinkan" });
       return;
     }
 
-    const ptaaUsers = [
-      {
-        name: "Admin HR PTAA",
-        email: "admin@adiyasa.com",
-        password: "AdiyasaFamily",
-        role: "admin",
-        department: "HR",
-        departmentCode: "HR",
-      },
-      {
-        name: "Marketing PTAA",
-        email: "marketing@adiyasa.com",
-        password: "MKTPTAA",
-        role: "karyawan",
-        department: "Marketing",
-        departmentCode: "MKT",
-      },
-      {
-        name: "MKT Specialist",
-        email: "mkt.specialist@adiyasa.com",
-        password: "MKTPTAA",
-        role: "karyawan",
-        department: "Marketing",
-        departmentCode: "MKT",
-      },
-      {
-        name: "Finance & Accounting PTAA",
-        email: "finance@adiyasa.com",
-        password: "ACCPTAA",
-        role: "karyawan",
-        department: "Finance & Accounting",
-        departmentCode: "AAF",
-      },
-      {
-        name: "HR PTAA",
-        email: "hr@adiyasa.com",
-        password: "HRPTAA",
-        role: "hr",
-        department: "HR",
-        departmentCode: "HR",
-      },
-      {
-        name: "Director PTAA",
-        email: "director@adiyasa.com",
-        password: "DIRPTAA",
-        role: "direktur",
-        department: "Management",
-        departmentCode: "DIR",
-      },
-      {
-        name: "GA PTAA",
-        email: "ga@adiyasa.com",
-        password: "GAPTAA",
-        role: "karyawan",
-        department: "General Affairs",
-        departmentCode: "GA",
-      },
-      {
-        name: "Purchasing PTAA",
-        email: "purchasing@adiyasa.com",
-        password: "PURPTAA",
-        role: "karyawan",
-        department: "Purchasing",
-        departmentCode: "PUR",
-      },
-      {
-        name: "Engineering 1 PTAA",
-        email: "engineering1@adiyasa.com",
-        password: "ENG1PTAA",
-        role: "karyawan",
-        department: "Engineering",
-        departmentCode: "ENG",
-      },
-      {
-        name: "Engineering 2 PTAA",
-        email: "engineering2@adiyasa.com",
-        password: "ENG2PTAA",
-        role: "karyawan",
-        department: "Engineering",
-        departmentCode: "ENG",
-      },
-    ];
-
-    for (const item of ptaaUsers) {
-      let existingDepartment = await db
-        .select({ id: departmentsTable.id })
-        .from(departmentsTable)
-        .where(eq(departmentsTable.code, item.departmentCode))
-        .limit(1);
-
-      let departmentId = existingDepartment[0]?.id;
-
-      if (!departmentId) {
-        await db.insert(departmentsTable).values({
-          name: item.department,
-          code: item.departmentCode,
-        });
-
-        existingDepartment = await db
-          .select({ id: departmentsTable.id })
-          .from(departmentsTable)
-          .where(eq(departmentsTable.code, item.departmentCode))
-          .limit(1);
-
-        departmentId = existingDepartment[0]?.id;
-      }
-
-      if (!departmentId) {
-        throw new Error(`Departemen gagal dibuat: ${item.department}`);
-      }
-
-      const existingUser = await db
-        .select({ id: usersTable.id })
-        .from(usersTable)
-        .where(eq(usersTable.email, item.email))
-        .limit(1);
-
-      const hashedPassword = hashPassword(item.password);
-
-      if (existingUser[0]) {
-        await db
-          .update(usersTable)
-          .set({
-            name: item.name,
-            password: hashedPassword,
-            role: item.role,
-            departmentId,
-            isActive: true,
-          })
-          .where(eq(usersTable.email, item.email));
-      } else {
-        await db.insert(usersTable).values({
-          name: item.name,
-          email: item.email,
-          password: hashedPassword,
-          role: item.role,
-          departmentId,
-          isActive: true,
-        });
-      }
-    }
-
-
-    const inactiveEmails = [
-      "admin@ptaa.com",
-      "ahmad@perusahaan.com",
-      "budi@perusahaan.com",
-      "eko@perusahaan.com",
-      "engineering3@adiyasa.com",
-      "mkspec@adiyasa.com",
-    ];
-
-    for (const inactiveEmail of inactiveEmails) {
-      await db
-        .update(usersTable)
-        .set({ isActive: false })
-        .where(eq(usersTable.email, inactiveEmail));
-    }
+    await seedDepartments();
+    const seededUsers = await seedUsers();
+    await deactivateOldDummyUsers();
 
     res.json({
       success: true,
-      message: "User PTAA berhasil dibuat / diupdate",
-      users: ptaaUsers.map((item) => ({
-        email: item.email,
-        password: item.password,
-        department: item.department,
-        departmentCode: item.departmentCode,
-        role: item.role,
-      })),
+      message: "User dan departemen PTAA berhasil dibuat / diupdate",
+      users: seededUsers,
+      inactiveEmails,
     });
   } catch (error) {
     console.error("Seed PTAA users error:", error);
 
+    const setupHelp = getSchemaSetupHelp(error);
+
     res.status(500).json({
       error: "Gagal membuat user PTAA",
       detail: error instanceof Error ? error.message : String(error),
+      setupHelp,
     });
   }
 });
@@ -322,7 +365,7 @@ router.post("/login", async (req, res) => {
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     expires: expiresAt,
-  }); 
+  });
 
   const initials = user.name
     .split(" ")
