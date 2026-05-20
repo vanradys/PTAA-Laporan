@@ -8,6 +8,8 @@ import {
   and,
   eq,
   sql,
+  notInArray,
+  REMOVED_USER_EMAILS,
   type SQL,
 } from "@workspace/db";
 import { sendPushNotificationToUser } from "./pushNotification";
@@ -120,7 +122,11 @@ export function activeUserCondition(): SQL {
 }
 
 export function reportingUserCondition(): SQL {
-  return sql`${usersTable.isActive} is distinct from false and lower(${usersTable.role}) not in ('admin', 'hr', 'direktur', 'director')`;
+  return and(
+    sql`${usersTable.isActive} is distinct from false`,
+    sql`lower(${usersTable.role}) not in ('admin', 'hr', 'direktur', 'director')`,
+    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
+  ) as SQL;
 }
 
 export function submittedReportCondition(reportDate: string): SQL {

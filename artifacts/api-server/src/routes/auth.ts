@@ -1,4 +1,4 @@
-import { db, usersTable, departmentsTable, sessionsTable, eq } from "@workspace/db";
+import { db, usersTable, departmentsTable, sessionsTable, eq, REMOVED_USER_EMAILS } from "@workspace/db";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 
@@ -187,19 +187,7 @@ router.post("/seed-ptaa-users", async (req, res) => {
     }
 
 
-    await db
-      .update(usersTable)
-      .set({ isActive: false })
-      .where(eq(usersTable.email, "admin@ptaa.com"));
-
-    const inactiveEmails = [
-      "ahmad@perusahaan.com",
-      "budi@perusahaan.com",
-      "eko@perusahaan.com",
-      "engineering3@adiyasa.com",
-    ];
-
-    for (const inactiveEmail of inactiveEmails) {
+    for (const inactiveEmail of REMOVED_USER_EMAILS) {
       await db
         .update(usersTable)
         .set({ isActive: false })

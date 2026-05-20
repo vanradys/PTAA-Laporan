@@ -300,15 +300,33 @@ export default function Monitoring() {
   };
 
   const handleSendReminder = async () => {
-    const result: SendReminderResult = await sendReminder.mutateAsync({ date: reminderDate });
+    try {
+      const result: SendReminderResult = await sendReminder.mutateAsync({ date: reminderDate });
 
-    queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey(reminderDate) });
-    queryClient.invalidateQueries();
+      queryClient.setQueryData<MissingDailyReportUser[]>(missingDailyReportsQueryKey(reminderDate), (currentData) => {
+        const currentList = Array.isArray(currentData) ? currentData : missingList;
+        const sentByUserId = new Map(result.sentUsers.map((sentUser) => [sentUser.id, sentUser]));
 
-    toast({
-      title: "Reminder diproses",
-      description: `${result.message} Notifikasi aplikasi dikirim ke akun masing-masing karyawan.`,
-    });
+        return currentList.map((item) => {
+          const sentUser = sentByUserId.get(item.id);
+          return sentUser ? { ...item, ...sentUser } : item;
+        });
+      });
+
+      await queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey(reminderDate) });
+      queryClient.invalidateQueries();
+
+      toast({
+        title: result.sentCount > 0 ? "Reminder berhasil dikirim" : "Reminder sudah pernah dikirim",
+        description: `${result.message} Notifikasi aplikasi tersimpan di akun karyawan masing-masing.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Gagal mengirim reminder",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan saat mengirim reminder.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

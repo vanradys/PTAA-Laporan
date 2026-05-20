@@ -2,13 +2,32 @@ export type ApiRequestOptions = RequestInit & {
   responseType?: "json" | "text" | "blob";
 };
 
+function applyApiBaseUrl(input: RequestInfo | URL): RequestInfo | URL {
+  const baseUrl = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
+
+  if (!baseUrl) {
+    return input;
+  }
+
+  if (typeof input === "string") {
+    return input.startsWith("/") ? `${baseUrl}${input}` : input;
+  }
+
+  if (input instanceof URL) {
+    const url = input.toString();
+    return url.startsWith("/") ? new URL(`${baseUrl}${url}`) : input;
+  }
+
+  return input;
+}
+
 export async function apiRequest<T = unknown>(
   input: RequestInfo | URL,
   options: ApiRequestOptions = {},
 ): Promise<T> {
   const { responseType = "json", headers, ...init } = options;
 
-  const response = await fetch(input, {
+  const response = await fetch(applyApiBaseUrl(input), {
     ...init,
     headers,
     credentials: init.credentials ?? "include",
