@@ -88,8 +88,8 @@ export default function Monitoring() {
     });
   };
 
-  const handleSendReminder = async () => {
-    const result: SendReminderResult = await sendReminder.mutateAsync();
+ const handleSendReminder = async () => {
+  const result: SendReminderResult = await sendReminder.mutateAsync();
     queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey });
     toast({
       title: "Reminder diproses",

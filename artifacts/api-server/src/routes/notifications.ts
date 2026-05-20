@@ -1,5 +1,4 @@
-import { db, deviceTokensTable, notificationsTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, db, deviceTokensTable, eq, notificationsTable } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Request, type Response, type Router as ExpressRouter } from "express";
 

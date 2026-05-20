@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BellRing, X } from "lucide-react";
-import { getListNotificationsQueryKey } from "@workspace/api-client-react";
 import { apiRequest } from "@/lib/apiRequest";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -116,7 +115,7 @@ export default function NotificationPermissionPrompt() {
       const description = payload.notification?.body ?? payload.data?.message ?? "Ada notifikasi baru di aplikasi.";
 
       toast({ title, description });
-      queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+      queryClient.invalidateQueries();
     }).then((handler) => {
       if (!isMounted) {
         handler();

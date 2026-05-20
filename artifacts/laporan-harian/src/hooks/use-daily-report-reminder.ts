@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/apiRequest";
+import { customFetch } from "@workspace/api-client-react";
 
 export interface MissingDailyReportUser {
   id: number;
@@ -32,14 +32,14 @@ export function useMissingDailyReportsToday(enabled = true) {
   return useQuery({
     queryKey: missingDailyReportsQueryKey,
     enabled,
-    queryFn: () => apiRequest<MissingDailyReportUser[]>("/api/daily-reports/missing/today"),
+    queryFn: () => customFetch<MissingDailyReportUser[]>("/api/daily-reports/missing/today"),
   });
 }
 
 export function useSendMissingDailyReportReminder() {
   return useMutation<SendReminderResult, Error, void>({
     mutationFn: () =>
-      apiRequest<SendReminderResult>("/api/daily-reports/remind-missing", {
+      customFetch<SendReminderResult>("/api/daily-reports/remind-missing", {
         method: "POST",
       }),
   });

@@ -23,7 +23,7 @@ export async function apiRequest<T = unknown>(
         message = errorData.message;
       }
     } catch {
-      // Kalau response error bukan JSON, pakai pesan default HTTP.
+      // Response error bukan JSON, pakai pesan default HTTP.
     }
 
     throw new Error(message);
@@ -42,7 +42,6 @@ export async function apiRequest<T = unknown>(
   }
 
   const text = await response.text();
-
   if (!text) {
     return null as T;
   }

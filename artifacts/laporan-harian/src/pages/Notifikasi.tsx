@@ -2,7 +2,6 @@ import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListNotifications, useMarkNotificationRead, useMarkAllNotificationsRead,
-  getListNotificationsQueryKey
 } from "@workspace/api-client-react";
 import { Bell, CheckCheck, Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,9 +29,7 @@ const TYPE_COLORS: Record<string, string> = {
 export default function Notifikasi() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { data: notifications, isLoading } = useListNotifications({
-    query: { queryKey: getListNotificationsQueryKey() }
-  });
+  const { data: notifications, isLoading } = useListNotifications();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
 
@@ -41,12 +38,12 @@ export default function Notifikasi() {
 
   const handleMarkRead = async (id: number) => {
     await markRead.mutateAsync({ notifId: id });
-    queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+    queryClient.invalidateQueries();
   };
 
   const handleMarkAllRead = async () => {
     await markAllRead.mutateAsync(undefined as unknown as void);
-    queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+    queryClient.invalidateQueries();
     toast({ title: "Semua notifikasi ditandai sudah dibaca" });
   };
 

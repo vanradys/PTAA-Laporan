@@ -5,8 +5,11 @@ import {
   departmentsTable,
   notificationsTable,
   usersTable,
+  and,
+  eq,
+  notInArray,
+  type SQL,
 } from "@workspace/db";
-import { and, eq, notInArray, type SQL } from "drizzle-orm";
 import { sendPushNotificationToUser } from "./pushNotification";
 
 const REMINDER_TITLE = "Reminder Laporan Harian";

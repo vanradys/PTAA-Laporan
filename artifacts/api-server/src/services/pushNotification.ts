@@ -1,5 +1,4 @@
-import { db, deviceTokensTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, deviceTokensTable, eq } from "@workspace/db";
 import { sendFirebaseMessage } from "../lib/firebaseAdmin";
 import { logger } from "../lib/logger";
 

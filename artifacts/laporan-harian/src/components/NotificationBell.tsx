@@ -1,7 +1,6 @@
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  getListNotificationsQueryKey,
   useListNotifications,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -42,7 +41,7 @@ export default function NotificationBell() {
   const latestItems = items.slice(0, 5);
 
   const refreshNotifications = () => {
-    queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+    queryClient.invalidateQueries();
   };
 
   const handleMarkRead = async (notificationId: number) => {
