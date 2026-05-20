@@ -63,18 +63,18 @@ router.post("/seed-ptaa-users", async (req, res) => {
       },
       {
         name: "MKT Specialist",
-        email: "mkt.specialist@adiyasa.com",
-        password: "MKTSPTAA",
+        email: "mkspec@adiyasa.com",
+        password: "MKSPTAA",
         role: "karyawan",
         department: "Marketing",
         departmentCode: "MKT",
       },
       {
-        name: "Finance and Accounting PTAA",
+        name: "Finance & Accounting PTAA",
         email: "finance@adiyasa.com",
         password: "ACCPTAA",
         role: "karyawan",
-        department: "Finance and Accounting",
+        department: "Finance & Accounting",
         departmentCode: "AAF",
       },
       {
