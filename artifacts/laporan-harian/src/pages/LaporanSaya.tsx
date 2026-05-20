@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
+import { formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
 
 const TASK_STATUSES = [
   { value: "belum_mulai", label: "Belum Mulai", color: "bg-gray-100 text-gray-700 border-gray-200" },
@@ -87,10 +88,8 @@ export default function LaporanSaya() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const today = new Date().toISOString().split("T")[0];
-  const todayFormatted = new Date().toLocaleDateString("id-ID", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric"
-  });
+  const today = getJakartaDateString();
+  const todayFormatted = formatJakartaDateLong();
 
   const { data: todayReport, isLoading, isError } = useGetTodayReport({
     query: { queryKey: getGetTodayReportQueryKey(), retry: false }

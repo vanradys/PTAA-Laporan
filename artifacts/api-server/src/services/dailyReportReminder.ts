@@ -7,7 +7,7 @@ import {
   usersTable,
   and,
   eq,
-  notInArray,
+  sql,
   type SQL,
 } from "@workspace/db";
 import { sendPushNotificationToUser } from "./pushNotification";
@@ -15,7 +15,6 @@ import { sendPushNotificationToUser } from "./pushNotification";
 const REMINDER_TITLE = "Reminder Laporan Harian";
 const REMINDER_MESSAGE = "Anda belum mengisi laporan harian hari ini. Silakan isi laporan sebelum jam kerja selesai.";
 const REMINDER_TYPE = "daily_report";
-const EXCLUDED_DAILY_REPORT_ROLES = ["admin", "direktur", "director"];
 const FULL_ACCESS_ROLES = ["admin", "hr", "direktur", "director"];
 const DEPARTMENT_LEADER_ROLES = ["atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 
@@ -61,15 +60,18 @@ export function getJakartaDateString(date = new Date()): string {
 }
 
 export function canManageDailyReportReminder(actor: ReminderActor): boolean {
-  return FULL_ACCESS_ROLES.includes(actor.role) || DEPARTMENT_LEADER_ROLES.includes(actor.role);
+  const role = actor.role.toLowerCase();
+  return FULL_ACCESS_ROLES.includes(role) || DEPARTMENT_LEADER_ROLES.includes(role);
 }
 
 export function getReminderScope(actor: ReminderActor): ReminderScope {
-  if (FULL_ACCESS_ROLES.includes(actor.role)) {
+  const role = actor.role.toLowerCase();
+
+  if (FULL_ACCESS_ROLES.includes(role)) {
     return {};
   }
 
-  if (DEPARTMENT_LEADER_ROLES.includes(actor.role) && actor.departmentId) {
+  if (DEPARTMENT_LEADER_ROLES.includes(role) && actor.departmentId) {
     return { departmentId: actor.departmentId };
   }
 
@@ -78,8 +80,7 @@ export function getReminderScope(actor: ReminderActor): ReminderScope {
 
 export async function getMissingDailyReportUsers(scope: ReminderScope = {}, reportDate = getJakartaDateString()): Promise<MissingDailyReportUser[]> {
   const conditions: SQL[] = [
-    eq(usersTable.isActive, true),
-    notInArray(usersTable.role, EXCLUDED_DAILY_REPORT_ROLES),
+    sql`${usersTable.isActive} is distinct from false`,
   ];
 
   if (scope.departmentId !== undefined) {
@@ -103,7 +104,12 @@ export async function getMissingDailyReportUsers(scope: ReminderScope = {}, repo
   const reportsToday = await db
     .select({ userId: dailyReportsTable.userId })
     .from(dailyReportsTable)
-    .where(eq(dailyReportsTable.date, reportDate));
+    .where(
+      and(
+        eq(dailyReportsTable.date, reportDate),
+        sql`${dailyReportsTable.status} != 'draf'`,
+      ),
+    );
 
   const logsToday = await db
     .select({ userId: dailyReportReminderLogsTable.userId })

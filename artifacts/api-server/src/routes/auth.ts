@@ -1,5 +1,4 @@
-import { db, usersTable, departmentsTable, sessionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, departmentsTable, sessionsTable, eq } from "@workspace/db";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 

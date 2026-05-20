@@ -1,5 +1,4 @@
-import { db, reportCommentsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, reportCommentsTable, usersTable, eq } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
 

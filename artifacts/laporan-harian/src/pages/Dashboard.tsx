@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import Layout from "@/components/Layout";
+import { formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
 
 type StatCardProps = {
   title: string;
@@ -44,7 +45,7 @@ function StatCard({ title, value, icon: Icon, iconClass, description }: StatCard
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const today = new Date().toISOString().split("T")[0];
+  const today = getJakartaDateString();
 
   const { data: summary, isLoading: summaryLoading } = useGetDashboardSummary(
     { date: today },
@@ -56,12 +57,7 @@ export default function Dashboard() {
     { query: { queryKey: ["dept-productivity", today] } }
   );
 
-  const todayFormatted = new Date().toLocaleDateString("id-ID", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const todayFormatted = formatJakartaDateLong();
 
   const chartData = Array.isArray(deptData)
     ? deptData.map((dept: any) => ({

@@ -1,12 +1,42 @@
 import {
-  db, dailyReportsTable, dailyTasksTable,
-  usersTable, departmentsTable
+  and,
+  db,
+  dailyReportsTable,
+  dailyTasksTable,
+  departmentsTable,
+  eq,
+  inArray,
+  sql,
+  usersTable,
+  type SQL,
 } from "@workspace/db";
-import { eq, and, sql, inArray } from "drizzle-orm";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
+
+function getJakartaDateString(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    return date.toISOString().split("T")[0];
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function activeUserCondition(): SQL {
+  return sql`${usersTable.isActive} is distinct from false`;
+}
 
 router.get("/dashboard/summary", async (req, res) => {
   const token = req.cookies?.session_token;
@@ -14,25 +44,39 @@ router.get("/dashboard/summary", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
+  const date = (req.query.date as string) || getJakartaDateString();
 
-  const [totalResult] = await db.select({ count: sql<number>`count(*)::int` }).from(usersTable);
-  const totalEmployees = totalResult?.count ?? 0;
+  const activeUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(activeUserCondition());
 
-  const submittedReports = await db.select({ userId: dailyReportsTable.userId })
-    .from(dailyReportsTable)
-    .where(and(eq(dailyReportsTable.date, date), sql`${dailyReportsTable.status} != 'draf'`));
-  const submittedToday = submittedReports.length;
-  const notSubmittedToday = Math.max(0, totalEmployees - submittedToday);
+  const activeUserIds = activeUsers.map((item) => item.id);
+  const totalEmployees = activeUserIds.length;
 
-  const reportIds = submittedReports.length > 0
-    ? await db.select({ id: dailyReportsTable.id }).from(dailyReportsTable).where(eq(dailyReportsTable.date, date))
+  const submittedReports = activeUserIds.length > 0
+    ? await db
+      .select({ id: dailyReportsTable.id, userId: dailyReportsTable.userId })
+      .from(dailyReportsTable)
+      .where(
+        and(
+          eq(dailyReportsTable.date, date),
+          sql`${dailyReportsTable.status} != 'draf'`,
+          inArray(dailyReportsTable.userId, activeUserIds),
+        ),
+      )
     : [];
 
-  let totalTasksToday = 0, tasksCompleted = 0, tasksPending = 0;
+  const submittedUserIds = new Set(submittedReports.map((report) => report.userId));
+  const submittedToday = submittedUserIds.size;
+  const notSubmittedToday = Math.max(0, totalEmployees - submittedToday);
 
-  if (reportIds.length > 0) {
-    const ids = reportIds.map(r => r.id);
+  let totalTasksToday = 0;
+  let tasksCompleted = 0;
+  let tasksPending = 0;
+
+  if (submittedReports.length > 0) {
+    const ids = submittedReports.map((report) => report.id);
     const taskStats = await db
       .select({
         status: dailyTasksTable.status,
@@ -70,31 +114,38 @@ router.get("/dashboard/department-productivity", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
+  const date = (req.query.date as string) || getJakartaDateString();
 
-  const departments = await db.select().from(departmentsTable);
+  const departments = await db.select().from(departmentsTable).orderBy(departmentsTable.name);
 
   const result = await Promise.all(departments.map(async (dept) => {
-    const [empCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
+    const departmentUsers = await db
+      .select({ id: usersTable.id })
       .from(usersTable)
-      .where(eq(usersTable.departmentId, dept.id));
+      .where(and(activeUserCondition(), eq(usersTable.departmentId, dept.id)));
 
-    const submittedReports = await db
-      .select({ id: dailyReportsTable.id })
-      .from(dailyReportsTable)
-      .where(and(
-        eq(dailyReportsTable.departmentId, dept.id),
-        eq(dailyReportsTable.date, date),
-        sql`${dailyReportsTable.status} != 'draf'`
-      ));
+    const employeeCount = departmentUsers.length;
+    const userIds = departmentUsers.map((item) => item.id);
 
-    const submittedCount = submittedReports.length;
-    const employeeCount = empCount?.count ?? 0;
+    const submittedReports = userIds.length > 0
+      ? await db
+        .select({ id: dailyReportsTable.id, userId: dailyReportsTable.userId })
+        .from(dailyReportsTable)
+        .where(
+          and(
+            eq(dailyReportsTable.departmentId, dept.id),
+            eq(dailyReportsTable.date, date),
+            sql`${dailyReportsTable.status} != 'draf'`,
+            inArray(dailyReportsTable.userId, userIds),
+          ),
+        )
+      : [];
+
+    const submittedCount = new Set(submittedReports.map((report) => report.userId)).size;
 
     let avgProgress = 0;
     if (submittedReports.length > 0) {
-      const ids = submittedReports.map(r => r.id);
+      const ids = submittedReports.map((report) => report.id);
       const [progResult] = await db
         .select({ avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int` })
         .from(dailyTasksTable)

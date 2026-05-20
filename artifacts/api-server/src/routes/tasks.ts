@@ -1,6 +1,5 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { db, dailyTasksTable, dailyReportsTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { db, dailyTasksTable, dailyReportsTable, eq, sql } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 
 const router: ExpressRouter = Router();
@@ -8,7 +7,18 @@ const router: ExpressRouter = Router();
 const MAX_TASK_ACTIONS = 2;
 
 function getTodayString(): string {
-  return new Date().toISOString().split("T")[0];
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return year && month && day ? `${year}-${month}-${day}` : new Date().toISOString().split("T")[0];
 }
 
 function getRemainingActions(editCount: number): number {

@@ -1,8 +1,17 @@
-import { db } from "@workspace/db";
 import {
-  projectsPoTable, usersTable, departmentsTable, notificationsTable
-} from "@workspace/db/schema";
-import { eq, and, gte, lte, like, or, sql } from "drizzle-orm";
+  and,
+  db,
+  departmentsTable,
+  eq,
+  gte,
+  like,
+  lte,
+  notificationsTable,
+  or,
+  projectsPoTable,
+  sql,
+  usersTable,
+} from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
 

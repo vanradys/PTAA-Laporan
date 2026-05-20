@@ -1,11 +1,59 @@
-import { db, dailyReportsTable, dailyTasksTable, reportCommentsTable, usersTable, departmentsTable, notificationsTable } from "@workspace/db";
-import { eq, and, desc, sql, gte, lte, ilike, or, inArray } from "drizzle-orm";
+import {
+  and,
+  db,
+  dailyReportsTable,
+  dailyTasksTable,
+  departmentsTable,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  lte,
+  notificationsTable,
+  or,
+  reportCommentsTable,
+  sql,
+  usersTable,
+  type SQL,
+} from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+function getJakartaDateString(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    return date.toISOString().split("T")[0];
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function activeUserCondition(): SQL {
+  return sql`${usersTable.isActive} is distinct from false`;
+}
+
+function getDayName(date: string): string {
+  return DAY_NAMES[new Date(date + "T00:00:00").getDay()] ?? "-";
+}
+
+function isSubmittedStatus(status: string): boolean {
+  return status !== "draf" && status !== "belum_submit";
+}
 
 function isReportLocked(status: string): boolean {
   return ["dikirim", "direview"].includes(status);
@@ -18,7 +66,7 @@ function isEmptyText(value: string | null | undefined): boolean {
 const MAX_TASK_ACTIONS = 2;
 
 function getTodayString(): string {
-  return new Date().toISOString().split("T")[0];
+  return getJakartaDateString();
 }
 
 function getRemainingActions(editCount: number): number {
@@ -138,9 +186,107 @@ router.get("/reports", async (req, res) => {
 
   const { date, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
 
-  const conditions: ReturnType<typeof eq>[] = [];
+  if (date) {
+    const userConditions: SQL[] = [activeUserCondition()];
 
-  if (date) conditions.push(eq(dailyReportsTable.date, date));
+    if (departmentId) userConditions.push(eq(usersTable.departmentId, parseInt(departmentId)));
+    if (userId) userConditions.push(eq(usersTable.id, parseInt(userId)));
+    if (search) userConditions.push(ilike(usersTable.name, `%${search}%`));
+
+    const activeUsers = await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: usersTable.role,
+        departmentId: usersTable.departmentId,
+        departmentName: departmentsTable.name,
+      })
+      .from(usersTable)
+      .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
+      .where(and(...userConditions))
+      .orderBy(usersTable.name);
+
+    if (activeUsers.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const activeUserIds = activeUsers.map((item) => item.id);
+    const reportsToday = await db
+      .select({
+        id: dailyReportsTable.id,
+        userId: dailyReportsTable.userId,
+        departmentId: dailyReportsTable.departmentId,
+        date: dailyReportsTable.date,
+        status: dailyReportsTable.status,
+        createdAt: dailyReportsTable.createdAt,
+      })
+      .from(dailyReportsTable)
+      .where(and(eq(dailyReportsTable.date, date), inArray(dailyReportsTable.userId, activeUserIds)))
+      .orderBy(desc(dailyReportsTable.createdAt));
+
+    const reportByUser = new Map<number, (typeof reportsToday)[number]>();
+    for (const report of reportsToday) {
+      if (!reportByUser.has(report.userId)) {
+        reportByUser.set(report.userId, report);
+      }
+    }
+
+    const reportIds = reportsToday.map((report) => report.id);
+    let tasksByReport: Record<number, { count: number; avg: number }> = {};
+
+    if (reportIds.length > 0) {
+      const taskStats = await db
+        .select({
+          reportId: dailyTasksTable.reportId,
+          count: sql<number>`count(*)::int`,
+          avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int`,
+        })
+        .from(dailyTasksTable)
+        .where(inArray(dailyTasksTable.reportId, reportIds))
+        .groupBy(dailyTasksTable.reportId);
+
+      tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, { count: item.count, avg: item.avg }]));
+    }
+
+    const rows = activeUsers
+      .map((activeUser) => {
+        const report = reportByUser.get(activeUser.id);
+        const rowStatus = report?.status ?? "belum_submit";
+        const stats = report ? tasksByReport[report.id] ?? { count: 0, avg: 0 } : { count: 0, avg: 0 };
+
+        return {
+          id: report?.id ?? -activeUser.id,
+          reportId: report?.id ?? null,
+          hasReport: !!report,
+          userId: activeUser.id,
+          userName: activeUser.name,
+          userEmail: activeUser.email,
+          userRole: activeUser.role,
+          departmentId: activeUser.departmentId ?? null,
+          departmentName: activeUser.departmentName ?? null,
+          date,
+          dayName: getDayName(date),
+          taskCount: stats.count,
+          avgProgress: stats.avg,
+          status: rowStatus,
+          isSubmitted: isSubmittedStatus(rowStatus),
+          createdAt: report?.createdAt?.toISOString() ?? null,
+        };
+      })
+      .filter((row) => {
+        if (!status) return true;
+        if (status === "belum_submit") return !row.hasReport;
+        return row.status === status;
+      });
+
+    res.json(rows);
+    return;
+  }
+
+  const conditions: SQL[] = [activeUserCondition()];
+
   if (month && year) {
     const m = month.padStart(2, "0");
     conditions.push(gte(dailyReportsTable.date, `${year}-${m}-01`));
@@ -153,7 +299,13 @@ router.get("/reports", async (req, res) => {
   }
   if (departmentId) conditions.push(eq(dailyReportsTable.departmentId, parseInt(departmentId)));
   if (userId) conditions.push(eq(dailyReportsTable.userId, parseInt(userId)));
-  if (status) conditions.push(eq(dailyReportsTable.status, status));
+  if (status && status !== "belum_submit") conditions.push(eq(dailyReportsTable.status, status));
+  if (search) conditions.push(ilike(usersTable.name, `%${search}%`));
+
+  if (status === "belum_submit") {
+    res.json([]);
+    return;
+  }
 
   const reports = await db
     .select({
@@ -169,14 +321,10 @@ router.get("/reports", async (req, res) => {
     .from(dailyReportsTable)
     .leftJoin(usersTable, eq(dailyReportsTable.userId, usersTable.id))
     .leftJoin(departmentsTable, eq(dailyReportsTable.departmentId, departmentsTable.id))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(desc(dailyReportsTable.date), usersTable.name);
 
-  const filtered = search
-    ? reports.filter(r => r.userName?.toLowerCase().includes(search.toLowerCase()))
-    : reports;
-
-  const reportIds = filtered.map(r => r.id);
+  const reportIds = reports.map((report) => report.id);
   let tasksByReport: Record<number, { count: number; avg: number }> = {};
 
   if (reportIds.length > 0) {
@@ -187,29 +335,29 @@ router.get("/reports", async (req, res) => {
         avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int`,
       })
       .from(dailyTasksTable)
-      .where(
-        inArray(dailyTasksTable.reportId, reportIds)
-      )
+      .where(inArray(dailyTasksTable.reportId, reportIds))
       .groupBy(dailyTasksTable.reportId);
 
-    tasksByReport = Object.fromEntries(taskStats.map(s => [s.reportId, { count: s.count, avg: s.avg }]));
+    tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, { count: item.count, avg: item.avg }]));
   }
 
-  res.json(filtered.map(r => {
-    const dateObj = new Date(r.date + "T00:00:00");
-    const stats = tasksByReport[r.id] ?? { count: 0, avg: 0 };
+  res.json(reports.map((report) => {
+    const stats = tasksByReport[report.id] ?? { count: 0, avg: 0 };
     return {
-      id: r.id,
-      userId: r.userId,
-      userName: r.userName ?? "",
-      departmentId: r.departmentId ?? null,
-      departmentName: r.departmentName ?? null,
-      date: r.date,
-      dayName: DAY_NAMES[dateObj.getDay()],
+      id: report.id,
+      reportId: report.id,
+      hasReport: true,
+      userId: report.userId,
+      userName: report.userName ?? "",
+      departmentId: report.departmentId ?? null,
+      departmentName: report.departmentName ?? null,
+      date: report.date,
+      dayName: getDayName(report.date),
       taskCount: stats.count,
       avgProgress: stats.avg,
-      status: r.status,
-      createdAt: r.createdAt.toISOString(),
+      status: report.status,
+      isSubmitted: isSubmittedStatus(report.status),
+      createdAt: report.createdAt.toISOString(),
     };
   }));
 });
@@ -267,7 +415,7 @@ router.get("/reports/today", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = getJakartaDateString();
   const reports = await db
     .select()
     .from(dailyReportsTable)
@@ -291,7 +439,7 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
 
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split("T")[0];
+  const yesterdayStr = getJakartaDateString(yesterday);
 
   const reports = await db
     .select()

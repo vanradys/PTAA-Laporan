@@ -1,5 +1,4 @@
-import { db, departmentsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, departmentsTable, usersTable, eq, sql } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
 
@@ -31,6 +30,7 @@ router.get("/employees", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
+    .where(sql`${usersTable.isActive} is distinct from false`)
     .orderBy(usersTable.name);
 
   res.json(employees.map(e => ({

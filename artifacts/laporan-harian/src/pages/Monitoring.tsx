@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import {
-  useListReports, useListDepartments, useListEmployees
-} from "@workspace/api-client-react";
+import { useListReports, useListDepartments, useListEmployees } from "@workspace/api-client-react";
 import { CheckCircle, XCircle, Eye, Search, Filter, X, Loader2, FileText, BellRing, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { getJakartaDateString } from "@/lib/date";
 import {
   missingDailyReportsQueryKey,
   type MissingDailyReportUser,
@@ -23,11 +22,12 @@ import {
 } from "@/hooks/use-daily-report-reminder";
 
 const MONTHS = [
-  "Januari","Februari","Maret","April","Mei","Juni",
-  "Juli","Agustus","September","Oktober","November","Desember"
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
 ];
 
 const REPORT_STATUSES = [
+  { value: "belum_submit", label: "Belum Submit", color: "bg-red-50 text-red-700 border-red-200" },
   { value: "draf", label: "Draf", color: "bg-gray-100 text-gray-600 border-gray-200" },
   { value: "dikirim", label: "Sudah Dikirim", color: "bg-blue-100 text-blue-700 border-blue-200" },
   { value: "direview", label: "Direview", color: "bg-green-100 text-green-700 border-green-200" },
@@ -36,19 +36,39 @@ const REPORT_STATUSES = [
 
 const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 
+type MonitoringReportRow = {
+  id: number;
+  reportId?: number | null;
+  userId: number;
+  userName: string;
+  departmentName: string | null;
+  date: string;
+  dayName: string;
+  taskCount: number;
+  avgProgress: number;
+  status: string;
+  hasReport?: boolean;
+  isSubmitted?: boolean;
+};
+
 function getStatusInfo(status: string) {
-  return REPORT_STATUSES.find(s => s.value === status) ?? REPORT_STATUSES[0];
+  return REPORT_STATUSES.find((s) => s.value === status) ?? REPORT_STATUSES[1];
+}
+
+function isSubmittedStatus(status: string) {
+  return status !== "draf" && status !== "belum_submit";
 }
 
 export default function Monitoring() {
+  const todayString = getJakartaDateString();
   const today = new Date();
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({
-    date: "",
-    month: String(today.getMonth() + 1),
-    year: String(today.getFullYear()),
+    date: todayString,
+    month: "",
+    year: "",
     departmentId: "",
     userId: "",
     status: "",
@@ -64,11 +84,14 @@ export default function Monitoring() {
   const sendReminder = useSendMissingDailyReportReminder();
 
   const params: Record<string, string> = {};
-  if (filters.date) params.date = filters.date;
-  else if (filters.month && filters.year) {
+  if (filters.date) {
+    params.date = filters.date;
+  } else if (filters.month && filters.year) {
     params.month = filters.month;
     params.year = filters.year;
-  } else if (filters.year) params.year = filters.year;
+  } else if (filters.year) {
+    params.year = filters.year;
+  }
   if (filters.departmentId) params.departmentId = filters.departmentId;
   if (filters.userId) params.userId = filters.userId;
   if (filters.status) params.status = filters.status;
@@ -77,19 +100,37 @@ export default function Monitoring() {
   const { data: reports, isLoading } = useListReports(params);
 
   const setFilter = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters((prev) => {
+      if (key === "date") {
+        return { ...prev, date: value, month: value ? "" : prev.month, year: value ? "" : prev.year };
+      }
+
+      if (key === "month") {
+        return { ...prev, date: "", month: value, year: prev.year || String(today.getFullYear()) };
+      }
+
+      if (key === "year") {
+        return { ...prev, date: "", year: value };
+      }
+
+      return { ...prev, [key]: value };
+    });
   };
 
   const resetFilters = () => {
     setFilters({
-      date: "", month: String(today.getMonth() + 1),
-      year: String(today.getFullYear()),
-      departmentId: "", userId: "", status: "", search: "",
+      date: todayString,
+      month: "",
+      year: "",
+      departmentId: "",
+      userId: "",
+      status: "",
+      search: "",
     });
   };
 
- const handleSendReminder = async () => {
-  const result: SendReminderResult = await sendReminder.mutateAsync();
+  const handleSendReminder = async () => {
+    const result: SendReminderResult = await sendReminder.mutateAsync();
     queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey });
     toast({
       title: "Reminder diproses",
@@ -98,14 +139,21 @@ export default function Monitoring() {
   };
 
   const years = Array.from({ length: 5 }, (_, i) => String(today.getFullYear() - i));
-  const isSubmitted = (status: string) => status !== "draf";
   const missingList: MissingDailyReportUser[] = Array.isArray(missingUsers) ? missingUsers : [];
   const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;
+  const reportRows: MonitoringReportRow[] = Array.isArray(reports) ? (reports as MonitoringReportRow[]) : [];
+  const hasActiveFilters =
+    filters.date !== todayString ||
+    !!filters.month ||
+    !!filters.year ||
+    !!filters.departmentId ||
+    !!filters.userId ||
+    !!filters.status ||
+    !!filters.search;
 
   return (
     <Layout>
       <div className="p-6 space-y-5">
-        {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-foreground">Monitoring Laporan Harian</h1>
@@ -126,7 +174,7 @@ export default function Monitoring() {
             <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
               <Filter className="w-4 h-4 mr-2" />
               Filter
-              {Object.values(filters).some(v => v !== "" && v !== String(today.getMonth() + 1) && v !== String(today.getFullYear())) && (
+              {hasActiveFilters && (
                 <Badge className="ml-2 h-4 w-4 p-0 flex items-center justify-center text-xs bg-primary text-primary-foreground border-none">!</Badge>
               )}
             </Button>
@@ -157,7 +205,7 @@ export default function Monitoring() {
               ) : missingList.length === 0 ? (
                 <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
                   <div>
-                    <p className="text-sm font-semibold text-green-700">Semua user sudah mengisi laporan hari ini.</p>
+                    <p className="text-sm font-semibold text-green-700">Semua user aktif sudah mengisi laporan hari ini.</p>
                     <p className="text-xs text-green-600">Tidak ada reminder yang perlu dikirim.</p>
                   </div>
                   <CheckCircle className="h-5 w-5 text-green-600" />
@@ -201,7 +249,6 @@ export default function Monitoring() {
           </Card>
         )}
 
-        {/* Filters */}
         {showFilters && (
           <Card className="border border-border">
             <CardHeader className="pb-3">
@@ -241,10 +288,10 @@ export default function Monitoring() {
                   <Label className="text-xs">Tahun</Label>
                   <Select value={filters.year} onValueChange={(v) => setFilter("year", v)}>
                     <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
+                      <SelectValue placeholder="Pilih tahun" />
                     </SelectTrigger>
                     <SelectContent>
-                      {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                      {years.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -284,7 +331,7 @@ export default function Monitoring() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Semua Status</SelectItem>
-                      {REPORT_STATUSES.map(s => (
+                      {REPORT_STATUSES.map((s) => (
                         <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -307,17 +354,16 @@ export default function Monitoring() {
           </Card>
         )}
 
-        {/* Table */}
         <Card className="border border-border">
           <CardContent className="p-0">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-5 h-5 animate-spin text-primary" />
               </div>
-            ) : !reports || !Array.isArray(reports) || reports.length === 0 ? (
+            ) : reportRows.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <FileText className="w-8 h-8 mb-2 opacity-40" />
-                <p className="text-sm">Tidak ada laporan yang ditemukan</p>
+                <p className="text-sm">Tidak ada data monitoring yang ditemukan</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -335,20 +381,12 @@ export default function Monitoring() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(reports as Array<{
-                      id: number;
-                      userName: string;
-                      departmentName: string | null;
-                      date: string;
-                      dayName: string;
-                      taskCount: number;
-                      avgProgress: number;
-                      status: string;
-                    }>).map((report) => {
+                    {reportRows.map((report) => {
                       const statusInfo = getStatusInfo(report.status);
-                      const submitted = isSubmitted(report.status);
+                      const submitted = report.isSubmitted ?? isSubmittedStatus(report.status);
+                      const reportId = report.reportId ?? (report.hasReport === false ? null : report.id);
                       return (
-                        <tr key={report.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                        <tr key={`${report.userId}-${report.date}-${report.id}`} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                           <td className="px-4 py-3">
                             <p className="font-medium text-foreground">{report.userName}</p>
                           </td>
@@ -384,11 +422,17 @@ export default function Monitoring() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <Link href={`/laporan/${report.id}`}>
-                              <Button variant="ghost" size="icon" className="w-7 h-7">
+                            {reportId ? (
+                              <Link href={`/laporan/${reportId}`}>
+                                <Button variant="ghost" size="icon" className="w-7 h-7">
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Button>
+                              </Link>
+                            ) : (
+                              <Button variant="ghost" size="icon" className="w-7 h-7 opacity-40" disabled>
                                 <Eye className="w-3.5 h-3.5" />
                               </Button>
-                            </Link>
+                            )}
                           </td>
                         </tr>
                       );
