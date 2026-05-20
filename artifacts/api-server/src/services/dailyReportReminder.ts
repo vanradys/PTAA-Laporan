@@ -18,6 +18,7 @@ const REMINDER_TITLE = "Reminder Laporan Harian";
 const REMINDER_TYPE = "daily_report";
 const FULL_ACCESS_ROLES = ["admin", "hr", "direktur", "director"];
 const DEPARTMENT_LEADER_ROLES = ["atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
+const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
 
 export interface ReminderActor {
   id: number;
@@ -123,14 +124,18 @@ export function getReminderScope(actor: ReminderActor): ReminderScope {
   return { departmentId: -1 };
 }
 
-function activeUserCondition(): SQL {
-  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS])) as SQL;
+function activeReportingUserCondition(): SQL {
+  return and(
+    sql`${usersTable.isActive} is distinct from false`,
+    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
+    sql`lower(${usersTable.role}) not in (${sql.join(NON_REPORTING_ROLES.map((role) => sql`${role}`), sql`, `)})`,
+  ) as SQL;
 }
 
 function submittedReportCondition(reportDate: string): SQL {
   return and(
     eq(dailyReportsTable.date, reportDate),
-    sql`${dailyReportsTable.status} <> 'draf'`,
+    sql`${dailyReportsTable.status} not in ('draf', 'belum_submit')`,
   ) as SQL;
 }
 
@@ -138,7 +143,7 @@ export async function getMissingDailyReportUsers(
   scope: ReminderScope = {},
   reportDate = getJakartaDateString(),
 ): Promise<MissingDailyReportUser[]> {
-  const userConditions: SQL[] = [activeUserCondition()];
+  const userConditions: SQL[] = [activeReportingUserCondition()];
 
   if (scope.departmentId !== undefined) {
     userConditions.push(eq(usersTable.departmentId, scope.departmentId));

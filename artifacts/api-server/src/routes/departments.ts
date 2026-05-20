@@ -4,8 +4,14 @@ import { Router, type Router as ExpressRouter } from "express";
 
 const router: ExpressRouter = Router();
 
-function activeUserCondition() {
-  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS]));
+const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
+
+function activeReportingUserCondition() {
+  return and(
+    sql`${usersTable.isActive} is distinct from false`,
+    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
+    sql`lower(${usersTable.role}) not in (${sql.join(NON_REPORTING_ROLES.map((role) => sql`${role}`), sql`, `)})`,
+  );
 }
 
 router.get("/departments", async (req, res) => {
@@ -35,7 +41,7 @@ router.get("/employees", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(activeUserCondition())
+    .where(activeReportingUserCondition())
     .orderBy(usersTable.name);
 
   res.json(employees.map((employee) => ({

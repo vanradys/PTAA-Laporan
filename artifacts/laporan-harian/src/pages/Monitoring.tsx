@@ -37,6 +37,7 @@ const REPORT_STATUSES = [
 ];
 
 const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
+const NON_REPORTING_ROLES = new Set(["admin", "hr", "direktur", "director"]);
 
 type EmployeeOption = {
   id: number;
@@ -200,7 +201,9 @@ export default function Monitoring() {
 
   const { data: reports, isLoading: isLoadingReports } = useListReports(params);
 
-  const employeeList: EmployeeOption[] = Array.isArray(employees) ? (employees as EmployeeOption[]) : [];
+  const employeeList: EmployeeOption[] = Array.isArray(employees)
+    ? (employees as EmployeeOption[]).filter((employee) => !NON_REPORTING_ROLES.has(employee.role?.toLowerCase?.() ?? ""))
+    : [];
   const reportList: ReportSummaryLike[] = Array.isArray(reports) ? (reports as ReportSummaryLike[]) : [];
 
   const reportRows = useMemo(() => {
@@ -257,13 +260,17 @@ export default function Monitoring() {
 
   const missingList = useMemo(() => {
     const apiList = Array.isArray(missingUsersFromApi) ? missingUsersFromApi : [];
+    const apiByUserId = new Map(apiList.map((item) => [item.id, item]));
 
-    if (!isLoadingMissing) {
-      return apiList;
+    if (fallbackMissingList.length > 0) {
+      return fallbackMissingList.map((item) => {
+        const apiItem = apiByUserId.get(item.id);
+        return apiItem ? { ...item, ...apiItem } : item;
+      });
     }
 
-    return fallbackMissingList;
-  }, [fallbackMissingList, isLoadingMissing, missingUsersFromApi]);
+    return apiList;
+  }, [fallbackMissingList, missingUsersFromApi]);
 
   const missingSummaryText = buildMissingSummary(missingList, employeeList.length, reminderDate);
   const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;

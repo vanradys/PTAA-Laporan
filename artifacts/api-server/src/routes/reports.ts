@@ -45,8 +45,14 @@ function getJakartaDateString(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
-function activeUserCondition(): SQL {
-  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS])) as SQL;
+const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
+
+function activeReportingUserCondition(): SQL {
+  return and(
+    sql`${usersTable.isActive} is distinct from false`,
+    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
+    sql`lower(${usersTable.role}) not in (${sql.join(NON_REPORTING_ROLES.map((role) => sql`${role}`), sql`, `)})`,
+  ) as SQL;
 }
 
 function getDayName(date: string): string {
@@ -189,7 +195,7 @@ router.get("/reports", async (req, res) => {
   const { date, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
 
   if (date) {
-    const userConditions: SQL[] = [activeUserCondition()];
+    const userConditions: SQL[] = [activeReportingUserCondition()];
 
     if (departmentId) userConditions.push(eq(usersTable.departmentId, parseInt(departmentId)));
     if (userId) userConditions.push(eq(usersTable.id, parseInt(userId)));
@@ -287,7 +293,7 @@ router.get("/reports", async (req, res) => {
     return;
   }
 
-  const conditions: SQL[] = [activeUserCondition()];
+  const conditions: SQL[] = [activeReportingUserCondition()];
 
   if (month && year) {
     const m = month.padStart(2, "0");

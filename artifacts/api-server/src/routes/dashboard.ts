@@ -17,8 +17,18 @@ import { getJakartaDateString } from "../services/dailyReportReminder";
 
 const router: ExpressRouter = Router();
 
-function activeUserCondition() {
-  return and(sql`${usersTable.isActive} is distinct from false`, notInArray(usersTable.email, [...REMOVED_USER_EMAILS]));
+const NON_REPORTING_ROLES = ["admin", "hr", "direktur", "director"];
+
+function submittedReportCondition() {
+  return sql`${dailyReportsTable.status} not in ('draf', 'belum_submit')`;
+}
+
+function activeReportingUserCondition() {
+  return and(
+    sql`${usersTable.isActive} is distinct from false`,
+    notInArray(usersTable.email, [...REMOVED_USER_EMAILS]),
+    sql`lower(${usersTable.role}) not in (${sql.join(NON_REPORTING_ROLES.map((role) => sql`${role}`), sql`, `)})`,
+  );
 }
 
 function normalizeDashboardDate(value: unknown): string {
@@ -37,7 +47,7 @@ router.get("/dashboard/summary", async (req, res) => {
   const activeUsers = await db
     .select({ id: usersTable.id })
     .from(usersTable)
-    .where(activeUserCondition());
+    .where(activeReportingUserCondition());
 
   const activeUserIds = activeUsers.map((item) => item.id);
   const totalEmployees = activeUserIds.length;
@@ -48,7 +58,7 @@ router.get("/dashboard/summary", async (req, res) => {
       .from(dailyReportsTable)
       .where(and(
         eq(dailyReportsTable.date, date),
-        sql`${dailyReportsTable.status} <> 'draf'`,
+        submittedReportCondition(),
         inArray(dailyReportsTable.userId, activeUserIds),
       ))
     : [];
@@ -106,7 +116,7 @@ router.get("/dashboard/department-productivity", async (req, res) => {
     const [employeeCountResult] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(usersTable)
-      .where(and(eq(usersTable.departmentId, dept.id), activeUserCondition()));
+      .where(and(eq(usersTable.departmentId, dept.id), activeReportingUserCondition()));
 
     const employeeCount = employeeCountResult?.count ?? 0;
 
@@ -117,8 +127,8 @@ router.get("/dashboard/department-productivity", async (req, res) => {
       .where(and(
         eq(dailyReportsTable.departmentId, dept.id),
         eq(dailyReportsTable.date, date),
-        sql`${dailyReportsTable.status} <> 'draf'`,
-        activeUserCondition(),
+        submittedReportCondition(),
+        activeReportingUserCondition(),
       ));
 
     const submittedCount = submittedReports.length;
