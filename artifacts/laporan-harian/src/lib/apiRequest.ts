@@ -3,7 +3,16 @@ export type ApiRequestOptions = RequestInit & {
 };
 
 function getApiBaseUrl(): string {
-  return String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+  const envValue = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+  if (envValue) {
+    return envValue;
+  }
+
+  if (import.meta.env.DEV) {
+    return "http://localhost:5000";
+  }
+
+  return "";
 }
 
 function buildApiUrl(input: RequestInfo | URL): RequestInfo | URL {
