@@ -115,7 +115,7 @@ export default function NotificationPermissionPrompt() {
       const description = payload.notification?.body ?? payload.data?.message ?? "Ada notifikasi baru di aplikasi.";
 
       toast({ title, description });
-      queryClient.invalidateQueries();
+        queryClient.invalidateQueries();
     }).then((handler) => {
       if (!isMounted) {
         handler();
