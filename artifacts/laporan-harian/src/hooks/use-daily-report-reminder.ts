@@ -26,21 +26,34 @@ export interface SendReminderResult {
   message: string;
 }
 
-export const missingDailyReportsQueryKey = ["missing-daily-reports-today"] as const;
+export const missingDailyReportsQueryKey = (date?: string) => ["missing-daily-reports-today", date ?? "today"] as const;
 
-export function useMissingDailyReportsToday(enabled = true) {
+function buildMissingReportsUrl(date?: string) {
+  const params = new URLSearchParams();
+
+  if (date) {
+    params.set("date", date);
+  }
+
+  const query = params.toString();
+  return query ? `/api/daily-reports/missing/today?${query}` : "/api/daily-reports/missing/today";
+}
+
+export function useMissingDailyReportsToday(enabled = true, date?: string) {
   return useQuery({
-    queryKey: missingDailyReportsQueryKey,
+    queryKey: missingDailyReportsQueryKey(date),
     enabled,
-    queryFn: () => customFetch<MissingDailyReportUser[]>("/api/daily-reports/missing/today"),
+    queryFn: () => customFetch<MissingDailyReportUser[]>(buildMissingReportsUrl(date)),
   });
 }
 
 export function useSendMissingDailyReportReminder() {
-  return useMutation<SendReminderResult, Error, void>({
-    mutationFn: () =>
+  return useMutation<SendReminderResult, Error, { date?: string }>({
+    mutationFn: (payload) =>
       customFetch<SendReminderResult>("/api/daily-reports/remind-missing", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: payload.date }),
       }),
   });
 }

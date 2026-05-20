@@ -3,7 +3,9 @@ import { getUserFromToken } from "./auth";
 import {
   canManageDailyReportReminder,
   getMissingDailyReportUsers,
+  getReminderActorLabel,
   getReminderScope,
+  normalizeReportDate,
   sendDailyReportReminders,
 } from "../services/dailyReportReminder";
 
@@ -24,7 +26,8 @@ router.get("/daily-reports/missing/today", async (req, res) => {
     return;
   }
 
-  const missingUsers = await getMissingDailyReportUsers(getReminderScope(user));
+  const reportDate = normalizeReportDate(req.query.date);
+  const missingUsers = await getMissingDailyReportUsers(getReminderScope(user), reportDate);
   res.json(missingUsers);
 });
 
@@ -37,9 +40,12 @@ router.post("/daily-reports/remind-missing", async (req, res) => {
     return;
   }
 
+  const reportDate = normalizeReportDate(req.body?.date);
   const result = await sendDailyReportReminders({
     sentBy: user.id,
+    actorLabel: getReminderActorLabel(user.role),
     scope: getReminderScope(user),
+    reportDate,
   });
 
   res.json(result);
@@ -53,7 +59,8 @@ router.post("/daily-reports/remind-missing/auto", async (req, res) => {
     return;
   }
 
-  const result = await sendDailyReportReminders({ sentBy: null });
+  const reportDate = normalizeReportDate(req.body?.date);
+  const result = await sendDailyReportReminders({ sentBy: null, actorLabel: "Sistem", reportDate });
   res.json(result);
 });
 

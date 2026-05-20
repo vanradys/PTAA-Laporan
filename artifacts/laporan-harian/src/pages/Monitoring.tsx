@@ -59,6 +59,32 @@ function isSubmittedStatus(status: string) {
   return status !== "draf" && status !== "belum_submit";
 }
 
+function getUniqueDepartmentNames(users: MissingDailyReportUser[]) {
+  return Array.from(
+    new Set(
+      users.map((item) => item.departmentName?.trim() || item.name).filter(Boolean),
+    ),
+  );
+}
+
+function buildMissingDepartmentText(users: MissingDailyReportUser[]) {
+  const names = getUniqueDepartmentNames(users);
+
+  if (names.length === 0) {
+    return "Semua user aktif sudah mengisi laporan hari ini.";
+  }
+
+  return `${names.join(", ")} belum mengisi laporan harian hari ini.`;
+}
+
+function formatReportDate(date: string) {
+  return new Date(`${date}T00:00:00`).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 export default function Monitoring() {
   const todayString = getJakartaDateString();
   const today = new Date();
@@ -80,7 +106,8 @@ export default function Monitoring() {
 
   const { data: departments } = useListDepartments();
   const { data: employees } = useListEmployees();
-  const { data: missingUsers, isLoading: isLoadingMissing } = useMissingDailyReportsToday(canManageReminder);
+  const reminderDate = filters.date || todayString;
+  const { data: missingUsers, isLoading: isLoadingMissing } = useMissingDailyReportsToday(canManageReminder, reminderDate);
   const sendReminder = useSendMissingDailyReportReminder();
 
   const params: Record<string, string> = {};
@@ -130,17 +157,19 @@ export default function Monitoring() {
   };
 
   const handleSendReminder = async () => {
-    const result: SendReminderResult = await sendReminder.mutateAsync();
-    queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey });
+    const result: SendReminderResult = await sendReminder.mutateAsync({ date: reminderDate });
+    queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey(reminderDate) });
     toast({
       title: "Reminder diproses",
-      description: `${result.message} Push berhasil: ${result.pushSuccessCount}, gagal: ${result.pushFailedCount}.`,
+      description: `${result.message} Notifikasi aplikasi dikirim ke akun masing-masing karyawan.`,
     });
   };
 
   const years = Array.from({ length: 5 }, (_, i) => String(today.getFullYear() - i));
   const missingList: MissingDailyReportUser[] = Array.isArray(missingUsers) ? missingUsers : [];
   const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;
+  const missingSummaryText = buildMissingDepartmentText(missingList);
+  const missingDateText = formatReportDate(reminderDate);
   const reportRows: MonitoringReportRow[] = Array.isArray(reports) ? (reports as MonitoringReportRow[]) : [];
   const hasActiveFilters =
     filters.date !== todayString ||
@@ -190,7 +219,7 @@ export default function Monitoring() {
                   variant="ghost"
                   size="sm"
                   className="h-7 text-xs text-muted-foreground"
-                  onClick={() => queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey })}
+                  onClick={() => queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey(reminderDate) })}
                 >
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                   Refresh
@@ -206,43 +235,55 @@ export default function Monitoring() {
                 <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
                   <div>
                     <p className="text-sm font-semibold text-green-700">Semua user aktif sudah mengisi laporan hari ini.</p>
-                    <p className="text-xs text-green-600">Tidak ada reminder yang perlu dikirim.</p>
+                    <p className="text-xs text-green-600">Tidak ada reminder yang perlu dikirim untuk tanggal {missingDateText}.</p>
                   </div>
                   <CheckCircle className="h-5 w-5 text-green-600" />
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border bg-muted/40">
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Nama</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Departemen</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Status Laporan</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Status Reminder</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {missingList.map((item) => (
-                        <tr key={item.id} className="border-b border-border last:border-0">
-                          <td className="px-4 py-3">
-                            <p className="font-semibold text-foreground">{item.name}</p>
-                            <p className="text-xs text-muted-foreground">{item.email}</p>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{item.departmentName ?? "—"}</td>
-                          <td className="px-4 py-3">
-                            <Badge className="border-red-200 bg-red-50 text-red-700 hover:bg-red-50">Belum Mengisi</Badge>
-                          </td>
-                          <td className="px-4 py-3">
-                            {item.reminderSent ? (
-                              <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">Reminder Terkirim</Badge>
-                            ) : (
-                              <Badge variant="outline">Belum Dikirim</Badge>
-                            )}
-                          </td>
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-red-700">{missingSummaryText}</p>
+                        <p className="text-xs text-red-600">Klik Kirim Reminder untuk mengirim notifikasi ke akun karyawan yang disebutkan di bawah.</p>
+                      </div>
+                      <Badge className="w-fit border-red-200 bg-white text-red-700 hover:bg-white">{missingList.length} belum mengisi</Badge>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/40">
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Nama</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Departemen</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Status Laporan</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Status Reminder</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {missingList.map((item) => (
+                          <tr key={item.id} className="border-b border-border last:border-0">
+                            <td className="px-4 py-3">
+                              <p className="font-semibold text-foreground">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">{item.email}</p>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">{item.departmentName ?? "—"}</td>
+                            <td className="px-4 py-3">
+                              <Badge className="border-red-200 bg-red-50 text-red-700 hover:bg-red-50">Belum Mengisi</Badge>
+                            </td>
+                            <td className="px-4 py-3">
+                              {item.reminderSent ? (
+                                <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">Reminder Terkirim</Badge>
+                              ) : (
+                                <Badge variant="outline">Belum Dikirim</Badge>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </CardContent>

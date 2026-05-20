@@ -13,7 +13,6 @@ import {
 import { sendPushNotificationToUser } from "./pushNotification";
 
 const REMINDER_TITLE = "Reminder Laporan Harian";
-const REMINDER_MESSAGE = "Anda belum mengisi laporan harian hari ini. Silakan isi laporan sebelum jam kerja selesai.";
 const REMINDER_TYPE = "daily_report";
 const FULL_ACCESS_ROLES = ["admin", "hr", "direktur", "director"];
 const DEPARTMENT_LEADER_ROLES = ["atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
@@ -59,6 +58,48 @@ export function getJakartaDateString(date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+export function formatIndonesianDate(dateString: string): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return dateString;
+  }
+
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+export function getReminderActorLabel(role: string): string {
+  const normalizedRole = role.toLowerCase();
+
+  if (normalizedRole === "hr") return "HR";
+  if (normalizedRole === "admin") return "Admin";
+  if (normalizedRole === "direktur" || normalizedRole === "director") return "Direktur";
+  if (["atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"].includes(normalizedRole)) {
+    return "Atasan";
+  }
+
+  return "Admin";
+}
+
+export function buildReminderMessage(actorLabel: string, reportDate: string): string {
+  return `${actorLabel} telah mengirim anda reminder untuk mengisi laporan harian tanggal ${formatIndonesianDate(reportDate)}.`;
+}
+
+export function normalizeReportDate(value: unknown): string {
+  const date = typeof value === "string" ? value.trim() : "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date;
+  }
+
+  return getJakartaDateString();
+}
+
 export function canManageDailyReportReminder(actor: ReminderActor): boolean {
   const role = actor.role.toLowerCase();
   return FULL_ACCESS_ROLES.includes(role) || DEPARTMENT_LEADER_ROLES.includes(role);
@@ -78,16 +119,18 @@ export function getReminderScope(actor: ReminderActor): ReminderScope {
   return { departmentId: -1 };
 }
 
+function activeUserCondition(): SQL {
+  return sql`${usersTable.isActive} is distinct from false`;
+}
+
 export async function getMissingDailyReportUsers(scope: ReminderScope = {}, reportDate = getJakartaDateString()): Promise<MissingDailyReportUser[]> {
-  const conditions: SQL[] = [
-    sql`${usersTable.isActive} is distinct from false`,
-  ];
+  const userConditions: SQL[] = [activeUserCondition()];
 
   if (scope.departmentId !== undefined) {
-    conditions.push(eq(usersTable.departmentId, scope.departmentId));
+    userConditions.push(eq(usersTable.departmentId, scope.departmentId));
   }
 
-  const users = await db
+  const activeUsers = await db
     .select({
       id: usersTable.id,
       name: usersTable.name,
@@ -98,8 +141,14 @@ export async function getMissingDailyReportUsers(scope: ReminderScope = {}, repo
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(and(...conditions))
+    .where(and(...userConditions))
     .orderBy(usersTable.name);
+
+  if (activeUsers.length === 0) {
+    return [];
+  }
+
+  const activeUserIds = activeUsers.map((user) => user.id);
 
   const reportsToday = await db
     .select({ userId: dailyReportsTable.userId })
@@ -121,11 +170,16 @@ export async function getMissingDailyReportUsers(scope: ReminderScope = {}, repo
       ),
     );
 
-  const usersWithReport = new Set(reportsToday.map((report) => report.userId));
+  const activeUserIdSet = new Set(activeUserIds);
+  const usersWithSubmittedReport = new Set(
+    reportsToday
+      .filter((report) => activeUserIdSet.has(report.userId))
+      .map((report) => report.userId),
+  );
   const usersWithReminder = new Set(logsToday.map((log) => log.userId));
 
-  return users
-    .filter((user) => !usersWithReport.has(user.id))
+  return activeUsers
+    .filter((user) => !usersWithSubmittedReport.has(user.id))
     .map((user) => ({
       id: user.id,
       name: user.name,
@@ -141,10 +195,13 @@ export async function getMissingDailyReportUsers(scope: ReminderScope = {}, repo
 
 export async function sendDailyReportReminders(options: {
   sentBy: number | null;
+  actorLabel?: string;
   scope?: ReminderScope;
   reportDate?: string;
 }) {
   const reportDate = options.reportDate ?? getJakartaDateString();
+  const actorLabel = options.actorLabel ?? "Sistem";
+  const reminderMessage = buildReminderMessage(actorLabel, reportDate);
   const missingUsers = await getMissingDailyReportUsers(options.scope ?? {}, reportDate);
   const targetUsers = missingUsers.filter((user) => !user.reminderSent);
   const sentUsers: MissingDailyReportUser[] = [];
@@ -172,7 +229,7 @@ export async function sendDailyReportReminders(options: {
       await tx.insert(notificationsTable).values({
         userId: user.id,
         title: REMINDER_TITLE,
-        message: REMINDER_MESSAGE,
+        message: reminderMessage,
         type: REMINDER_TYPE,
       });
 
@@ -185,7 +242,7 @@ export async function sendDailyReportReminders(options: {
       const pushResult = await sendPushNotificationToUser({
         userId: user.id,
         title: REMINDER_TITLE,
-        message: REMINDER_MESSAGE,
+        message: reminderMessage,
         type: REMINDER_TYPE,
         url: "/notifikasi",
       });
@@ -207,7 +264,7 @@ export async function sendDailyReportReminders(options: {
     pushFailedCount,
     pushInvalidTokenRemovedCount,
     message: sentUsers.length > 0
-      ? `Reminder berhasil dikirim ke ${sentUsers.length} user.`
+      ? `Reminder berhasil dikirim ke ${sentUsers.length} karyawan.`
       : "Tidak ada reminder baru yang perlu dikirim.",
   };
 }
