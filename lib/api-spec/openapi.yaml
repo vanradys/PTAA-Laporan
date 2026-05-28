@@ -523,6 +523,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PoSummary"
+  /po/yearly-trend:
+    get:
+      operationId: getPoYearlyTrend
+      tags: [po]
+      summary: Get yearly PO trend
+      parameters:
+        - name: year
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Yearly PO trend
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoYearlyTrendResponse"
 
   /po/{id}:
     get:
@@ -689,6 +705,38 @@ components:
         email: { type: string }
         password: { type: string }
       required: [email, password]
+    PoYearlyTrendItem:
+      type: object
+      properties:
+        month:
+          type: string
+        monthNumber:
+          type: integer
+        totalPo:
+          type: integer
+        totalAmount:
+          type: number
+          nullable: true
+      required:
+        - month
+        - monthNumber
+        - totalPo
+
+    PoYearlyTrendResponse:
+      type: object
+      properties:
+        year:
+          type: integer
+        canViewAmount:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PoYearlyTrendItem"
+      required:
+        - year
+        - canViewAmount
+        - items
 
     DailyTask:
       type: object
@@ -706,7 +754,19 @@ components:
         isLocked: { type: boolean }
         isDelay: { type: boolean }
         createdAt: { type: string }
-      required: [id, reportId, title, progress, status, editCount, remainingActions, isLocked, isDelay, createdAt]
+      required:
+        [
+          id,
+          reportId,
+          title,
+          progress,
+          status,
+          editCount,
+          remainingActions,
+          isLocked,
+          isDelay,
+          createdAt,
+        ]
 
     TaskInput:
       type: object
@@ -762,13 +822,30 @@ components:
         additionalNotes: { type: ["string", "null"] }
         tomorrowPlan: { type: ["string", "null"] }
         status: { type: string }
-        tasks: { type: array, items: { $ref: "#/components/schemas/DailyTask" } }
-        comments: { type: array, items: { $ref: "#/components/schemas/ReportComment" } }
+        tasks:
+          { type: array, items: { $ref: "#/components/schemas/DailyTask" } }
+        comments:
+          { type: array, items: { $ref: "#/components/schemas/ReportComment" } }
         taskCount: { type: integer }
         avgProgress: { type: integer }
         createdAt: { type: string }
         updatedAt: { type: string }
-      required: [id, userId, userName, userEmail, date, dayName, status, tasks, comments, taskCount, avgProgress, createdAt, updatedAt]
+      required:
+        [
+          id,
+          userId,
+          userName,
+          userEmail,
+          date,
+          dayName,
+          status,
+          tasks,
+          comments,
+          taskCount,
+          avgProgress,
+          createdAt,
+          updatedAt,
+        ]
 
     ReportSummary:
       type: object
@@ -784,7 +861,18 @@ components:
         avgProgress: { type: integer }
         status: { type: string }
         createdAt: { type: string }
-      required: [id, userId, userName, date, dayName, taskCount, avgProgress, status, createdAt]
+      required:
+        [
+          id,
+          userId,
+          userName,
+          date,
+          dayName,
+          taskCount,
+          avgProgress,
+          status,
+          createdAt,
+        ]
 
     ReportInput:
       type: object
@@ -836,7 +924,17 @@ components:
         tasksPending: { type: integer }
         submitRate: { type: integer }
         completionRate: { type: integer }
-      required: [totalEmployees, submittedToday, notSubmittedToday, totalTasksToday, tasksCompleted, tasksPending, submitRate, completionRate]
+      required:
+        [
+          totalEmployees,
+          submittedToday,
+          notSubmittedToday,
+          totalTasksToday,
+          tasksCompleted,
+          tasksPending,
+          submitRate,
+          completionRate,
+        ]
 
     DepartmentProductivity:
       type: object
@@ -847,7 +945,15 @@ components:
         submittedCount: { type: integer }
         avgProgress: { type: integer }
         submitRate: { type: integer }
-      required: [departmentId, departmentName, employeeCount, submittedCount, avgProgress, submitRate]
+      required:
+        [
+          departmentId,
+          departmentName,
+          employeeCount,
+          submittedCount,
+          avgProgress,
+          submitRate,
+        ]
 
     PoItem:
       type: object
@@ -856,6 +962,9 @@ components:
         noPo: { type: string }
         namaProject: { type: string }
         customer: { type: ["string", "null"] }
+        poAmount:
+          type: number
+          nullable: true
         tanggalPoMasuk: { type: string }
         targetPenyelesaian: { type: ["string", "null"] }
         deadline: { type: string }
@@ -870,7 +979,18 @@ components:
         createdByUserId: { type: ["integer", "null"] }
         createdAt: { type: string }
         updatedAt: { type: string }
-      required: [id, noPo, namaProject, deadline, sisaHari, status, progress, createdAt, updatedAt]
+      required:
+        [
+          id,
+          noPo,
+          namaProject,
+          deadline,
+          sisaHari,
+          status,
+          progress,
+          createdAt,
+          updatedAt,
+        ]
 
     PoInput:
       type: object
@@ -878,6 +998,9 @@ components:
         noPo: { type: string }
         namaProject: { type: string }
         customer: { type: string }
+        poAmount:
+          type: number
+          nullable: true
         tanggalPoMasuk: { type: string }
         targetPenyelesaian: { type: string }
         deadline: { type: string }
@@ -894,6 +1017,9 @@ components:
         noPo: { type: string }
         namaProject: { type: string }
         customer: { type: string }
+        poAmount:
+          type: number
+          nullable: true
         tanggalPoMasuk: { type: string }
         targetPenyelesaian: { type: string }
         deadline: { type: string }
@@ -914,4 +1040,14 @@ components:
         persentasePencapaian: { type: integer }
         month: { type: integer }
         year: { type: integer }
-      required: [totalPo, poSelesai, poBelumSelesai, poDelay, poHampirDeadline, persentasePencapaian, month, year]
+      required:
+        [
+          totalPo,
+          poSelesai,
+          poBelumSelesai,
+          poDelay,
+          poHampirDeadline,
+          persentasePencapaian,
+          month,
+          year,
+        ]
