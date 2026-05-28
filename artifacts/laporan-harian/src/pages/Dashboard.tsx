@@ -200,12 +200,14 @@ export default function Dashboard() {
                         <XAxis
                           dataKey="name"
                           interval={0}
-                          tick={{ fontSize: 10, fill: "#94a3b8" }}
-                          angle={-18}
-                          textAnchor="end"
-                          height={55}
+                          minTickGap={0}
+                          tick={{ fontSize: 11, fill: "#94a3b8" }}
+                          height={45}
                           axisLine={false}
                           tickLine={false}
+                          tickFormatter={(value) =>
+                            formatDepartmentChartLabel(String(value))
+                          }
                         />
                         <YAxis
                           tick={{ fontSize: 12, fill: "#94a3b8" }}
