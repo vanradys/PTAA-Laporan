@@ -189,6 +189,24 @@ function formatRupiahCompact(value: number) {
   return String(value);
 }
 
+function getNominalAxisValue(value: number) {
+  if (value <= 0) return 0;
+  if (value <= 200_000_000) return 1;
+  if (value <= 500_000_000) return 2;
+  if (value <= 2_000_000_000) return 3;
+  if (value <= 5_000_000_000) return 4;
+  return 5;
+}
+
+function formatNominalAxisLabel(value: number) {
+  if (value === 1) return "200jt";
+  if (value === 2) return "500jt";
+  if (value === 3) return "2M";
+  if (value === 4) return "5M";
+  if (value === 5) return "10M";
+  return "";
+}
+
 function isFinishedPo(status: string) {
   return status === "selesai" || status === "close";
 }
@@ -297,7 +315,11 @@ export default function JadwalProject() {
             totalAmount?: number | null;
           }[];
         }
-      ).items
+      ).items.map((item) => ({
+        ...item,
+        totalAmountRaw: Number(item.totalAmount ?? 0),
+        totalAmountAxis: getNominalAxisValue(Number(item.totalAmount ?? 0)),
+      }))
     : [];
   const depts = (Array.isArray(departments) ? departments : []) as {
     id: number;
@@ -631,24 +653,13 @@ export default function JadwalProject() {
                         orientation="right"
                         tick={{ fontSize: 12 }}
                         width={84}
-                        domain={[0, 10_000_000_000]}
-                        ticks={[
-                          200_000_000, 500_000_000, 2_000_000_000,
-                          5_000_000_000, 10_000_000_000,
-                        ]}
+                        domain={[0, 5]}
+                        ticks={[1, 2, 3, 4, 5]}
                         interval={0}
                         tickMargin={8}
-                        tickFormatter={(value) => {
-                          const amount = Number(value);
-
-                          if (amount === 200_000_000) return "200jt";
-                          if (amount === 500_000_000) return "500jt";
-                          if (amount === 2_000_000_000) return "2M";
-                          if (amount === 5_000_000_000) return "5M";
-                          if (amount === 10_000_000_000) return "10M";
-
-                          return "";
-                        }}
+                        tickFormatter={(value) =>
+                          formatNominalAxisLabel(Number(value))
+                        }
                         label={{
                           value: "Nominal PO",
                           angle: 90,
@@ -657,9 +668,15 @@ export default function JadwalProject() {
                       />
                     )}
                     <Tooltip
-                      formatter={(value, name) => {
+                      formatter={(value, name, item) => {
                         if (name === "Total Nominal") {
-                          return [formatRupiah(Number(value)), name];
+                          const payload = item.payload as {
+                            totalAmountRaw?: number;
+                          };
+                          return [
+                            formatRupiah(Number(payload.totalAmountRaw ?? 0)),
+                            name,
+                          ];
                         }
 
                         return [value, name];
@@ -677,7 +694,7 @@ export default function JadwalProject() {
                       <Line
                         yAxisId="right"
                         type="monotone"
-                        dataKey="totalAmount"
+                        dataKey="totalAmountAxis"
                         name="Total Nominal"
                         stroke="#f97316"
                         strokeWidth={3}

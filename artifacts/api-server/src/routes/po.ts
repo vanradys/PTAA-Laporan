@@ -406,7 +406,7 @@ router.post("/po", async (req, res) => {
           : null,
       tanggalPoMasuk,
       targetPenyelesaian: targetPenyelesaian ?? null,
-      tanggal_Delivery: tanggal_Delivery ?? null,
+      deadline: tanggal_Delivery ?? null,
       picUserId: picUserId ? parseInt(picUserId) : null,
       departmentId: departmentId ? parseInt(departmentId) : null,
       status: status ?? "belum_mulai",
@@ -588,7 +588,7 @@ router.patch("/po/:id", async (req, res) => {
   if (targetPenyelesaian !== undefined)
     updates.targetPenyelesaian = targetPenyelesaian;
   if (tanggal_Delivery !== undefined)
-    updates.tanggal_Delivery = tanggal_Delivery;
+    updates.deadline = tanggal_Delivery;
   if (picUserId !== undefined)
     updates.picUserId = picUserId ? parseInt(picUserId) : null;
   if (departmentId !== undefined)
