@@ -13,6 +13,8 @@ import {
   ClipboardList,
   ChevronDown,
 } from "lucide-react";
+
+const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -62,7 +64,7 @@ export default function Layout({ children }: LayoutProps) {
         <div className="px-6 pb-5 pt-7">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-              <span className="text-2xl font-black italic text-[#ef0012]">A</span>
+              <img src={logoSrc} alt="Adiyasa logo" className="h-10 w-10 object-contain" />
             </div>
             <div className="leading-tight">
               <p className="text-2xl font-black tracking-[0.16em]">ADIYASA</p>
