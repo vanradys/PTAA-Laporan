@@ -1,4 +1,7 @@
-import { useGetDashboardSummary, useGetDepartmentProductivity } from "@workspace/api-client-react";
+import {
+  useGetDashboardSummary,
+  useGetDepartmentProductivity,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Users,
@@ -12,7 +15,15 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import Layout from "@/components/Layout";
 import { formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
 
@@ -24,15 +35,27 @@ type StatCardProps = {
   description?: string;
 };
 
-function StatCard({ title, value, icon: Icon, iconClass, description }: StatCardProps) {
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  iconClass,
+  description,
+}: StatCardProps) {
   return (
     <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <CardContent className="p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-slate-500">{title}</p>
-            <p className="mt-2 text-3xl font-black tracking-tight text-slate-950">{value}</p>
-            {description && <p className="mt-2 text-xs font-semibold text-emerald-600">{description}</p>}
+            <p className="mt-2 text-3xl font-black tracking-tight text-slate-950">
+              {value}
+            </p>
+            {description && (
+              <p className="mt-2 text-xs font-semibold text-emerald-600">
+                {description}
+              </p>
+            )}
           </div>
           <div className={`rounded-xl p-3 ${iconClass}`}>
             <Icon className="h-5 w-5" />
@@ -49,13 +72,14 @@ export default function Dashboard() {
 
   const { data: summary, isLoading: summaryLoading } = useGetDashboardSummary(
     { date: today },
-    { query: { queryKey: ["dashboard-summary", today] } }
+    { query: { queryKey: ["dashboard-summary", today] } },
   );
 
-  const { data: deptData, isLoading: deptLoading } = useGetDepartmentProductivity(
-    { date: today },
-    { query: { queryKey: ["dept-productivity", today] } }
-  );
+  const { data: deptData, isLoading: deptLoading } =
+    useGetDepartmentProductivity(
+      { date: today },
+      { query: { queryKey: ["dept-productivity", today] } },
+    );
 
   const todayFormatted = formatJakartaDateLong();
 
@@ -76,8 +100,12 @@ export default function Dashboard() {
 
         <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-7 py-6 text-white shadow-sm">
           <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
-          <p className="text-sm font-medium text-blue-100">Selamat datang kembali,</p>
-          <h2 className="mt-1 text-2xl font-black">{user?.name ?? "Admin PTAA"} — PT Adiyasa Abadi</h2>
+          <p className="text-sm font-medium text-blue-100">
+            Selamat datang kembali,
+          </p>
+          <h2 className="mt-1 text-2xl font-black">
+            {user?.name ?? "Admin PTAA"} — PT Adiyasa Abadi
+          </h2>
           <div className="mt-2 flex items-center gap-2 text-sm font-medium text-blue-100">
             <CalendarDays className="h-4 w-4" />
             {todayFormatted}
@@ -135,7 +163,9 @@ export default function Dashboard() {
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_470px]">
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-bold text-slate-800">Rekap Laporan Departemen Hari Ini</CardTitle>
+                  <CardTitle className="text-base font-bold text-slate-800">
+                    Rekap Laporan Departemen Hari Ini
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {deptLoading ? (
@@ -144,13 +174,48 @@ export default function Dashboard() {
                     </div>
                   ) : chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height={285}>
-                      <BarChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} domain={[0, 100]} />
-                        <Tooltip contentStyle={{ borderRadius: 12, borderColor: "#e5e7eb", fontSize: 12 }} />
-                        <Bar dataKey="Submit" fill="#06258d" radius={[5, 5, 0, 0]} />
-                        <Bar dataKey="Progres" fill="#ef0012" radius={[5, 5, 0, 0]} />
+                      <BarChart
+                        data={chartData}
+                        margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+                      >
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke="#e5e7eb"
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="name"
+                          interval={0}
+                          tick={{ fontSize: 10, fill: "#94a3b8" }}
+                          angle={-18}
+                          textAnchor="end"
+                          height={55}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 12, fill: "#94a3b8" }}
+                          axisLine={false}
+                          tickLine={false}
+                          domain={[0, 100]}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: 12,
+                            borderColor: "#e5e7eb",
+                            fontSize: 12,
+                          }}
+                        />
+                        <Bar
+                          dataKey="Submit"
+                          fill="#06258d"
+                          radius={[5, 5, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="Progres"
+                          fill="#ef0012"
+                          radius={[5, 5, 0, 0]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
@@ -163,36 +228,56 @@ export default function Dashboard() {
 
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-bold text-slate-800">Ringkasan Hari Ini</CardTitle>
+                  <CardTitle className="text-base font-bold text-slate-800">
+                    Ringkasan Hari Ini
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-bold text-slate-800">Belum Submit Laporan</p>
-                        <p className="text-xs text-slate-500">Karyawan yang belum mengirim laporan hari ini</p>
+                        <p className="text-sm font-bold text-slate-800">
+                          Belum Submit Laporan
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Karyawan yang belum mengirim laporan hari ini
+                        </p>
                       </div>
-                      <Badge className="border-amber-300 bg-white text-amber-700">{summary.notSubmittedToday}</Badge>
+                      <Badge className="border-amber-300 bg-white text-amber-700">
+                        {summary.notSubmittedToday}
+                      </Badge>
                     </div>
                   </div>
 
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-bold text-slate-800">Submit Rate</p>
-                        <p className="text-xs text-slate-500">Persentase pengumpulan laporan</p>
+                        <p className="text-sm font-bold text-slate-800">
+                          Submit Rate
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Persentase pengumpulan laporan
+                        </p>
                       </div>
-                      <Badge className="border-blue-300 bg-white text-blue-700">{summary.submitRate}%</Badge>
+                      <Badge className="border-blue-300 bg-white text-blue-700">
+                        {summary.submitRate}%
+                      </Badge>
                     </div>
                   </div>
 
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-bold text-slate-800">Completion Rate</p>
-                        <p className="text-xs text-slate-500">Tingkat penyelesaian tugas</p>
+                        <p className="text-sm font-bold text-slate-800">
+                          Completion Rate
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Tingkat penyelesaian tugas
+                        </p>
                       </div>
-                      <Badge className="border-emerald-300 bg-white text-emerald-700">{summary.completionRate}%</Badge>
+                      <Badge className="border-emerald-300 bg-white text-emerald-700">
+                        {summary.completionRate}%
+                      </Badge>
                     </div>
                   </div>
                 </CardContent>
