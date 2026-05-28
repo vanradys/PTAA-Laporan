@@ -66,6 +66,20 @@ function StatCard({
   );
 }
 
+function formatDepartmentChartLabel(value: string) {
+  const label = String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (label.includes("finance")) return "Finance";
+  if (label.includes("general affairs")) return "GA";
+  if (label.includes("engineering")) return "Engineering";
+  if (label.includes("marketing")) return "Marketing";
+  if (label.includes("purchasing")) return "Purchasing";
+
+  return value;
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const today = getJakartaDateString();
