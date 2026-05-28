@@ -44,9 +44,9 @@ export default function Login() {
         <div className="absolute -bottom-24 -left-24 w-72 h-72 rounded-full opacity-10" style={{ backgroundColor: "#E30613" }} />
         <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full opacity-10" style={{ backgroundColor: "#ffffff" }} />
 
-        <div className="relative z-10">
+        <div className="relative z-10 flex justify-center mt-28">
           <div className="flex flex-col items-center gap-3">
-            <img src={logoSrc} alt="Adiyasa logo" className="w-32 h-32 object-contain mx-auto" />
+            <img src={logoSrc} alt="Adiyasa logo" className="w-96 h-96 object-contain mx-auto" />
           </div>
         </div>
 

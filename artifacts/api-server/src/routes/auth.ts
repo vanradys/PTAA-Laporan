@@ -76,7 +76,7 @@ const ptaaUsers = [
   {
     name: "Marketing Specialist",
     email: "mkt.specialist@adiyasa.com",
-    password: "MKTPTAA",
+    password: "MKSPTAA",
     role: "karyawan",
     departmentCode: "MKT",
   },
