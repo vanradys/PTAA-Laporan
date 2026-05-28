@@ -287,6 +287,9 @@ export default function JadwalProject() {
         year: parseInt(filterYear),
       }),
     });
+    queryClient.invalidateQueries({
+      queryKey: getGetPoYearlyTrendQueryKey({ year: parseInt(filterYear) }),
+    });
   };
 
   const openCreate = () => {
@@ -670,19 +673,14 @@ export default function JadwalProject() {
               <div className="space-y-1">
                 <Label className="text-xs">Departemen</Label>
                 <Select
-                  value={form.departmentId || NONE_VALUE}
-                  onValueChange={(v) =>
-                    setForm((f) => ({
-                      ...f,
-                      departmentId: v === NONE_VALUE ? "" : v,
-                    }))
-                  }
+                  value={filterDept}
+                  onValueChange={setFilterDept}
                 >
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Pilih dept..." />
+                  <SelectTrigger className="h-8 w-40 text-sm">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NONE_VALUE}>Tidak ada</SelectItem>
+                    <SelectItem value="semua">Semua Departemen</SelectItem>
                     {depts.map((d) => (
                       <SelectItem key={d.id} value={String(d.id)}>
                         {d.name}
