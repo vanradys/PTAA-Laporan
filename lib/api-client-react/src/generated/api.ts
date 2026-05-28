@@ -28,6 +28,7 @@ import type {
   GetDashboardSummaryParams,
   GetDepartmentProductivityParams,
   GetPoSummaryParams,
+  GetPoYearlyTrendParams,
   HealthStatus,
   ListPoParams,
   ListReportsParams,
@@ -37,6 +38,7 @@ import type {
   PoItem,
   PoSummary,
   PoUpdate,
+  PoYearlyTrendResponse,
   Report,
   ReportComment,
   ReportInput,
@@ -1613,7 +1615,11 @@ export const useMarkNotificationRead = <TError = ErrorType<unknown>,
       return useMutation(getMarkNotificationReadMutationOptions(options));
     }
 
-export const getDeleteNotificationUrl = (notifId: number) => {
+export const getDeleteNotificationUrl = (notifId: number,) => {
+
+
+
+
   return `/api/notifications/${notifId}`
 }
 
@@ -1621,11 +1627,18 @@ export const getDeleteNotificationUrl = (notifId: number) => {
  * @summary Delete a notification
  */
 export const deleteNotification = async (notifId: number, options?: RequestInit): Promise<SuccessResponse> => {
-  return customFetch<SuccessResponse>(getDeleteNotificationUrl(notifId), {
+
+  return customFetch<SuccessResponse>(getDeleteNotificationUrl(notifId),
+  {
     ...options,
     method: 'DELETE'
-  });
-}
+
+
+  }
+);}
+
+
+
 
 export const getDeleteNotificationMutationOptions = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteNotification>>, TError,{notifId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1638,14 +1651,24 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {...options, mutation: {...options.mutation, mutationKey}}
       : {mutation: { mutationKey, }, request: undefined};
 
+
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteNotification>>, {notifId: number}> = (props) => {
           const {notifId} = props ?? {};
-          return deleteNotification(notifId, requestOptions)
+
+          return  deleteNotification(notifId,requestOptions)
         }
+
+
+
+
+
 
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteNotificationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteNotification>>>
+
     export type DeleteNotificationMutationError = ErrorType<unknown>
 
     /**
@@ -1959,6 +1982,90 @@ export function useGetPoSummary<TData = Awaited<ReturnType<typeof getPoSummary>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPoSummaryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetPoYearlyTrendUrl = (params?: GetPoYearlyTrendParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/po/yearly-trend?${stringifiedParams}` : `/api/po/yearly-trend`
+}
+
+/**
+ * @summary Get yearly PO trend
+ */
+export const getPoYearlyTrend = async (params?: GetPoYearlyTrendParams, options?: RequestInit): Promise<PoYearlyTrendResponse> => {
+
+  return customFetch<PoYearlyTrendResponse>(getGetPoYearlyTrendUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPoYearlyTrendQueryKey = (params?: GetPoYearlyTrendParams,) => {
+    return [
+    `/api/po/yearly-trend`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPoYearlyTrendQueryOptions = <TData = Awaited<ReturnType<typeof getPoYearlyTrend>>, TError = ErrorType<unknown>>(params?: GetPoYearlyTrendParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPoYearlyTrend>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPoYearlyTrendQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPoYearlyTrend>>> = ({ signal }) => getPoYearlyTrend(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPoYearlyTrend>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPoYearlyTrendQueryResult = NonNullable<Awaited<ReturnType<typeof getPoYearlyTrend>>>
+export type GetPoYearlyTrendQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get yearly PO trend
+ */
+
+export function useGetPoYearlyTrend<TData = Awaited<ReturnType<typeof getPoYearlyTrend>>, TError = ErrorType<unknown>>(
+ params?: GetPoYearlyTrendParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPoYearlyTrend>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPoYearlyTrendQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

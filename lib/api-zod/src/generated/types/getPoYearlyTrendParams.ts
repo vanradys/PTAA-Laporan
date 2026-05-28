@@ -6,11 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface TaskUpdate {
-  title?: string;
-  project?: string;
-  deadline?: string;
-  progress?: number;
-  status?: string;
-  notes?: string;
-}
+export type GetPoYearlyTrendParams = {
+year?: number;
+};

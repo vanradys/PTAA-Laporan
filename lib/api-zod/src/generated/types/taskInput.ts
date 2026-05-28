@@ -9,6 +9,7 @@
 export interface TaskInput {
   title: string;
   project?: string;
+  deadline?: string;
   progress: number;
   status: string;
   notes?: string;

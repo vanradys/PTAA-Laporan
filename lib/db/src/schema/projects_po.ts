@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, date, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, date, boolean, timestamp, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -9,6 +9,7 @@ export const projectsPoTable = pgTable("projects_po", {
   noPo: text("no_po").notNull(),
   namaProject: text("nama_project").notNull(),
   customer: text("customer"),
+  poAmount: numeric("po_amount", { precision: 15, scale: 2 }),
   tanggalPoMasuk: date("tanggal_po_masuk").notNull(),
   targetPenyelesaian: date("target_penyelesaian"),
   deadline: date("deadline").notNull(),

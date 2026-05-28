@@ -10,6 +10,7 @@ export interface PoInput {
   noPo: string;
   namaProject: string;
   customer?: string;
+  poAmount?: number | null;
   tanggalPoMasuk: string;
   targetPenyelesaian?: string;
   deadline: string;

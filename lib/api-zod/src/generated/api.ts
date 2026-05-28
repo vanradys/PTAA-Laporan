@@ -120,9 +120,14 @@ export const GetTodayReportResponse = zod.object({
   "reportId": zod.number(),
   "title": zod.string(),
   "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })),
   "comments": zod.array(zod.object({
@@ -149,9 +154,14 @@ export const GetYesterdayTasksResponseItem = zod.object({
   "reportId": zod.number(),
   "title": zod.string(),
   "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })
 export const GetYesterdayTasksResponse = zod.array(GetYesterdayTasksResponseItem)
@@ -182,9 +192,14 @@ export const GetReportResponse = zod.object({
   "reportId": zod.number(),
   "title": zod.string(),
   "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })),
   "comments": zod.array(zod.object({
@@ -236,9 +251,14 @@ export const UpdateReportResponse = zod.object({
   "reportId": zod.number(),
   "title": zod.string(),
   "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })),
   "comments": zod.array(zod.object({
@@ -295,9 +315,14 @@ export const SubmitReportResponse = zod.object({
   "reportId": zod.number(),
   "title": zod.string(),
   "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })),
   "comments": zod.array(zod.object({
@@ -346,9 +371,14 @@ export const ReviewReportResponse = zod.object({
   "reportId": zod.number(),
   "title": zod.string(),
   "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })),
   "comments": zod.array(zod.object({
@@ -379,9 +409,14 @@ export const ListTasksResponseItem = zod.object({
   "reportId": zod.number(),
   "title": zod.string(),
   "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })
 export const ListTasksResponse = zod.array(ListTasksResponseItem)
@@ -397,6 +432,7 @@ export const CreateTaskParams = zod.object({
 export const CreateTaskBody = zod.object({
   "title": zod.string(),
   "project": zod.string().optional(),
+  "deadline": zod.string().optional(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().optional()
@@ -413,6 +449,7 @@ export const UpdateTaskParams = zod.object({
 export const UpdateTaskBody = zod.object({
   "title": zod.string().optional(),
   "project": zod.string().optional(),
+  "deadline": zod.string().optional(),
   "progress": zod.number().optional(),
   "status": zod.string().optional(),
   "notes": zod.string().optional()
@@ -423,9 +460,14 @@ export const UpdateTaskResponse = zod.object({
   "reportId": zod.number(),
   "title": zod.string(),
   "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
   "progress": zod.number(),
   "status": zod.string(),
   "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })
 
@@ -510,6 +552,19 @@ export const MarkNotificationReadResponse = zod.object({
 
 
 /**
+ * @summary Delete a notification
+ */
+export const DeleteNotificationParams = zod.object({
+  "notifId": zod.coerce.number()
+})
+
+export const DeleteNotificationResponse = zod.object({
+  "success": zod.boolean(),
+  "message": zod.string().optional()
+})
+
+
+/**
  * @summary Mark all notifications as read
  */
 export const MarkAllNotificationsReadResponse = zod.object({
@@ -536,6 +591,7 @@ export const ListPoResponseItem = zod.object({
   "noPo": zod.string(),
   "namaProject": zod.string(),
   "customer": zod.string().nullish(),
+  "poAmount": zod.number().nullish(),
   "tanggalPoMasuk": zod.string().optional(),
   "targetPenyelesaian": zod.string().nullish(),
   "deadline": zod.string(),
@@ -561,6 +617,7 @@ export const CreatePoBody = zod.object({
   "noPo": zod.string(),
   "namaProject": zod.string(),
   "customer": zod.string().optional(),
+  "poAmount": zod.number().nullish(),
   "tanggalPoMasuk": zod.string(),
   "targetPenyelesaian": zod.string().optional(),
   "deadline": zod.string(),
@@ -593,6 +650,25 @@ export const GetPoSummaryResponse = zod.object({
 
 
 /**
+ * @summary Get yearly PO trend
+ */
+export const GetPoYearlyTrendQueryParams = zod.object({
+  "year": zod.coerce.number().optional()
+})
+
+export const GetPoYearlyTrendResponse = zod.object({
+  "year": zod.number(),
+  "canViewAmount": zod.boolean(),
+  "items": zod.array(zod.object({
+  "month": zod.string(),
+  "monthNumber": zod.number(),
+  "totalPo": zod.number(),
+  "totalAmount": zod.number().nullish()
+}))
+})
+
+
+/**
  * @summary Get PO detail
  */
 export const GetPoParams = zod.object({
@@ -604,6 +680,7 @@ export const GetPoResponse = zod.object({
   "noPo": zod.string(),
   "namaProject": zod.string(),
   "customer": zod.string().nullish(),
+  "poAmount": zod.number().nullish(),
   "tanggalPoMasuk": zod.string().optional(),
   "targetPenyelesaian": zod.string().nullish(),
   "deadline": zod.string(),
@@ -632,6 +709,7 @@ export const UpdatePoBody = zod.object({
   "noPo": zod.string().optional(),
   "namaProject": zod.string().optional(),
   "customer": zod.string().optional(),
+  "poAmount": zod.number().nullish(),
   "tanggalPoMasuk": zod.string().optional(),
   "targetPenyelesaian": zod.string().optional(),
   "deadline": zod.string().optional(),
@@ -647,6 +725,7 @@ export const UpdatePoResponse = zod.object({
   "noPo": zod.string(),
   "namaProject": zod.string(),
   "customer": zod.string().nullish(),
+  "poAmount": zod.number().nullish(),
   "tanggalPoMasuk": zod.string().optional(),
   "targetPenyelesaian": zod.string().nullish(),
   "deadline": zod.string(),
@@ -676,6 +755,7 @@ export const ClosePoResponse = zod.object({
   "noPo": zod.string(),
   "namaProject": zod.string(),
   "customer": zod.string().nullish(),
+  "poAmount": zod.number().nullish(),
   "tanggalPoMasuk": zod.string().optional(),
   "targetPenyelesaian": zod.string().nullish(),
   "deadline": zod.string(),

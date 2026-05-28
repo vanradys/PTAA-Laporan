@@ -37,6 +37,19 @@ export interface LoginInput {
   password: string;
 }
 
+export interface PoYearlyTrendItem {
+  month: string;
+  monthNumber: number;
+  totalPo: number;
+  totalAmount?: number | null;
+}
+
+export interface PoYearlyTrendResponse {
+  year: number;
+  canViewAmount: boolean;
+  items: PoYearlyTrendItem[];
+}
+
 export interface DailyTask {
   id: number;
   reportId: number;
@@ -189,6 +202,7 @@ export interface PoItem {
   namaProject: string;
   /** @nullable */
   customer?: string | null;
+  poAmount?: number | null;
   tanggalPoMasuk?: string;
   /** @nullable */
   targetPenyelesaian?: string | null;
@@ -216,6 +230,7 @@ export interface PoInput {
   noPo: string;
   namaProject: string;
   customer?: string;
+  poAmount?: number | null;
   tanggalPoMasuk: string;
   targetPenyelesaian?: string;
   deadline: string;
@@ -230,6 +245,7 @@ export interface PoUpdate {
   noPo?: string;
   namaProject?: string;
   customer?: string;
+  poAmount?: number | null;
   tanggalPoMasuk?: string;
   targetPenyelesaian?: string;
   deadline?: string;
@@ -279,6 +295,10 @@ search?: string;
 
 export type GetPoSummaryParams = {
 month?: number;
+year?: number;
+};
+
+export type GetPoYearlyTrendParams = {
 year?: number;
 };
 

@@ -12,9 +12,15 @@ export interface DailyTask {
   title: string;
   /** @nullable */
   project?: string | null;
+  /** @nullable */
+  deadline?: string | null;
   progress: number;
   status: string;
   /** @nullable */
   notes?: string | null;
+  editCount: number;
+  remainingActions: number;
+  isLocked: boolean;
+  isDelay: boolean;
   createdAt: string;
 }

@@ -12,6 +12,7 @@ export interface PoItem {
   namaProject: string;
   /** @nullable */
   customer?: string | null;
+  poAmount?: number | null;
   tanggalPoMasuk?: string;
   /** @nullable */
   targetPenyelesaian?: string | null;
