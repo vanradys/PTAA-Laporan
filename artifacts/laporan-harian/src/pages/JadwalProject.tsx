@@ -601,19 +601,17 @@ export default function JadwalProject() {
                         yAxisId="right"
                         orientation="right"
                         tick={{ fontSize: 12 }}
-                        width={72}
-                        domain={[
-                          0,
-                          (dataMax: number) => Math.max(dataMax, 1_000_000),
-                        ]}
+                        width={84}
+                        domain={[0, 10_000_000_000]}
                         ticks={[
-                          0, 200_000_000, 500_000_000, 2_000_000_000,
+                          200_000_000, 500_000_000, 2_000_000_000,
                           5_000_000_000, 10_000_000_000,
                         ]}
+                        interval={0}
+                        tickMargin={8}
                         tickFormatter={(value) => {
                           const amount = Number(value);
 
-                          if (amount === 0) return "0";
                           if (amount === 200_000_000) return "200jt";
                           if (amount === 500_000_000) return "500jt";
                           if (amount === 2_000_000_000) return "2M";
