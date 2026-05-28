@@ -569,6 +569,90 @@ export default function JadwalProject() {
           </div>
         )}
 
+        {yearlyTrendItems.length > 0 && (
+          <Card className="border border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                Grafik Monitoring PO {filterYear}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                {canViewPoAmount
+                  ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO."
+                  : "Grafik menunjukkan jumlah PO per bulan."}
+              </p>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={yearlyTrendItems}
+                    margin={{ top: 10, right: 24, left: -10, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <YAxis
+                      yAxisId="left"
+                      allowDecimals={false}
+                      tick={{ fontSize: 12 }}
+                      label={{
+                        value: "Jumlah PO",
+                        angle: -90,
+                        position: "insideLeft",
+                      }}
+                    />
+                    {canViewPoAmount && (
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fontSize: 12 }}
+                        width={72}
+                        domain={[0, (dataMax: number) => Math.max(dataMax, 1_000_000)]}
+                        tickFormatter={(value) =>
+                          formatRupiahCompact(Number(value))
+                        }
+                        label={{
+                          value: "Nominal PO",
+                          angle: 90,
+                          position: "insideRight",
+                        }}
+                      />
+                    )}
+                    <Tooltip
+                      formatter={(value, name) => {
+                        if (name === "Total Nominal") {
+                          return [formatRupiah(Number(value)), name];
+                        }
+
+                        return [value, name];
+                      }}
+                    />
+                    <Legend />
+                    <Bar
+                      yAxisId="left"
+                      dataKey="totalPo"
+                      name="Jumlah PO"
+                      fill="#2563eb"
+                      radius={[6, 6, 0, 0]}
+                    />
+                    {canViewPoAmount && (
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="totalAmount"
+                        name="Total Nominal"
+                        stroke="#f97316"
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Filters */}
         <Card className="border border-border">
           <CardContent className="p-4">
@@ -1012,89 +1096,6 @@ export default function JadwalProject() {
           </CardContent>
         </Card>
 
-        {yearlyTrendItems.length > 0 && (
-          <Card className="border border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">
-                Grafik Monitoring PO {filterYear}
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {canViewPoAmount
-                  ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO."
-                  : "Grafik menunjukkan jumlah PO per bulan."}
-              </p>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart
-                    data={yearlyTrendItems}
-                    margin={{ top: 10, right: 24, left: -10, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis
-                      yAxisId="left"
-                      allowDecimals={false}
-                      tick={{ fontSize: 12 }}
-                      label={{
-                        value: "Jumlah PO",
-                        angle: -90,
-                        position: "insideLeft",
-                      }}
-                    />
-                    {canViewPoAmount && (
-                      <YAxis
-                        yAxisId="right"
-                        orientation="right"
-                        tick={{ fontSize: 12 }}
-                        width={72}
-                        domain={[0, (dataMax: number) => Math.max(dataMax, 1_000_000)]}
-                        tickFormatter={(value) =>
-                          formatRupiahCompact(Number(value))
-                        }
-                        label={{
-                          value: "Nominal PO",
-                          angle: 90,
-                          position: "insideRight",
-                        }}
-                      />
-                    )}
-                    <Tooltip
-                      formatter={(value, name) => {
-                        if (name === "Total Nominal") {
-                          return [formatRupiah(Number(value)), name];
-                        }
-
-                        return [value, name];
-                      }}
-                    />
-                    <Legend />
-                    <Bar
-                      yAxisId="left"
-                      dataKey="totalPo"
-                      name="Jumlah PO"
-                      fill="#2563eb"
-                      radius={[6, 6, 0, 0]}
-                    />
-                    {canViewPoAmount && (
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="totalAmount"
-                        name="Total Nominal"
-                        stroke="#f97316"
-                        strokeWidth={3}
-                        dot={{ r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {/* Form Modal */}
