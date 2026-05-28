@@ -15,5 +15,7 @@ export interface User {
   departmentId?: number | null;
   /** @nullable */
   departmentName?: string | null;
+  /** @nullable */
+  departmentCode?: string | null;
   avatarInitials: string;
 }

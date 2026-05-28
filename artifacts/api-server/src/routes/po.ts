@@ -30,12 +30,26 @@ const PO_AMOUNT_VISIBLE_ROLES = [
   "admin",
   "direktur",
   "dir",
-  "finance",
-  "marketing",
 ];
 
-function canViewPoAmount(role?: string | null): boolean {
-  return PO_AMOUNT_VISIBLE_ROLES.includes(String(role ?? "").toLowerCase());
+const PO_AMOUNT_VISIBLE_DEPARTMENT_CODES = ["MKT", "AAF", "FIN"];
+const PO_AMOUNT_VISIBLE_DEPARTMENT_NAMES = ["marketing", "finance"];
+
+function canViewPoAmount(user?: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}): boolean {
+  const role = String(user?.role ?? "").toLowerCase();
+  if (PO_AMOUNT_VISIBLE_ROLES.includes(role)) return true;
+
+  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  if (PO_AMOUNT_VISIBLE_DEPARTMENT_CODES.includes(departmentCode)) return true;
+
+  const departmentName = String(user?.departmentName ?? "").toLowerCase();
+  return PO_AMOUNT_VISIBLE_DEPARTMENT_NAMES.some((name) =>
+    departmentName.includes(name),
+  );
 }
 
 function calcSisaHari(deadline: string): number {
@@ -278,7 +292,7 @@ router.get("/po", async (req, res) => {
 
   const items = await Promise.all(
     pos.map((po) =>
-      buildPoItem(po, { includeAmount: canViewPoAmount(user.role) }),
+      buildPoItem(po, { includeAmount: canViewPoAmount(user) }),
     ),
   );
 
@@ -303,7 +317,6 @@ router.post("/po", async (req, res) => {
   }
 
   const allowedRoles = [
-    "hr",
     "admin",
     "direktur",
     "dir",
@@ -314,7 +327,7 @@ router.post("/po", async (req, res) => {
   if (!allowedRoles.includes(user.role)) {
     res
       .status(403)
-      .json({ error: "Hanya HR/Admin/Direktur yang dapat menambah PO" });
+      .json({ error: "Hanya Admin/Direktur atau departemen terkait yang dapat menambah PO" });
     return;
   }
 
@@ -346,7 +359,7 @@ router.post("/po", async (req, res) => {
       namaProject,
       customer: customer ?? null,
       poAmount:
-        canViewPoAmount(user.role) && poAmount !== undefined && poAmount !== ""
+        canViewPoAmount(user) && poAmount !== undefined && poAmount !== ""
           ? String(poAmount)
           : null,
       tanggalPoMasuk,
@@ -363,7 +376,7 @@ router.post("/po", async (req, res) => {
 
   await sendDeadlineNotifications(po);
   const item = await buildPoItem(po, {
-    includeAmount: canViewPoAmount(user.role),
+    includeAmount: canViewPoAmount(user),
   });
   res.status(201).json(item);
 });
@@ -395,7 +408,7 @@ router.get("/po/yearly-trend", async (req, res) => {
       ),
     );
 
-  const canSeeAmount = canViewPoAmount(user.role);
+  const canSeeAmount = canViewPoAmount(user);
 
   const monthLabels = [
     "Jan",
@@ -463,7 +476,7 @@ router.get("/po/:id", async (req, res) => {
   }
 
   const item = await buildPoItem(po, {
-    includeAmount: canViewPoAmount(user.role),
+    includeAmount: canViewPoAmount(user),
   });
   res.json(item);
 });
@@ -481,7 +494,6 @@ router.patch("/po/:id", async (req, res) => {
   }
 
   const allowedRoles = [
-    "hr",
     "admin",
     "direktur",
     "dir",
@@ -492,7 +504,7 @@ router.patch("/po/:id", async (req, res) => {
   if (!allowedRoles.includes(user.role)) {
     res
       .status(403)
-      .json({ error: "Hanya HR/Admin/Direktur yang dapat mengubah PO" });
+      .json({ error: "Hanya Admin/Direktur atau departemen terkait yang dapat mengubah PO" });
     return;
   }
 
@@ -525,7 +537,7 @@ router.patch("/po/:id", async (req, res) => {
   if (noPo !== undefined) updates.noPo = noPo;
   if (namaProject !== undefined) updates.namaProject = namaProject;
   if (customer !== undefined) updates.customer = customer;
-  if (poAmount !== undefined && canViewPoAmount(user.role)) {
+  if (poAmount !== undefined && canViewPoAmount(user)) {
     updates.poAmount =
       poAmount === "" || poAmount === null ? null : String(poAmount);
   }
@@ -547,7 +559,7 @@ router.patch("/po/:id", async (req, res) => {
     .where(eq(projectsPoTable.id, id))
     .returning();
   await sendDeadlineNotifications(updated);
-  const item = await buildPoItem(updated, { includeAmount: canViewPoAmount(user.role) });
+  const item = await buildPoItem(updated, { includeAmount: canViewPoAmount(user) });
   res.json(item);
 });
 
@@ -564,7 +576,6 @@ router.post("/po/:id/close", async (req, res) => {
   }
 
   const allowedRoles = [
-    "hr",
     "admin",
     "direktur",
     "dir",
@@ -599,7 +610,7 @@ router.post("/po/:id/close", async (req, res) => {
     .where(eq(projectsPoTable.id, id))
     .returning();
 
-  const item = await buildPoItem(updated, { includeAmount: canViewPoAmount(user.role) });
+  const item = await buildPoItem(updated, { includeAmount: canViewPoAmount(user) });
   res.json(item);
 });
 

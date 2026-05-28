@@ -1,5 +1,6 @@
-import { db, departmentsTable, usersTable, eq } from "@workspace/db";
+import { db, departmentsTable, usersTable, eq, inArray } from "@workspace/db";
 import { getUserFromToken } from "./auth";
+import { activeDepartmentCodes } from "./auth";
 import { Router } from "express";
 import { reportingUserCondition } from "../services/dailyReportReminder";
 
@@ -11,7 +12,11 @@ router.get("/departments", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const departments = await db.select().from(departmentsTable).orderBy(departmentsTable.name);
+  const departments = await db
+    .select()
+    .from(departmentsTable)
+    .where(inArray(departmentsTable.code, activeDepartmentCodes))
+    .orderBy(departmentsTable.name);
   res.json(departments);
 });
 

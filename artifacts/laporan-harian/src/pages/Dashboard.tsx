@@ -77,7 +77,7 @@ export default function Dashboard() {
         <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-7 py-6 text-white shadow-sm">
           <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
           <p className="text-sm font-medium text-blue-100">Selamat datang kembali,</p>
-          <h2 className="mt-1 text-2xl font-black">{user?.name ?? "HR PTAA"} — PT Adiyasa Abadi</h2>
+          <h2 className="mt-1 text-2xl font-black">{user?.name ?? "Admin PTAA"} — PT Adiyasa Abadi</h2>
           <div className="mt-2 flex items-center gap-2 text-sm font-medium text-blue-100">
             <CalendarDays className="h-4 w-4" />
             {todayFormatted}

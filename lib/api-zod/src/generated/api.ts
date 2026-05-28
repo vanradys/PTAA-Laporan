@@ -26,6 +26,7 @@ export const GetCurrentUserResponse = zod.object({
   "role": zod.string(),
   "departmentId": zod.number().nullish(),
   "departmentName": zod.string().nullish(),
+  "departmentCode": zod.string().nullish(),
   "avatarInitials": zod.string()
 })
 
@@ -45,6 +46,7 @@ export const LoginResponse = zod.object({
   "role": zod.string(),
   "departmentId": zod.number().nullish(),
   "departmentName": zod.string().nullish(),
+  "departmentCode": zod.string().nullish(),
   "avatarInitials": zod.string()
 })
 
@@ -342,7 +344,7 @@ export const SubmitReportResponse = zod.object({
 
 
 /**
- * @summary Mark a report as reviewed (HR/Admin/Director only)
+ * @summary Mark a report as reviewed (Admin/Director only)
  */
 export const ReviewReportParams = zod.object({
   "id": zod.coerce.number()
@@ -831,6 +833,7 @@ export const ListEmployeesResponseItem = zod.object({
   "role": zod.string(),
   "departmentId": zod.number().nullish(),
   "departmentName": zod.string().nullish(),
+  "departmentCode": zod.string().nullish(),
   "avatarInitials": zod.string()
 })
 export const ListEmployeesResponse = zod.array(ListEmployeesResponseItem)

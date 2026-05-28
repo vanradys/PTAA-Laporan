@@ -9,6 +9,7 @@ interface User {
   role: string;
   departmentId: number | null;
   departmentName: string | null;
+  departmentCode: string | null;
   avatarInitials: string;
 }
 

@@ -965,7 +965,7 @@ export const getReviewReportUrl = (id: number,) => {
 }
 
 /**
- * @summary Mark a report as reviewed (HR/Admin/Director only)
+ * @summary Mark a report as reviewed (Admin/Director only)
  */
 export const reviewReport = async (id: number,
     reviewInput: ReviewInput, options?: RequestInit): Promise<Report> => {
@@ -1015,7 +1015,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ReviewReportMutationError = ErrorType<unknown>
 
     /**
- * @summary Mark a report as reviewed (HR/Admin/Director only)
+ * @summary Mark a report as reviewed (Admin/Director only)
  */
 export const useReviewReport = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewReport>>, TError,{id: number;data: BodyType<ReviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

@@ -33,7 +33,7 @@ const REPORT_STATUSES = [
   { value: "perlu_revisi", label: "Perlu Revisi", color: "bg-orange-100 text-orange-700 border-orange-200" },
 ];
 
-const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
+const REMINDER_ACCESS_ROLES = ["admin", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 
 const REMOVED_EMPLOYEE_EMAILS = new Set([
   "admin@ptaa.com",
@@ -44,7 +44,7 @@ const REMOVED_EMPLOYEE_EMAILS = new Set([
   "mkspec@adiyasa.com",
 ]);
 
-const NON_REPORTING_ROLES = new Set(["admin", "hr", "direktur", "director"]);
+const NON_REPORTING_ROLES = new Set(["admin", "direktur", "director"]);
 
 type EmployeeOption = {
   id: number;

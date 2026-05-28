@@ -53,7 +53,6 @@ export default function Layout({ children }: LayoutProps) {
 
   const roleLabel: Record<string, string> = {
     karyawan: "Karyawan",
-    hr: "HR",
     admin: "Admin",
     direktur: "Direktur",
   };
@@ -68,7 +67,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
             <div className="leading-tight">
               <p className="text-2xl font-black tracking-[0.16em]">ADIYASA</p>
-              <p className="text-xs font-bold tracking-[0.22em] text-red-500">HR PTAA</p>
+              <p className="text-xs font-bold tracking-[0.22em] text-red-500">PTAA</p>
             </div>
           </div>
         </div>
@@ -126,7 +125,7 @@ export default function Layout({ children }: LayoutProps) {
                 </AvatarFallback>
               </Avatar>
               <div className="hidden leading-tight sm:block">
-                <p className="text-sm font-bold text-slate-900">{user?.name ?? "Admin HR PTAA"}</p>
+                <p className="text-sm font-bold text-slate-900">{user?.name ?? "Admin PTAA"}</p>
                 <p className="text-xs text-slate-500">{roleLabel[user?.role ?? ""] ?? user?.role ?? "Admin"}</p>
               </div>
               <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={handleLogout} title="Keluar">

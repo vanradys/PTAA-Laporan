@@ -320,7 +320,7 @@ useEffect(() => {
       await submitReport.mutateAsync({ id: reportId });
       queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
       refreshDashboardAndMonitoring();
-      toast({ title: "Laporan Terkirim!", description: "Laporan harian Anda berhasil dikirim ke HR" });
+      toast({ title: "Laporan Terkirim!", description: "Laporan harian Anda berhasil dikirim untuk review" });
     } catch {
       toast({ title: "Gagal", description: "Gagal mengirim laporan", variant: "destructive" });
     } finally {
@@ -444,8 +444,8 @@ useEffect(() => {
                 <div>
                   <p className={`text-sm font-semibold ${report?.status === "direview" ? "text-green-800" : "text-blue-800"}`}>
                     {report?.status === "direview"
-                      ? "Laporan sudah direview oleh HR"
-                      : "Laporan sudah dikirim — menunggu review HR"}
+                      ? "Laporan sudah direview"
+                      : "Laporan sudah dikirim — menunggu review"}
                   </p>
                   <p className={`text-xs mt-0.5 ${report?.status === "direview" ? "text-green-600" : "text-blue-600"}`}>
                     Laporan tidak dapat diubah setelah dikirim
@@ -542,7 +542,7 @@ useEffect(() => {
                     <AlertTriangle className="w-5 h-5 text-orange-600 shrink-0" />
                     <div>
                       <p className="text-sm font-semibold text-orange-800">Laporan perlu direvisi</p>
-                      <p className="text-xs text-orange-600 mt-0.5">HR meminta revisi. Silakan perbarui dan kirim kembali.</p>
+                      <p className="text-xs text-orange-600 mt-0.5">Revisi diminta. Silakan perbarui dan kirim kembali.</p>
                     </div>
                   </CardContent>
                 </Card>

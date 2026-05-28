@@ -242,7 +242,7 @@ paths:
     post:
       operationId: reviewReport
       tags: [reports]
-      summary: Mark a report as reviewed (HR/Admin/Director only)
+      summary: Mark a report as reviewed (Admin/Director only)
       parameters:
         - name: id
           in: path
@@ -696,6 +696,7 @@ components:
         role: { type: string }
         departmentId: { type: ["integer", "null"] }
         departmentName: { type: ["string", "null"] }
+        departmentCode: { type: ["string", "null"] }
         avatarInitials: { type: string }
       required: [id, name, email, role, avatarInitials]
 

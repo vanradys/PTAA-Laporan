@@ -5,11 +5,11 @@ export const REMOVED_USER_EMAILS = [
   "eko@perusahaan.com",
   "engineering3@adiyasa.com",
   "mkspec@adiyasa.com",
+  "hr@adiyasa.com",
 ] as const;
 
 export const NON_REPORTING_ROLES = [
   "admin",
-  "hr",
   "direktur",
   "director",
 ] as const;

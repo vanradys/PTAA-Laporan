@@ -26,6 +26,7 @@ async function getUserFromToken(token: string) {
     password: usersTable.password,
     isActive: usersTable.isActive,
     departmentName: departmentsTable.name,
+    departmentCode: departmentsTable.code,
   }).from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
     .where(eq(usersTable.id, session.userId))
@@ -35,41 +36,28 @@ async function getUserFromToken(token: string) {
   return user;
 }
 
-const defaultDepartments = [
+export const defaultDepartments = [
   { code: "DIR", name: "Director" },
-  { code: "HR", name: "Human Resources" },
   { code: "GA", name: "General Affairs" },
-  { code: "ACC", name: "Accounting" },
-  { code: "FIN", name: "Finance" },
   { code: "AAF", name: "Finance & Accounting" },
   { code: "PUR", name: "Purchasing" },
   { code: "MKT", name: "Marketing" },
-  { code: "MKS", name: "Marketing Support" },
   { code: "ENG", name: "Engineering" },
-  { code: "PRD", name: "Production" },
-  { code: "WRH", name: "Warehouse" },
-  { code: "LOG", name: "Logistic" },
-  { code: "QA", name: "Quality Assurance" },
-  { code: "QC", name: "Quality Control" },
-  { code: "HDP", name: "Head Production" },
-  { code: "FDS", name: "Field Service" },
-  { code: "SPV", name: "Supervisor" },
 ];
+
+export const activeDepartmentCodes = defaultDepartments.map(
+  (department) => department.code,
+);
+
+const hiddenDepartments = [{ code: "ADM", name: "Admin" }];
 
 const ptaaUsers = [
   {
-    name: "Admin HR PTAA",
+    name: "Admin PTAA",
     email: "admin@adiyasa.com",
     password: "AdiyasaFamily",
     role: "admin",
-    departmentCode: "HR",
-  },
-  {
-    name: "HR PTAA",
-    email: "hr@adiyasa.com",
-    password: "HRPTAA",
-    role: "hr",
-    departmentCode: "HR",
+    departmentCode: "ADM",
   },
   {
     name: "Director PTAA",
@@ -136,6 +124,7 @@ const inactiveEmails = [
   "eko@perusahaan.com",
   "engineering3@adiyasa.com",
   "mkspec@adiyasa.com",
+  "hr@adiyasa.com",
 ];
 
 function getSeedSecret(): string {
@@ -158,7 +147,7 @@ function getSchemaSetupHelp(error: unknown): string | null {
 }
 
 async function seedDepartments() {
-  for (const department of defaultDepartments) {
+  for (const department of [...defaultDepartments, ...hiddenDepartments]) {
     await db
       .insert(departmentsTable)
       .values(department)
@@ -295,6 +284,7 @@ router.get("/me", async (req, res) => {
       departmentId: usersTable.departmentId,
       isActive: usersTable.isActive,
       departmentName: departmentsTable.name,
+      departmentCode: departmentsTable.code,
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
@@ -321,6 +311,7 @@ router.get("/me", async (req, res) => {
     role: u.role,
     departmentId: u.departmentId,
     departmentName: u.departmentName ?? null,
+    departmentCode: u.departmentCode ?? null,
     avatarInitials: initials,
   });
 });
@@ -344,6 +335,7 @@ router.post("/login", async (req, res) => {
       password: usersTable.password,
       isActive: usersTable.isActive,
       departmentName: departmentsTable.name,
+      departmentCode: departmentsTable.code,
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
@@ -391,6 +383,7 @@ router.post("/login", async (req, res) => {
     role: user.role,
     departmentId: user.departmentId,
     departmentName: user.departmentName ?? null,
+    departmentCode: user.departmentCode ?? null,
     avatarInitials: initials,
   });
 });

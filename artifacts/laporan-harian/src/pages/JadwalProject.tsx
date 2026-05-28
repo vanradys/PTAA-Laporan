@@ -32,7 +32,6 @@ import {
   ComposedChart,
   BarChart,
   Bar,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -184,8 +183,9 @@ export default function JadwalProject() {
   const { toast } = useToast();
 
   const role = user?.role?.toLowerCase() ?? "";
+  const departmentName = user?.departmentName?.toLowerCase() ?? "";
+  const departmentCode = user?.departmentCode?.toUpperCase() ?? "";
   const canManage = [
-    "hr",
     "admin",
     "direktur",
     "dir",
@@ -194,13 +194,11 @@ export default function JadwalProject() {
     "ga",
   ].includes(role);
 
-  const canViewPoAmount = [
-    "admin",
-    "direktur",
-    "dir",
-    "finance",
-    "marketing",
-  ].includes(role);
+  const canViewPoAmount =
+    ["admin", "direktur", "dir"].includes(role) ||
+    ["MKT", "AAF", "FIN"].includes(departmentCode) ||
+    departmentName.includes("marketing") ||
+    departmentName.includes("finance");
 
   const [filterMonth, setFilterMonth] = useState<string>(
     String(today.getMonth() + 1),
@@ -360,7 +358,6 @@ export default function JadwalProject() {
         status: form.status,
         progress: parseInt(form.progress),
         catatan: form.catatan || undefined,
-        poAmount: form.poAmount ? parseFloat(form.poAmount) : undefined,
       };
       if (editingId) {
         await updatePo.mutateAsync({ id: editingId, data: payload });
@@ -545,8 +542,9 @@ export default function JadwalProject() {
                 Grafik Monitoring PO {filterYear}
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                Bar menunjukkan jumlah PO per bulan, line menunjukkan total
-                nominal PO.
+                {canViewPoAmount
+                  ? "Grafik menunjukkan total nominal PO per bulan."
+                  : "Grafik menunjukkan jumlah PO per bulan."}
               </p>
             </CardHeader>
             <CardContent className="p-4">
@@ -562,27 +560,15 @@ export default function JadwalProject() {
                       yAxisId="left"
                       allowDecimals={false}
                       tick={{ fontSize: 12 }}
+                      tickFormatter={(value) =>
+                        canViewPoAmount ? formatRupiah(Number(value)) : value
+                      }
                       label={{
-                        value: "Jumlah PO",
+                        value: canViewPoAmount ? "Nominal PO" : "Jumlah PO",
                         angle: -90,
                         position: "insideLeft",
                       }}
                     />
-                    {canViewPoAmount && (
-                      <YAxis
-                        yAxisId="right"
-                        orientation="right"
-                        tick={{ fontSize: 12 }}
-                        tickFormatter={(value) =>
-                          `${Number(value) / 1000000}jt`
-                        }
-                        label={{
-                          value: "Nominal PO",
-                          angle: 90,
-                          position: "insideRight",
-                        }}
-                      />
-                    )}
                     <Tooltip
                       formatter={(value, name) => {
                         if (name === "Total Nominal") {
@@ -595,23 +581,11 @@ export default function JadwalProject() {
                     <Legend />
                     <Bar
                       yAxisId="left"
-                      dataKey="totalPo"
-                      name="Jumlah PO"
-                      fill="#2563eb"
+                      dataKey={canViewPoAmount ? "totalAmount" : "totalPo"}
+                      name={canViewPoAmount ? "Total Nominal" : "Jumlah PO"}
+                      fill={canViewPoAmount ? "#f97316" : "#2563eb"}
                       radius={[6, 6, 0, 0]}
                     />
-                    {canViewPoAmount && (
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="totalAmount"
-                        name="Total Nominal"
-                        stroke="#f97316"
-                        strokeWidth={3}
-                        dot={{ r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
