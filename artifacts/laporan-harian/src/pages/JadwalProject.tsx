@@ -280,9 +280,6 @@ export default function JadwalProject() {
         }
       ).items
     : [];
-  const hasNominalTrend =
-    canViewPoAmount &&
-    yearlyTrendItems.some((item) => Number(item.totalAmount ?? 0) > 0);
   const depts = (Array.isArray(departments) ? departments : []) as {
     id: number;
     name: string;
@@ -558,7 +555,7 @@ export default function JadwalProject() {
                 Grafik Monitoring PO {filterYear}
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                {hasNominalTrend
+                {canViewPoAmount
                   ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO."
                   : "Grafik menunjukkan jumlah PO per bulan."}
               </p>
@@ -582,12 +579,13 @@ export default function JadwalProject() {
                         position: "insideLeft",
                       }}
                     />
-                    {hasNominalTrend && (
+                    {canViewPoAmount && (
                       <YAxis
                         yAxisId="right"
                         orientation="right"
                         tick={{ fontSize: 12 }}
                         width={72}
+                        domain={[0, (dataMax: number) => Math.max(dataMax, 1_000_000)]}
                         tickFormatter={(value) =>
                           formatRupiahCompact(Number(value))
                         }
@@ -615,7 +613,7 @@ export default function JadwalProject() {
                       fill="#2563eb"
                       radius={[6, 6, 0, 0]}
                     />
-                    {hasNominalTrend && (
+                    {canViewPoAmount && (
                       <Line
                         yAxisId="right"
                         type="monotone"
