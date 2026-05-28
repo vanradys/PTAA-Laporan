@@ -176,6 +176,13 @@ function formatRupiah(value: number) {
   }).format(value);
 }
 
+function formatRupiahCompact(value: number) {
+  if (value >= 1_000_000_000) return `${Number((value / 1_000_000_000).toFixed(1))}M`;
+  if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}jt`;
+  if (value >= 1_000) return `${Number((value / 1_000).toFixed(1))}rb`;
+  return String(value);
+}
+
 const today = new Date();
 
 export default function JadwalProject() {
@@ -227,6 +234,9 @@ export default function JadwalProject() {
   const { data: poList, isLoading: poLoading } = useListPo(poParams, {
     query: { queryKey: getListPoQueryKey(poParams) },
   });
+  const { data: allPoList, isLoading: allPoLoading } = useListPo(undefined, {
+    query: { queryKey: getListPoQueryKey() },
+  });
 
   const { data: summary } = useGetPoSummary(
     { month: parseInt(filterMonth), year: parseInt(filterYear) },
@@ -256,6 +266,7 @@ export default function JadwalProject() {
   const closePo = useClosePo();
 
   const pos = (Array.isArray(poList) ? poList : []) as PoItem[];
+  const allPos = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
   const yearlyTrendItems = Array.isArray(
     (yearlyTrend as { items?: unknown[] } | undefined)?.items,
   )
@@ -280,6 +291,7 @@ export default function JadwalProject() {
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getListPoQueryKey(poParams) });
+    queryClient.invalidateQueries({ queryKey: getListPoQueryKey() });
     queryClient.invalidateQueries({
       queryKey: getGetPoSummaryQueryKey({
         month: parseInt(filterMonth),
@@ -572,8 +584,9 @@ export default function JadwalProject() {
                         yAxisId="right"
                         orientation="right"
                         tick={{ fontSize: 12 }}
+                        width={72}
                         tickFormatter={(value) =>
-                          `${Number(value) / 1000000}jt`
+                          formatRupiahCompact(Number(value))
                         }
                         label={{
                           value: "Nominal PO",
@@ -826,6 +839,162 @@ export default function JadwalProject() {
                             <span className={`text-xs font-medium ${dlStyle}`}>
                               {dlLabel}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${ss.badge}`}
+                            >
+                              <span
+                                className={`inline-block w-1.5 h-1.5 rounded-full ${ss.dot} mr-1.5`}
+                              />
+                              {ss.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 min-w-20">
+                              <div className="flex-1 bg-muted rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${po.status === "delay" ? "bg-red-500" : po.status === "selesai" || po.status === "close" ? "bg-green-500" : "bg-primary"}`}
+                                  style={{ width: `${po.progress}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-medium w-8 text-right">
+                                {po.progress}%
+                              </span>
+                            </div>
+                          </td>
+                          {canManage && (
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="w-7 h-7"
+                                  title="Edit"
+                                  onClick={() => openEdit(po)}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                {po.status !== "close" &&
+                                  po.status !== "selesai" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="w-7 h-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                      title="Close PO"
+                                      onClick={() => handleClose(po)}
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border">
+          <CardHeader className="pb-0 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Package className="w-4 h-4 text-muted-foreground" />
+                Keseluruhan PO / Project
+              </CardTitle>
+              <span className="text-sm text-muted-foreground">
+                {allPos.length} PO
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0 mt-3">
+            {allPoLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : allPos.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">Belum ada data PO / Project</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40">
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        No PO
+                      </th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">
+                        Nama Project
+                      </th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Customer
+                      </th>
+                      {canViewPoAmount && (
+                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                          Nominal PO
+                        </th>
+                      )}
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Tanggal Masuk
+                      </th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Deadline
+                      </th>
+                      <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
+                        Status
+                      </th>
+                      <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
+                        Progress
+                      </th>
+                      {canManage && (
+                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
+                          Aksi
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allPos.map((po) => {
+                      const ss =
+                        STATUS_STYLES[po.status] ?? STATUS_STYLES.belum_mulai;
+                      return (
+                        <tr
+                          key={po.id}
+                          className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
+                        >
+                          <td className="px-4 py-3 font-mono text-xs font-medium text-foreground whitespace-nowrap">
+                            {po.noPo}
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-foreground">
+                              {po.namaProject}
+                            </p>
+                            {po.departmentName && (
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {po.departmentName}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                            {po.customer ?? "-"}
+                          </td>
+                          {canViewPoAmount && (
+                            <td className="px-4 py-3 text-right whitespace-nowrap font-medium">
+                              {po.poAmount ? formatRupiah(po.poAmount) : "-"}
+                            </td>
+                          )}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {po.tanggalPoMasuk}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {po.deadline}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span
