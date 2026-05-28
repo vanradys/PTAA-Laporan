@@ -32,8 +32,8 @@ const PO_AMOUNT_VISIBLE_ROLES = [
   "dir",
 ];
 
-const PO_AMOUNT_VISIBLE_DEPARTMENT_CODES = ["MKT", "AAF", "FIN"];
-const PO_AMOUNT_VISIBLE_DEPARTMENT_NAMES = ["marketing", "finance"];
+const PO_AMOUNT_HIDDEN_DEPARTMENT_CODES = ["PUR", "ENG"];
+const PO_AMOUNT_HIDDEN_DEPARTMENT_NAMES = ["purchasing", "engineering"];
 
 function canViewPoAmount(user?: {
   role?: string | null;
@@ -44,10 +44,10 @@ function canViewPoAmount(user?: {
   if (PO_AMOUNT_VISIBLE_ROLES.includes(role)) return true;
 
   const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
-  if (PO_AMOUNT_VISIBLE_DEPARTMENT_CODES.includes(departmentCode)) return true;
+  if (PO_AMOUNT_HIDDEN_DEPARTMENT_CODES.includes(departmentCode)) return false;
 
   const departmentName = String(user?.departmentName ?? "").toLowerCase();
-  return PO_AMOUNT_VISIBLE_DEPARTMENT_NAMES.some((name) =>
+  return !PO_AMOUNT_HIDDEN_DEPARTMENT_NAMES.some((name) =>
     departmentName.includes(name),
   );
 }
@@ -201,8 +201,8 @@ router.get("/po/summary", async (req, res) => {
     .from(projectsPoTable)
     .where(
       and(
-        gte(projectsPoTable.deadline, startDate),
-        lte(projectsPoTable.deadline, endDate),
+        gte(projectsPoTable.tanggalPoMasuk, startDate),
+        lte(projectsPoTable.tanggalPoMasuk, endDate),
       ),
     );
 
@@ -257,8 +257,8 @@ router.get("/po", async (req, res) => {
     const y = parseInt(year as string);
     const startDate = `${y}-${String(m).padStart(2, "0")}-01`;
     const endDate = new Date(y, m, 0).toISOString().split("T")[0];
-    conditions.push(gte(projectsPoTable.deadline, startDate));
-    conditions.push(lte(projectsPoTable.deadline, endDate));
+    conditions.push(gte(projectsPoTable.tanggalPoMasuk, startDate));
+    conditions.push(lte(projectsPoTable.tanggalPoMasuk, endDate));
   }
   if (departmentId)
     conditions.push(

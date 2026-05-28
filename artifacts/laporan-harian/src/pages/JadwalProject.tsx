@@ -32,6 +32,7 @@ import {
   ComposedChart,
   BarChart,
   Bar,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -196,9 +197,9 @@ export default function JadwalProject() {
 
   const canViewPoAmount =
     ["admin", "direktur", "dir"].includes(role) ||
-    ["MKT", "AAF", "FIN"].includes(departmentCode) ||
-    departmentName.includes("marketing") ||
-    departmentName.includes("finance");
+    (!["PUR", "ENG"].includes(departmentCode) &&
+      !departmentName.includes("purchasing") &&
+      !departmentName.includes("engineering"));
 
   const [filterMonth, setFilterMonth] = useState<string>(
     String(today.getMonth() + 1),
@@ -543,7 +544,7 @@ export default function JadwalProject() {
               </CardTitle>
               <p className="text-xs text-muted-foreground">
                 {canViewPoAmount
-                  ? "Grafik menunjukkan total nominal PO per bulan."
+                  ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO."
                   : "Grafik menunjukkan jumlah PO per bulan."}
               </p>
             </CardHeader>
@@ -560,15 +561,27 @@ export default function JadwalProject() {
                       yAxisId="left"
                       allowDecimals={false}
                       tick={{ fontSize: 12 }}
-                      tickFormatter={(value) =>
-                        canViewPoAmount ? formatRupiah(Number(value)) : value
-                      }
                       label={{
-                        value: canViewPoAmount ? "Nominal PO" : "Jumlah PO",
+                        value: "Jumlah PO",
                         angle: -90,
                         position: "insideLeft",
                       }}
                     />
+                    {canViewPoAmount && (
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fontSize: 12 }}
+                        tickFormatter={(value) =>
+                          `${Number(value) / 1000000}jt`
+                        }
+                        label={{
+                          value: "Nominal PO",
+                          angle: 90,
+                          position: "insideRight",
+                        }}
+                      />
+                    )}
                     <Tooltip
                       formatter={(value, name) => {
                         if (name === "Total Nominal") {
@@ -581,11 +594,23 @@ export default function JadwalProject() {
                     <Legend />
                     <Bar
                       yAxisId="left"
-                      dataKey={canViewPoAmount ? "totalAmount" : "totalPo"}
-                      name={canViewPoAmount ? "Total Nominal" : "Jumlah PO"}
-                      fill={canViewPoAmount ? "#f97316" : "#2563eb"}
+                      dataKey="totalPo"
+                      name="Jumlah PO"
+                      fill="#2563eb"
                       radius={[6, 6, 0, 0]}
                     />
+                    {canViewPoAmount && (
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="totalAmount"
+                        name="Total Nominal"
+                        stroke="#f97316"
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
