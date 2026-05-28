@@ -606,7 +606,7 @@ export default function JadwalProject() {
                         orientation="right"
                         tick={{ fontSize: 12 }}
                         width={72}
-                        domain={[0, (dataMax: number) => Math.max(dataMax, 1_000_000)]}
+                        domain={[0, 10_000_000_000]}
                         tickFormatter={(value) =>
                           formatRupiahCompact(Number(value))
                         }
@@ -1035,15 +1035,6 @@ export default function JadwalProject() {
                                   className={`h-1.5 rounded-full transition-all ${po.status === "delay" ? "bg-red-500" : po.status === "selesai" || po.status === "close" ? "bg-green-500" : "bg-primary"}`}
                                   style={{ width: `${po.progress}%` }}
                                 />
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="w-7 h-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  title="Hapus"
-                                  onClick={() => handleDelete(po)}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
                               </div>
                               <span className="text-xs font-medium w-8 text-right">
                                 {po.progress}%
