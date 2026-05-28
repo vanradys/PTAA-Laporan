@@ -3,12 +3,13 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "composite": true,
-    "declaration": true,
-    "declarationMap": true
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node", "express"],
+    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"]
   },
   "include": [
-    "src/**/*.ts",
-    "../../types/**/*.d.ts"
+    "src/**/*.ts"
   ]
 }
