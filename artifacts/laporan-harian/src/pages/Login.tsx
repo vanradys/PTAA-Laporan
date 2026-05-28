@@ -61,11 +61,11 @@ export default function Login() {
           />
 
           <div className="mt-24 text-center">
-            <p className="text-white text-lg font-semibold tracking-[0.24em] uppercase">
+            <p className="text-white text-2xl font-semibold tracking-[0.24em] uppercase">
               Manajemen Laporan Harian
             </p>
             <p
-              className="text-sm font-bold tracking-[0.32em] uppercase mt-3"
+              className="text-lg font-bold tracking-[0.32em] uppercase mt-3"
               style={{ color: "#E30613" }}
             >
               PT Adiyasa Abadi
