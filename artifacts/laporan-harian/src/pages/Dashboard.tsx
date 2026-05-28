@@ -80,6 +80,17 @@ function formatDepartmentChartLabel(value: string) {
   return value;
 }
 
+function DepartmentAxisTick(props: any) {
+  const { x, y, payload } = props;
+  const label = formatDepartmentChartLabel(String(payload?.value ?? ""));
+
+  return (
+    <text x={x} y={y + 14} textAnchor="middle" fill="#94a3b8" fontSize={11}>
+      {label}
+    </text>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const today = getJakartaDateString();
@@ -201,13 +212,10 @@ export default function Dashboard() {
                           dataKey="name"
                           interval={0}
                           minTickGap={0}
-                          tick={{ fontSize: 11, fill: "#94a3b8" }}
                           height={45}
                           axisLine={false}
                           tickLine={false}
-                          tickFormatter={(value) =>
-                            formatDepartmentChartLabel(String(value))
-                          }
+                          tick={<DepartmentAxisTick />}
                         />
                         <YAxis
                           tick={{ fontSize: 12, fill: "#94a3b8" }}
