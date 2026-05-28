@@ -104,7 +104,8 @@ export default function JadwalProject() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const canManage = ["hr", "admin", "direktur"].includes(user?.role ?? "");
+  const role = user?.role?.toLowerCase() ?? "";
+  const canManage = ["hr", "admin", "direktur", "dir", "finance", "marketing", "ga"].includes(role);
 
   const [filterMonth, setFilterMonth] = useState<string>(String(today.getMonth() + 1));
   const [filterYear, setFilterYear] = useState<string>(String(today.getFullYear()));

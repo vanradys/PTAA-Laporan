@@ -2,11 +2,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLogin } from "@workspace/api-client-react";
-import { Building2, Eye, EyeOff, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+
+const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
 
 interface LoginForm {
   email: string;
@@ -19,7 +17,11 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginForm>();
 
   const onSubmit = async (data: LoginForm) => {
     setError("");
@@ -33,73 +35,125 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary shadow-lg mb-4">
-            <Building2 className="w-7 h-7 text-primary-foreground" />
+    <div className="min-h-screen flex" style={{ backgroundColor: "#F8FAFC" }}>
+      <div
+        className="hidden lg:flex lg:w-2/5 flex-col justify-between p-12 relative overflow-hidden"
+        style={{ backgroundColor: "#001E8A" }}
+      >
+        <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: "#E30613" }} />
+        <div className="absolute -bottom-24 -left-24 w-72 h-72 rounded-full opacity-10" style={{ backgroundColor: "#E30613" }} />
+        <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full opacity-10" style={{ backgroundColor: "#ffffff" }} />
+
+        <div className="relative z-10">
+          <div className="flex flex-col items-center gap-3">
+            <img src={logoSrc} alt="Adiyasa logo" className="w-32 h-32 object-contain mx-auto" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Laporan Harian</h1>
-          <p className="text-muted-foreground text-sm mt-1">Sistem Laporan Kerja Harian</p>
         </div>
 
-        <Card className="border border-border shadow-lg">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">Masuk ke Akun</CardTitle>
-            <CardDescription>Masukkan email dan password Anda untuk melanjutkan</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <div className="relative z-10">
+          <div className="w-12 h-1 mb-4" style={{ backgroundColor: "#E30613" }} />
+          <h2 className="text-2xl font-bold text-white leading-snug mb-3">
+            Sistem Laporan Kerja Harian
+          </h2>
+          <p className="text-blue-200 text-sm leading-relaxed">
+            Aplikasi laporan kerja harian terintegrasi untuk tim dan project PTAA.
+          </p>
+        </div>
+
+        <div className="relative z-10 border-t border-white/20 pt-6">
+          <p className="text-blue-300 text-xs">PT Adiyasa Abadi &copy; 2026. Hak cipta dilindungi.</p>
+        </div>
+      </div>
+
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm">
+          <div className="lg:hidden text-center mb-8">
+            <img src={logoSrc} alt="Adiyasa logo" className="mx-auto w-24 h-24 object-contain" />
+            <div className="text-3xl font-black tracking-widest" style={{ color: "#001E8A" }}>
+              LAPORAN
+            </div>
+            <div className="text-sm font-bold tracking-widest" style={{ color: "#E30613" }}>
+              HARIAN
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
+            <div className="mb-6">
+              <div className="w-8 h-1 mb-4" style={{ backgroundColor: "#E30613" }} />
+              <h1 className="text-2xl font-bold text-gray-900">Masuk ke Sistem</h1>
+              <p className="text-gray-500 text-sm mt-1">Masukkan email dan password Anda</p>
+            </div>
+
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="email">
+                  Email
+                </label>
+                <input
                   id="email"
                   type="email"
                   placeholder="nama@perusahaan.com"
                   {...register("email", { required: "Email diperlukan" })}
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                  autoComplete="email"
                 />
-                {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+                {errors.email && <p className="text-xs text-red-600 mt-1">{errors.email.message}</p>}
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="password">
+                  Password
+                </label>
                 <div className="relative">
-                  <Input
+                  <input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Masukkan password"
                     {...register("password", { required: "Password diperlukan" })}
-                    className="pr-10"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all pr-10"
+                    autoComplete="current-password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                    aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+                {errors.password && <p className="text-xs text-red-600 mt-1">{errors.password.message}</p>}
               </div>
 
               {error && (
-                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3.5 py-2.5 rounded-lg">
                   {error}
                 </div>
               )}
 
-              <Button type="submit" className="w-full" disabled={login.isPending}>
+              <button
+                type="submit"
+                disabled={login.isPending}
+                className="w-full py-2.5 text-sm font-semibold text-white rounded-lg transition-opacity disabled:opacity-70 mt-2"
+                style={{ backgroundColor: "#E30613" }}
+              >
                 {login.isPending ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Memproses...</>
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />Memproses...
+                  </span>
                 ) : (
                   "Masuk"
                 )}
-              </Button>
+              </button>
             </form>
 
-          </CardContent>
-        </Card>
+            <div className="mt-5 pt-4 border-t border-gray-100">
+              <p className="text-xs text-gray-400 text-center">
+                Gunakan email terdaftar. Hubungi admin jika mengalami kendala akses.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
