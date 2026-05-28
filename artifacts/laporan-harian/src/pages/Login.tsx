@@ -57,10 +57,10 @@ export default function Login() {
           <img
             src={logoSrc}
             alt="Adiyasa logo"
-            className="w-[500px] max-w-full aspect-square object-contain mx-auto"
+            className="w-[390px] h-[390px] object-contain mx-auto"
           />
 
-          <div className="mt-24 text-center">
+          <div className="mt-10 text-center">
             <p className="text-white text-2xl font-semibold tracking-[0.24em] uppercase">
               Manajemen Laporan Harian
             </p>
