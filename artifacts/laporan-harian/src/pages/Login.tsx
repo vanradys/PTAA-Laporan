@@ -46,7 +46,7 @@ export default function Login() {
 
         <div className="relative z-10 flex justify-center mt-28">
           <div className="flex flex-col items-center gap-3">
-            <img src={logoSrc} alt="Adiyasa logo" className="w-72 h-72 object-contain mx-auto" />
+            <img src={logoSrc} alt="Adiyasa logo" className="w-96 h-96 object-contain mx-auto" />
           </div>
         </div>
 
