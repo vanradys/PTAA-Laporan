@@ -13,9 +13,9 @@ import {
   usersTable,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
-import { Router, type Router as ExpressRouter } from "express";
+import { Router } from "express";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 const PO_STATUSES = ["belum_mulai", "proses", "hampir_deadline", "delay", "selesai", "close"] as const;
 

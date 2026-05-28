@@ -9,12 +9,14 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const server = app.listen(port, () => {
+const server = (app as any).listen(port, () => {
   logger.info({ port }, "Server listening");
   startDailyReportReminderScheduler();
 });
 
 server.on("error", (err: unknown) => {
   logger.error({ err }, "Error listening on port");
-  process.exit(1);
+
+  const runtimeProcess = globalThis.process as any;
+  runtimeProcess.exit(1);
 });

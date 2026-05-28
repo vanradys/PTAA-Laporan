@@ -18,11 +18,11 @@ import {
   type SQL,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
-import { Router, type Router as ExpressRouter } from "express";
+import { Router } from "express";
 import { reportingUserCondition, isSubmittedReportStatus } from "../services/dailyReportReminder";
 import { sendPushNotificationToUser } from "../services/pushNotification";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 

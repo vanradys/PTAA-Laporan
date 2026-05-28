@@ -10,14 +10,14 @@ import {
   sql,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
-import { Router, type Router as ExpressRouter } from "express";
+import { Router } from "express";
 import {
   getJakartaDateString,
   reportingUserCondition,
   submittedReportCondition,
 } from "../services/dailyReportReminder";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 function normalizeDashboardDate(value: unknown): string {
   const date = typeof value === "string" ? value.trim() : "";

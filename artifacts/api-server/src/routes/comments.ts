@@ -1,8 +1,8 @@
 import { db, reportCommentsTable, usersTable, eq } from "@workspace/db";
 import { getUserFromToken } from "./auth";
-import { Router, type Router as ExpressRouter } from "express";
+import { Router } from "express";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 router.get("/reports/:id/comments", async (req, res) => {
   const token = req.cookies?.session_token;

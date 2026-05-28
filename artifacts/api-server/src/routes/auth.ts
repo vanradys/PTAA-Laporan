@@ -1,8 +1,8 @@
 import { db, usersTable, departmentsTable, sessionsTable, eq, ilike } from "@workspace/db";
 import crypto from "crypto";
-import { Router, type Router as ExpressRouter } from "express";
+import { Router } from "express";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");

@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type Router as ExpressRouter } from "express";
+import { Router, type Request, type Response } from "express";
 import { getUserFromToken } from "./auth";
 import {
   canManageDailyReportReminder,
@@ -8,7 +8,7 @@ import {
   sendDailyReportReminders,
 } from "../services/dailyReportReminder";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 async function getAuthenticatedUser(req: Request) {
   const token = req.cookies?.session_token;

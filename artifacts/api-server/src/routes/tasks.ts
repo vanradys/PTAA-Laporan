@@ -1,8 +1,8 @@
-import { Router, type Router as ExpressRouter } from "express";
+import { Router } from "express";
 import { db, dailyTasksTable, dailyReportsTable, eq, sql } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 const MAX_TASK_ACTIONS = 2;
 

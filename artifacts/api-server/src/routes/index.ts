@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import departmentsRouter from "./departments";
@@ -10,7 +10,7 @@ import dashboardRouter from "./dashboard";
 import poRouter from "./po";
 import dailyReportsReminderRouter from "./dailyReportsReminder";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.use(healthRouter);
 router.use("/auth", authRouter);

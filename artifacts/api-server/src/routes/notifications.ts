@@ -1,8 +1,8 @@
 import { and, db, deviceTokensTable, eq, notificationsTable } from "@workspace/db";
 import { getUserFromToken } from "./auth";
-import { Router, type Request, type Response, type Router as ExpressRouter } from "express";
+import { Router, type Request, type Response } from "express";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 async function getAuthenticatedUser(req: Request) {
   const token = req.cookies?.session_token;

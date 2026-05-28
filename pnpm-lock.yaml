@@ -165,7 +165,7 @@ importers:
         specifier: ^4.60.4
         version: 4.60.4
       '@types/node':
-        specifier: 'catalog:'
+        specifier: ^25.6.2
         version: 25.6.2
       lightningcss-win32-x64-msvc:
         specifier: ^1.32.0
@@ -223,7 +223,7 @@ importers:
         specifier: ^5.0.6
         version: 5.0.6
       '@types/node':
-        specifier: 'catalog:'
+        specifier: ^25.6.2
         version: 25.6.2
       cross-env:
         specifier: ^10.1.0

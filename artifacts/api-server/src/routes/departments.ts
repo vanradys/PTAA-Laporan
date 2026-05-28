@@ -1,9 +1,9 @@
 import { db, departmentsTable, usersTable, eq } from "@workspace/db";
 import { getUserFromToken } from "./auth";
-import { Router, type Router as ExpressRouter } from "express";
+import { Router } from "express";
 import { reportingUserCondition } from "../services/dailyReportReminder";
 
-const router: ExpressRouter = Router();
+const router = Router();
 
 router.get("/departments", async (req, res) => {
   const token = req.cookies?.session_token;
