@@ -53,25 +53,23 @@ export default function Login() {
           style={{ backgroundColor: "#ffffff" }}
         />
 
-        <div className="relative z-10 flex justify-center mt-24">
-          <div className="flex flex-col items-center">
-            <img
-              src={logoSrc}
-              alt="Adiyasa logo"
-              className="w-96 h-96 object-contain mx-auto"
-            />
+        <div className="relative z-10 flex flex-col items-center mt-20">
+          <img
+            src={logoSrc}
+            alt="Adiyasa logo"
+            className="w-[520px] h-[520px] object-contain mx-auto"
+          />
 
-            <div className="-mt-8 text-center">
-              <p className="text-white text-base font-semibold tracking-[0.22em] uppercase">
-                Manajemen Laporan Harian
-              </p>
-              <p
-                className="text-sm font-bold tracking-[0.28em] uppercase mt-2"
-                style={{ color: "#E30613" }}
-              >
-                PT Adiyasa Abadi
-              </p>
-            </div>
+          <div className="mt-24 text-center">
+            <p className="text-white text-lg font-semibold tracking-[0.24em] uppercase">
+              Manajemen Laporan Harian
+            </p>
+            <p
+              className="text-sm font-bold tracking-[0.32em] uppercase mt-3"
+              style={{ color: "#E30613" }}
+            >
+              PT Adiyasa Abadi
+            </p>
           </div>
         </div>
 
