@@ -65,7 +65,7 @@ function isEmptyText(value: string | null | undefined): boolean {
   return !value || value.trim().length === 0;
 }
 
-const LEADERSHIP_ROLES = ["admin", "direktur", "director"];
+const LEADERSHIP_ROLES = ["admin", "hr", "direktur", "director"];
 
 function isLeadershipRole(role: string): boolean {
   return LEADERSHIP_ROLES.includes(String(role).toLowerCase());
@@ -75,7 +75,7 @@ async function notifyLeadershipAboutReport(reportId: number, reportDate: string,
   const recipients = await db
     .select({ id: usersTable.id })
     .from(usersTable)
-    .where(sql`lower(${usersTable.role}) in ('admin', 'direktur', 'director')`);
+    .where(sql`lower(${usersTable.role}) in ('admin', 'hr', 'direktur', 'director')`);
 
   if (recipients.length === 0) {
     return;
@@ -631,8 +631,8 @@ router.post("/reports/:id/review", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const allowedRoles = ["admin", "direktur"];
-  if (!allowedRoles.includes(user.role)) { res.status(403).json({ error: "Hanya Admin/Direktur yang dapat mereview" }); return; }
+  const allowedRoles = ["admin", "hr", "direktur"];
+  if (!allowedRoles.includes(user.role)) { res.status(403).json({ error: "Hanya HR/Admin/Direktur yang dapat mereview" }); return; }
 
   const id = parseInt(req.params.id);
   const { action, comment } = req.body;

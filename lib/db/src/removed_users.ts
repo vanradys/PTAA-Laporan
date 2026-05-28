@@ -10,6 +10,7 @@ export const REMOVED_USER_EMAILS = [
 
 export const NON_REPORTING_ROLES = [
   "admin",
+  "hr",
   "direktur",
   "director",
 ] as const;

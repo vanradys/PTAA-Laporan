@@ -67,7 +67,7 @@ export default function DetailLaporan() {
   const reviewReport = useReviewReport();
   const createComment = useCreateComment();
 
-  const canReview = ["admin", "direktur"].includes(user?.role ?? "");
+  const canReview = ["admin", "hr", "direktur"].includes(user?.role ?? "");
   const r = report as (typeof report & {
     tasks?: Task[];
     comments?: Comment[];
@@ -114,7 +114,7 @@ export default function DetailLaporan() {
   };
 
   const roleLabel: Record<string, string> = {
-    karyawan: "Karyawan", admin: "Admin", direktur: "Direktur"
+    karyawan: "Karyawan", hr: "HR", admin: "Admin", direktur: "Direktur"
   };
 
   if (isLoading) {
@@ -269,7 +269,7 @@ export default function DetailLaporan() {
           ))}
         </div>
 
-        {/* Review Actions (Admin/Director only) */}
+        {/* Review Actions (HR/Admin/Director only) */}
         {canReview && (
           <Card className="border border-primary/20 bg-primary/5">
             <CardHeader className="pb-3">

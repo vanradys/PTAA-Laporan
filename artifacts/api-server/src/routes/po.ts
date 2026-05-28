@@ -52,6 +52,31 @@ function canViewPoAmount(user?: {
   );
 }
 
+const PO_MANAGE_ROLES = ["admin", "direktur", "director", "dir", "hr"];
+const PO_MANAGE_DEPARTMENT_CODES = ["AAF", "FIN", "MKT", "GA"];
+const PO_MANAGE_DEPARTMENT_NAMES = [
+  "finance",
+  "marketing",
+  "general affairs",
+];
+
+function canManagePo(user?: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}): boolean {
+  const role = String(user?.role ?? "").toLowerCase();
+  if (PO_MANAGE_ROLES.includes(role)) return true;
+
+  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  if (PO_MANAGE_DEPARTMENT_CODES.includes(departmentCode)) return true;
+
+  const departmentName = String(user?.departmentName ?? "").toLowerCase();
+  return PO_MANAGE_DEPARTMENT_NAMES.some((name) =>
+    departmentName.includes(name),
+  );
+}
+
 function calcSisaHari(deadline: string): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -316,15 +341,7 @@ router.post("/po", async (req, res) => {
     return;
   }
 
-  const allowedRoles = [
-    "admin",
-    "direktur",
-    "dir",
-    "finance",
-    "marketing",
-    "ga",
-  ];
-  if (!allowedRoles.includes(user.role)) {
+  if (!canManagePo(user)) {
     res
       .status(403)
       .json({ error: "Hanya Admin/Direktur atau departemen terkait yang dapat menambah PO" });
@@ -493,15 +510,7 @@ router.patch("/po/:id", async (req, res) => {
     return;
   }
 
-  const allowedRoles = [
-    "admin",
-    "direktur",
-    "dir",
-    "finance",
-    "marketing",
-    "ga",
-  ];
-  if (!allowedRoles.includes(user.role)) {
+  if (!canManagePo(user)) {
     res
       .status(403)
       .json({ error: "Hanya Admin/Direktur atau departemen terkait yang dapat mengubah PO" });
@@ -575,15 +584,7 @@ router.post("/po/:id/close", async (req, res) => {
     return;
   }
 
-  const allowedRoles = [
-    "admin",
-    "direktur",
-    "dir",
-    "finance",
-    "marketing",
-    "ga",
-  ];
-  if (!allowedRoles.includes(user.role)) {
+  if (!canManagePo(user)) {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }
@@ -612,6 +613,39 @@ router.post("/po/:id/close", async (req, res) => {
 
   const item = await buildPoItem(updated, { includeAmount: canViewPoAmount(user) });
   res.json(item);
+});
+
+router.delete("/po/:id", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) {
+    res.status(401).json({ error: "Tidak terautentikasi" });
+    return;
+  }
+  const user = await getUserFromToken(token);
+  if (!user) {
+    res.status(401).json({ error: "Sesi tidak valid" });
+    return;
+  }
+
+  if (!canManagePo(user)) {
+    res.status(403).json({ error: "Tidak diizinkan" });
+    return;
+  }
+
+  const id = parseInt(req.params.id);
+  const [po] = await db
+    .select({ id: projectsPoTable.id })
+    .from(projectsPoTable)
+    .where(eq(projectsPoTable.id, id))
+    .limit(1);
+
+  if (!po) {
+    res.status(404).json({ error: "PO tidak ditemukan" });
+    return;
+  }
+
+  await db.delete(projectsPoTable).where(eq(projectsPoTable.id, id));
+  res.json({ success: true, message: "PO berhasil dihapus" });
 });
 
 export default router;

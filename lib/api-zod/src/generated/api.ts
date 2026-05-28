@@ -746,6 +746,19 @@ export const UpdatePoResponse = zod.object({
 
 
 /**
+ * @summary Delete a PO/Project
+ */
+export const DeletePoParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeletePoResponse = zod.object({
+  "success": zod.boolean(),
+  "message": zod.string().optional()
+})
+
+
+/**
  * @summary Mark PO as closed/completed
  */
 export const ClosePoParams = zod.object({

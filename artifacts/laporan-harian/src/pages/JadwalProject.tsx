@@ -7,6 +7,7 @@ import {
   useCreatePo,
   useUpdatePo,
   useClosePo,
+  useDeletePo,
   useGetPoSummary,
   useGetPoYearlyTrend,
   getListPoQueryKey,
@@ -27,6 +28,7 @@ import {
   ChevronDown,
   Loader2,
   Package,
+  Trash2,
 } from "lucide-react";
 import {
   ComposedChart,
@@ -195,12 +197,15 @@ export default function JadwalProject() {
   const departmentCode = user?.departmentCode?.toUpperCase() ?? "";
   const canManage = [
     "admin",
+    "hr",
     "direktur",
+    "director",
     "dir",
-    "finance",
-    "marketing",
-    "ga",
-  ].includes(role);
+  ].includes(role) ||
+    ["AAF", "FIN", "MKT", "GA"].includes(departmentCode) ||
+    departmentName.includes("finance") ||
+    departmentName.includes("marketing") ||
+    departmentName.includes("general affairs");
 
   const canViewPoAmount =
     ["admin", "direktur", "dir"].includes(role) ||
@@ -264,6 +269,7 @@ export default function JadwalProject() {
   const createPo = useCreatePo();
   const updatePo = useUpdatePo();
   const closePo = useClosePo();
+  const deletePo = useDeletePo();
 
   const pos = (Array.isArray(poList) ? poList : []) as PoItem[];
   const allPos = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
@@ -408,6 +414,21 @@ export default function JadwalProject() {
     }
   };
 
+  const handleDelete = async (po: PoItem) => {
+    if (!confirm(`Hapus PO "${po.noPo} - ${po.namaProject}"?`)) return;
+    try {
+      await deletePo.mutateAsync({ id: po.id });
+      toast({ title: "Berhasil", description: "PO berhasil dihapus" });
+      invalidate();
+    } catch {
+      toast({
+        title: "Gagal",
+        description: "Gagal menghapus PO",
+        variant: "destructive",
+      });
+    }
+  };
+
   const months = [
     { v: "1", l: "Januari" },
     { v: "2", l: "Februari" },
@@ -546,90 +567,6 @@ export default function JadwalProject() {
               );
             })}
           </div>
-        )}
-
-        {yearlyTrendItems.length > 0 && (
-          <Card className="border border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">
-                Grafik Monitoring PO {filterYear}
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {canViewPoAmount
-                  ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO."
-                  : "Grafik menunjukkan jumlah PO per bulan."}
-              </p>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart
-                    data={yearlyTrendItems}
-                    margin={{ top: 10, right: 24, left: -10, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis
-                      yAxisId="left"
-                      allowDecimals={false}
-                      tick={{ fontSize: 12 }}
-                      label={{
-                        value: "Jumlah PO",
-                        angle: -90,
-                        position: "insideLeft",
-                      }}
-                    />
-                    {canViewPoAmount && (
-                      <YAxis
-                        yAxisId="right"
-                        orientation="right"
-                        tick={{ fontSize: 12 }}
-                        width={72}
-                        domain={[0, (dataMax: number) => Math.max(dataMax, 1_000_000)]}
-                        tickFormatter={(value) =>
-                          formatRupiahCompact(Number(value))
-                        }
-                        label={{
-                          value: "Nominal PO",
-                          angle: 90,
-                          position: "insideRight",
-                        }}
-                      />
-                    )}
-                    <Tooltip
-                      formatter={(value, name) => {
-                        if (name === "Total Nominal") {
-                          return [formatRupiah(Number(value)), name];
-                        }
-
-                        return [value, name];
-                      }}
-                    />
-                    <Legend />
-                    <Bar
-                      yAxisId="left"
-                      dataKey="totalPo"
-                      name="Jumlah PO"
-                      fill="#2563eb"
-                      radius={[6, 6, 0, 0]}
-                    />
-                    {canViewPoAmount && (
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="totalAmount"
-                        name="Total Nominal"
-                        stroke="#f97316"
-                        strokeWidth={3}
-                        dot={{ r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
         )}
 
         {/* Filters */}
@@ -1014,6 +951,15 @@ export default function JadwalProject() {
                                   className={`h-1.5 rounded-full transition-all ${po.status === "delay" ? "bg-red-500" : po.status === "selesai" || po.status === "close" ? "bg-green-500" : "bg-primary"}`}
                                   style={{ width: `${po.progress}%` }}
                                 />
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="w-7 h-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="Hapus"
+                                  onClick={() => handleDelete(po)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
                               </div>
                               <span className="text-xs font-medium w-8 text-right">
                                 {po.progress}%
@@ -1044,6 +990,15 @@ export default function JadwalProject() {
                                       <CheckCircle2 className="w-3.5 h-3.5" />
                                     </Button>
                                   )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="w-7 h-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="Hapus"
+                                  onClick={() => handleDelete(po)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
                               </div>
                             </td>
                           )}
@@ -1056,6 +1011,90 @@ export default function JadwalProject() {
             )}
           </CardContent>
         </Card>
+
+        {yearlyTrendItems.length > 0 && (
+          <Card className="border border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                Grafik Monitoring PO {filterYear}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                {canViewPoAmount
+                  ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO."
+                  : "Grafik menunjukkan jumlah PO per bulan."}
+              </p>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={yearlyTrendItems}
+                    margin={{ top: 10, right: 24, left: -10, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <YAxis
+                      yAxisId="left"
+                      allowDecimals={false}
+                      tick={{ fontSize: 12 }}
+                      label={{
+                        value: "Jumlah PO",
+                        angle: -90,
+                        position: "insideLeft",
+                      }}
+                    />
+                    {canViewPoAmount && (
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fontSize: 12 }}
+                        width={72}
+                        domain={[0, (dataMax: number) => Math.max(dataMax, 1_000_000)]}
+                        tickFormatter={(value) =>
+                          formatRupiahCompact(Number(value))
+                        }
+                        label={{
+                          value: "Nominal PO",
+                          angle: 90,
+                          position: "insideRight",
+                        }}
+                      />
+                    )}
+                    <Tooltip
+                      formatter={(value, name) => {
+                        if (name === "Total Nominal") {
+                          return [formatRupiah(Number(value)), name];
+                        }
+
+                        return [value, name];
+                      }}
+                    />
+                    <Legend />
+                    <Bar
+                      yAxisId="left"
+                      dataKey="totalPo"
+                      name="Jumlah PO"
+                      fill="#2563eb"
+                      radius={[6, 6, 0, 0]}
+                    />
+                    {canViewPoAmount && (
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="totalAmount"
+                        name="Total Nominal"
+                        stroke="#f97316"
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Form Modal */}

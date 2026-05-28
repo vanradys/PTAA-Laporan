@@ -2227,6 +2227,76 @@ export const useUpdatePo = <TError = ErrorType<unknown>,
       return useMutation(getUpdatePoMutationOptions(options));
     }
 
+export const getDeletePoUrl = (id: number,) => {
+
+
+
+
+  return `/api/po/${id}`
+}
+
+/**
+ * @summary Delete a PO/Project
+ */
+export const deletePo = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeletePoUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeletePoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePo>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePo>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deletePo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePo>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deletePo(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePoMutationResult = NonNullable<Awaited<ReturnType<typeof deletePo>>>
+
+    export type DeletePoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a PO/Project
+ */
+export const useDeletePo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePo>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePo>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeletePoMutationOptions(options));
+    }
+
 export const getClosePoUrl = (id: number,) => {
 
 

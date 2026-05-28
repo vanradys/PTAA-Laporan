@@ -579,6 +579,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PoItem"
+    delete:
+      operationId: deletePo
+      tags: [po]
+      summary: Delete a PO/Project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted PO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
 
   /po/{id}/close:
     post:
