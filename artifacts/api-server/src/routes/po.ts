@@ -243,18 +243,20 @@ router.get("/po/summary", async (req, res) => {
   const now = new Date();
   const month = parseInt(req.query.month as string) || now.getMonth() + 1;
   const year = parseInt(req.query.year as string) || now.getFullYear();
+  const calendarStartDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const calendarEndDate = new Date(year, month, 0).toISOString().split("T")[0];
   const targetPeriodStart = new Date(year, month - 1, 21);
   const targetPeriodEnd = new Date(year, month, 20);
-  const startDate = targetPeriodStart.toISOString().split("T")[0];
-  const endDate = targetPeriodEnd.toISOString().split("T")[0];
+  const targetStartDate = targetPeriodStart.toISOString().split("T")[0];
+  const targetEndDate = targetPeriodEnd.toISOString().split("T")[0];
 
   const pos = await db
     .select()
     .from(projectsPoTable)
     .where(
       and(
-        gte(projectsPoTable.tanggalPoMasuk, startDate),
-        lte(projectsPoTable.tanggalPoMasuk, endDate),
+        gte(projectsPoTable.tanggalPoMasuk, calendarStartDate),
+        lte(projectsPoTable.tanggalPoMasuk, calendarEndDate),
       ),
     );
 
@@ -275,7 +277,17 @@ router.get("/po/summary", async (req, res) => {
     return s >= 0 && s <= 7 && p.status !== "selesai" && p.status !== "close";
   }).length;
   const monthlyTarget = 1500000000;
-  const totalNominal = pos.reduce(
+  const targetPos = await db
+    .select()
+    .from(projectsPoTable)
+    .where(
+      and(
+        gte(projectsPoTable.tanggalPoMasuk, targetStartDate),
+        lte(projectsPoTable.tanggalPoMasuk, targetEndDate),
+      ),
+    );
+
+  const totalNominal = targetPos.reduce(
     (sum, p) => sum + Number(p.poAmount ?? 0),
     0,
   );
