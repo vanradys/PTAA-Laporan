@@ -1,9 +1,9 @@
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  useListNotifications, useMarkNotificationRead, useMarkAllNotificationsRead,
+  useListNotifications, useMarkNotificationRead, useMarkAllNotificationsRead, useDeleteNotification,
 } from "@workspace/api-client-react";
-import { Bell, CheckCheck, Eye, Loader2 } from "lucide-react";
+import { Bell, CheckCheck, Eye, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +32,7 @@ export default function Notifikasi() {
   const { data: notifications, isLoading } = useListNotifications();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
+  const deleteNotification = useDeleteNotification();
 
   const notifs: NotifItem[] = Array.isArray(notifications) ? (notifications as NotifItem[]) : [];
   const unreadCount = notifs.filter(n => !n.isRead).length;
@@ -45,6 +46,12 @@ export default function Notifikasi() {
     await markAllRead.mutateAsync(undefined as unknown as void);
     queryClient.invalidateQueries();
     toast({ title: "Semua notifikasi ditandai sudah dibaca" });
+  };
+
+  const handleDeleteNotification = async (id: number) => {
+    await deleteNotification.mutateAsync({ notifId: id });
+    queryClient.invalidateQueries();
+    toast({ title: "Notifikasi dihapus" });
   };
 
   return (
@@ -112,6 +119,16 @@ export default function Notifikasi() {
                               </Button>
                             </Link>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="w-7 h-7"
+                            title="Hapus Notifikasi"
+                            onClick={() => handleDeleteNotification(notif.id)}
+                            disabled={deleteNotification.isPending}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                           {!notif.isRead && (
                             <Button
                               variant="ghost"

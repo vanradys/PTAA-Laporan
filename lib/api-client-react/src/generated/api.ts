@@ -1613,6 +1613,55 @@ export const useMarkNotificationRead = <TError = ErrorType<unknown>,
       return useMutation(getMarkNotificationReadMutationOptions(options));
     }
 
+export const getDeleteNotificationUrl = (notifId: number) => {
+  return `/api/notifications/${notifId}`
+}
+
+/**
+ * @summary Delete a notification
+ */
+export const deleteNotification = async (notifId: number, options?: RequestInit): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getDeleteNotificationUrl(notifId), {
+    ...options,
+    method: 'DELETE'
+  });
+}
+
+export const getDeleteNotificationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteNotification>>, TError,{notifId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteNotification>>, TError,{notifId: number}, TContext> => {
+
+const mutationKey = ['deleteNotification'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteNotification>>, {notifId: number}> = (props) => {
+          const {notifId} = props ?? {};
+          return deleteNotification(notifId, requestOptions)
+        }
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteNotificationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteNotification>>>
+    export type DeleteNotificationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a notification
+ */
+export const useDeleteNotification = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteNotification>>, TError,{notifId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteNotification>>,
+        TError,
+        {notifId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteNotificationMutationOptions(options));
+    }
+
 export const getMarkAllNotificationsReadUrl = () => {
 
 

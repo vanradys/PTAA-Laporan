@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useListReports, useListDepartments, useListEmployees } from "@workspace/api-client-react";
-import { CheckCircle, XCircle, Eye, Search, Filter, X, Loader2, FileText, BellRing, RefreshCw } from "lucide-react";
+import { CheckCircle, XCircle, Eye, Search, Filter, X, Loader2, FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,14 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
 import { formatIndonesianDate, formatJakartaTime, getJakartaDateString } from "@/lib/date";
 import {
   missingDailyReportsQueryKey,
   type MissingDailyReportUser,
-  type SendReminderResult,
   useMissingDailyReportsToday,
-  useSendMissingDailyReportReminder,
 } from "@/hooks/use-daily-report-reminder";
 
 const MONTHS = [
@@ -155,7 +152,6 @@ export default function Monitoring() {
   const todayString = getJakartaDateString();
   const today = new Date();
   const { user } = useAuth();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({
     date: todayString,
@@ -170,6 +166,9 @@ export default function Monitoring() {
 
   const userRole = user?.role?.toLowerCase() ?? "";
   const canManageReminder = REMINDER_ACCESS_ROLES.includes(userRole);
+  const jakartaHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", hour: "2-digit", hour12: false }).format(new Date()));
+  const isAfterReminderTime = jakartaHour >= 16;
+  const showReminderSection = canManageReminder;
   const reminderDate = filters.date || todayString;
 
   const { data: departments } = useListDepartments();
@@ -178,7 +177,6 @@ export default function Monitoring() {
     data: missingUsersFromApi,
     isLoading: isLoadingMissing,
   } = useMissingDailyReportsToday(canManageReminder, reminderDate);
-  const sendReminder = useSendMissingDailyReportReminder();
 
   const params: Record<string, string> = {};
   if (filters.date) {
@@ -316,26 +314,6 @@ export default function Monitoring() {
     });
   };
 
-  const handleSendReminder = async () => {
-    try {
-      const result: SendReminderResult = await sendReminder.mutateAsync({ date: reminderDate });
-
-      queryClient.invalidateQueries({ queryKey: missingDailyReportsQueryKey(reminderDate) });
-      queryClient.invalidateQueries();
-
-      toast({
-        title: "Reminder berhasil diproses",
-        description: `${result.message} Notifikasi aplikasi dikirim ke akun masing-masing karyawan.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Gagal mengirim reminder",
-        description: error instanceof Error ? error.message : "Terjadi kesalahan saat mengirim reminder.",
-        variant: "destructive",
-      });
-    }
-  };
-
   return (
     <Layout>
       <div className="p-6 space-y-5">
@@ -345,16 +323,10 @@ export default function Monitoring() {
             <p className="text-sm text-muted-foreground">Pantau laporan harian seluruh karyawan</p>
           </div>
           <div className="flex items-center gap-2">
-            {canManageReminder && (
-              <Button
-                size="sm"
-                className="bg-[#E30613] hover:bg-[#c90010]"
-                onClick={handleSendReminder}
-                disabled={sendReminder.isPending || unsentReminderCount === 0}
-              >
-                {sendReminder.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BellRing className="w-4 h-4 mr-2" />}
-                {unsentReminderCount === 0 && missingList.length > 0 ? "Reminder Sudah Dikirim" : "Kirim Reminder"}
-              </Button>
+            {showReminderSection && (
+              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+                Reminder akan dikirim otomatis setiap jam 16.00 WIB.
+              </div>
             )}
             <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
               <Filter className="w-4 h-4 mr-2" />
@@ -366,7 +338,7 @@ export default function Monitoring() {
           </div>
         </div>
 
-        {canManageReminder && (
+        {showReminderSection && (
           <Card className="border border-border bg-white">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center justify-between text-sm">
@@ -387,13 +359,16 @@ export default function Monitoring() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
                 </div>
+              ) : !isAfterReminderTime ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  Reminder akan dikirim otomatis setiap jam 16.00 WIB.
+                </div>
               ) : missingList.length === 0 ? (
-                <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-green-700">{missingSummaryText}</p>
-                    <p className="text-xs text-green-600">Tidak ada reminder yang perlu dikirim.</p>
-                  </div>
-                  <CheckCircle className="h-5 w-5 text-green-600" />
+                <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-4">
+                  <p className="text-sm font-semibold text-green-700">{missingSummaryText}</p>
+                  <p className="text-xs text-green-600 mt-1">
+                    Laporan yang masih pending/belum/proses akan otomatis masuk ke daftar tugas hari ini pada hari berikutnya.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -401,7 +376,7 @@ export default function Monitoring() {
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
                         <p className="text-sm font-semibold text-red-700">{missingSummaryText}</p>
-                        <p className="text-xs text-red-600">Klik Kirim Reminder untuk mengirim notifikasi ke akun karyawan yang disebutkan di bawah.</p>
+                        <p className="text-xs text-red-600">Reminder otomatis sudah dijadwalkan pada jam 16.00 WIB.</p>
                       </div>
                       <Badge className="w-fit border-red-200 bg-white text-red-700 hover:bg-white">{missingList.length} belum mengisi</Badge>
                     </div>

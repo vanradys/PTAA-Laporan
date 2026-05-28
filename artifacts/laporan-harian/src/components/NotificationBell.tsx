@@ -4,8 +4,9 @@ import {
   useListNotifications,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
+  useDeleteNotification,
 } from "@workspace/api-client-react";
-import { Bell, CheckCheck, ExternalLink } from "lucide-react";
+import { Bell, CheckCheck, ExternalLink, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,7 @@ export default function NotificationBell() {
   const { data: notifications } = useListNotifications();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
+  const deleteNotification = useDeleteNotification();
 
   const items: NotificationItem[] = Array.isArray(notifications) ? (notifications as NotificationItem[]) : [];
   const unreadCount = items.filter((item) => !item.isRead).length;
@@ -42,6 +44,11 @@ export default function NotificationBell() {
 
   const refreshNotifications = () => {
     queryClient.invalidateQueries();
+  };
+
+  const handleDeleteNotification = async (notificationId: number) => {
+    await deleteNotification.mutateAsync({ notifId: notificationId });
+    refreshNotifications();
   };
 
   const handleMarkRead = async (notificationId: number) => {
@@ -131,6 +138,17 @@ export default function NotificationBell() {
                         <CheckCheck className="h-3.5 w-3.5" />
                       </Button>
                     )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Hapus notifikasi"
+                      onClick={() => handleDeleteNotification(item.id)}
+                      disabled={deleteNotification.isPending}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                     {item.relatedReportId && (
                       <Link href={`/laporan/${item.relatedReportId}`}>
                         <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Lihat laporan">

@@ -185,18 +185,30 @@ const showSubmitActions = canEditReportFields && !isLocked;
   const copyYesterdayTasksToToday = (showToast = true) => {
   if (!yesterdayTasks || !Array.isArray(yesterdayTasks)) return;
 
-  const copies = (yesterdayTasks as ExistingTask[]).map(t => ({
-  id: Date.now().toString() + Math.random(),
-  title: t.title,
-  project: t.project ?? "",
-  deadline: t.deadline ?? "",
-  progress: t.progress,
-  status: t.status === "selesai" ? "belum_mulai" : t.status,
-  notes: t.notes ?? "",
-}));
+  const copies = (yesterdayTasks as ExistingTask[])
+    .filter((task) => task.status !== "selesai" && task.title.trim().length > 0)
+    .map((t) => ({
+      id: Date.now().toString() + Math.random(),
+      title: t.title,
+      project: t.project ?? "",
+      deadline: t.deadline ?? "",
+      progress: t.progress,
+      status: t.status,
+      notes: t.notes ?? "",
+    }));
 
-  setNewTasks(prev => [...prev, ...copies]);
-  setExpandedTasks(prev => new Set([...prev, ...copies.map(t => t.id)]));
+  if (copies.length === 0) {
+    if (showToast) {
+      toast({
+        title: "Tidak ada tugas yang perlu dipindahkan",
+        description: "Semua tugas kemarin sudah selesai atau kosong.",
+      });
+    }
+    return;
+  }
+
+  setNewTasks((prev) => [...prev, ...copies]);
+  setExpandedTasks((prev) => new Set([...prev, ...copies.map((t) => t.id)]));
 
   if (showToast) {
     toast({

@@ -20,6 +20,7 @@ import {
 import { getUserFromToken } from "./auth";
 import { Router, type Router as ExpressRouter } from "express";
 import { reportingUserCondition, isSubmittedReportStatus } from "../services/dailyReportReminder";
+import { sendPushNotificationToUser } from "../services/pushNotification";
 
 const router: ExpressRouter = Router();
 
@@ -62,6 +63,46 @@ function isReportLocked(status: string): boolean {
 
 function isEmptyText(value: string | null | undefined): boolean {
   return !value || value.trim().length === 0;
+}
+
+const LEADERSHIP_ROLES = ["admin", "hr", "direktur", "director"];
+
+function isLeadershipRole(role: string): boolean {
+  return LEADERSHIP_ROLES.includes(String(role).toLowerCase());
+}
+
+async function notifyLeadershipAboutReport(reportId: number, reportDate: string, creatorName: string, creatorRole: string) {
+  const recipients = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(sql`lower(${usersTable.role}) in ('admin', 'hr', 'direktur', 'director')`);
+
+  if (recipients.length === 0) {
+    return;
+  }
+
+  const title = "Laporan Harian Baru";
+  const message = `${creatorName} (${creatorRole}) membuat laporan harian untuk tanggal ${reportDate}`;
+
+  await db.insert(notificationsTable).values(
+    recipients.map((recipient) => ({
+      userId: recipient.id,
+      title,
+      message,
+      type: "report_created",
+      relatedReportId: reportId,
+    })),
+  );
+
+  for (const recipient of recipients) {
+    await sendPushNotificationToUser({
+      userId: recipient.id,
+      title,
+      message,
+      type: "report_created",
+      url: `/laporan/${reportId}`,
+    });
+  }
 }
 
 const MAX_TASK_ACTIONS = 2;
@@ -383,6 +424,8 @@ router.post("/reports", async (req, res) => {
     .limit(1);
 
   let reportId: number;
+  let isNewReport = false;
+
   if (existing[0]) {
     // Update existing instead of inserting duplicate
     await db.update(dailyReportsTable)
@@ -404,6 +447,11 @@ router.post("/reports", async (req, res) => {
       status: status ?? "draf",
     }).returning();
     reportId = report.id;
+    isNewReport = true;
+  }
+
+  if (isNewReport && !isLeadershipRole(user.role)) {
+    await notifyLeadershipAboutReport(reportId, date, user.name, user.role);
   }
 
   const detail = await buildReportDetail(reportId);

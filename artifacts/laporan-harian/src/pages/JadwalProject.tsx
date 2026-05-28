@@ -10,6 +10,7 @@ import {
   Plus, Pencil, X, CheckCircle2, AlertTriangle, Clock, TrendingUp,
   Search, Filter, ChevronDown, Loader2, Package
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -239,6 +240,15 @@ export default function JadwalProject() {
     { label: "Pencapaian", value: `${(summary as { persentasePencapaian: number }).persentasePencapaian}%`, icon: TrendingUp, color: "text-purple-600", bg: "bg-purple-50" },
   ] : [];
 
+  const statusChartData = [
+    { status: "Belum Mulai", count: pos.filter((item) => item.status === "belum_mulai").length },
+    { status: "Proses", count: pos.filter((item) => item.status === "proses").length },
+    { status: "Hampir Deadline", count: pos.filter((item) => item.status === "hampir_deadline").length },
+    { status: "Delay", count: pos.filter((item) => item.status === "delay").length },
+    { status: "Selesai", count: pos.filter((item) => item.status === "selesai").length },
+    { status: "Close", count: pos.filter((item) => item.status === "close").length },
+  ];
+
   return (
     <Layout>
       <div className="p-6 space-y-5 max-w-7xl">
@@ -274,6 +284,27 @@ export default function JadwalProject() {
               );
             })}
           </div>
+        )}
+
+        {pos.length > 0 && (
+          <Card className="border border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Trend PO Bulanan</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={statusChartData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="status" tick={{ fontSize: 12 }} />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#1d4ed8" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Filters */}
