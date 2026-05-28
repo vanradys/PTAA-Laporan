@@ -20,6 +20,7 @@
     "skipLibCheck": true,
     "target": "es2022",
     "types": [],
+    "typeRoots": ["./types", "./node_modules/@types"],
     "customConditions": ["workspace"]
   }
 }

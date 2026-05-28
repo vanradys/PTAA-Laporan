@@ -1,4 +1,4 @@
-import { db, usersTable, departmentsTable, sessionsTable, eq } from "@workspace/db";
+import { db, usersTable, departmentsTable, sessionsTable, eq, ilike } from "@workspace/db";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 
@@ -347,13 +347,23 @@ router.post("/login", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(eq(usersTable.email, email))
+    .where(ilike(usersTable.email, email))
     .limit(1);
 
   const user = users[0];
-  if (!user || user.password !== hashPassword(password) || user.isActive === false) {
+  const isPasswordValid =
+    user?.password === hashPassword(password) || user?.password === password;
+
+  if (!user || !isPasswordValid || user.isActive === false) {
     res.status(401).json({ error: "Email atau password salah atau akun sudah tidak aktif" });
     return;
+  }
+
+  if (user.password === password) {
+    await db
+      .update(usersTable)
+      .set({ password: hashPassword(password) })
+      .where(eq(usersTable.id, user.id));
   }
 
   const token = generateToken();
