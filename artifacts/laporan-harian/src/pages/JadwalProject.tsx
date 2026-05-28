@@ -179,7 +179,8 @@ function formatRupiah(value: number) {
 }
 
 function formatRupiahCompact(value: number) {
-  if (value >= 1_000_000_000) return `${Number((value / 1_000_000_000).toFixed(1))}M`;
+  if (value >= 1_000_000_000)
+    return `${Number((value / 1_000_000_000).toFixed(1))}M`;
   if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}jt`;
   if (value >= 1_000) return `${Number((value / 1_000).toFixed(1))}rb`;
   return String(value);
@@ -195,13 +196,8 @@ export default function JadwalProject() {
   const role = user?.role?.toLowerCase() ?? "";
   const departmentName = user?.departmentName?.toLowerCase() ?? "";
   const departmentCode = user?.departmentCode?.toUpperCase() ?? "";
-  const canManage = [
-    "admin",
-    "hr",
-    "direktur",
-    "director",
-    "dir",
-  ].includes(role) ||
+  const canManage =
+    ["admin", "hr", "direktur", "director", "dir"].includes(role) ||
     ["AAF", "FIN", "MKT", "GA"].includes(departmentCode) ||
     departmentName.includes("finance") ||
     departmentName.includes("marketing") ||
@@ -532,7 +528,7 @@ export default function JadwalProject() {
               Jadwal Project & Monitoring PO
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Pantau deadline dan status PO/Project secara real-time
+              Pantau Tanggal Delivery dan status PO/Project secara real-time
             </p>
           </div>
           {canManage && (
@@ -606,10 +602,26 @@ export default function JadwalProject() {
                         orientation="right"
                         tick={{ fontSize: 12 }}
                         width={72}
-                        domain={[0, 10_000_000_000]}
-                        tickFormatter={(value) =>
-                          formatRupiahCompact(Number(value))
-                        }
+                        domain={[
+                          0,
+                          (dataMax: number) => Math.max(dataMax, 1_000_000),
+                        ]}
+                        ticks={[
+                          0, 200_000_000, 500_000_000, 2_000_000_000,
+                          5_000_000_000, 10_000_000_000,
+                        ]}
+                        tickFormatter={(value) => {
+                          const amount = Number(value);
+
+                          if (amount === 0) return "0";
+                          if (amount === 200_000_000) return "200jt";
+                          if (amount === 500_000_000) return "500jt";
+                          if (amount === 2_000_000_000) return "2M";
+                          if (amount === 5_000_000_000) return "5M";
+                          if (amount === 10_000_000_000) return "10M";
+
+                          return "";
+                        }}
                         label={{
                           value: "Nominal PO",
                           angle: 90,
@@ -706,10 +718,7 @@ export default function JadwalProject() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Departemen</Label>
-                <Select
-                  value={filterDept}
-                  onValueChange={setFilterDept}
-                >
+                <Select value={filterDept} onValueChange={setFilterDept}>
                   <SelectTrigger className="h-8 w-40 text-sm">
                     <SelectValue />
                   </SelectTrigger>
@@ -967,7 +976,7 @@ export default function JadwalProject() {
                         Tanggal Masuk
                       </th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
-                        Deadline
+                        Tanggal Delivery
                       </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
                         Status
@@ -1086,7 +1095,6 @@ export default function JadwalProject() {
             )}
           </CardContent>
         </Card>
-
       </div>
 
       {/* Form Modal */}
