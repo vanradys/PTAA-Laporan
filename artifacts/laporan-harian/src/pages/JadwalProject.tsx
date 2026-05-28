@@ -539,7 +539,7 @@ export default function JadwalProject() {
           <Card className="border border-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
-                Trend PO Tahunan {filterYear}
+                Grafik Monitoring PO {filterYear}
               </CardTitle>
               <p className="text-xs text-muted-foreground">
                 Bar menunjukkan jumlah PO per bulan, line menunjukkan total
