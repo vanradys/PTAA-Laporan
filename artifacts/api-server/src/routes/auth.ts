@@ -318,7 +318,7 @@ router.get("/me", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   const email = String(req.body.email ?? "").trim().toLowerCase();
-  const password = String(req.body.password ?? "");
+  const password = String(req.body.password ?? "").trim();
 
   if (!email || !password) {
     res.status(400).json({ error: "Email dan password diperlukan" });

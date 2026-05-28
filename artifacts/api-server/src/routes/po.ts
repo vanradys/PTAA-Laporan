@@ -243,8 +243,10 @@ router.get("/po/summary", async (req, res) => {
   const now = new Date();
   const month = parseInt(req.query.month as string) || now.getMonth() + 1;
   const year = parseInt(req.query.year as string) || now.getFullYear();
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-  const endDate = new Date(year, month, 0).toISOString().split("T")[0];
+  const targetPeriodStart = new Date(year, month - 1, 21);
+  const targetPeriodEnd = new Date(year, month, 20);
+  const startDate = targetPeriodStart.toISOString().split("T")[0];
+  const endDate = targetPeriodEnd.toISOString().split("T")[0];
 
   const pos = await db
     .select()
@@ -272,8 +274,14 @@ router.get("/po/summary", async (req, res) => {
     const s = calcSisaHari(p.deadline);
     return s >= 0 && s <= 7 && p.status !== "selesai" && p.status !== "close";
   }).length;
-  const persentasePencapaian =
-    totalPo > 0 ? Math.round((poSelesai / totalPo) * 100) : 0;
+  const monthlyTarget = 1500000000;
+  const totalNominal = pos.reduce(
+    (sum, p) => sum + Number(p.poAmount ?? 0),
+    0,
+  );
+  const persentasePencapaian = Math.round(
+    monthlyTarget > 0 ? (totalNominal / monthlyTarget) * 100 : 0,
+  );
 
   res.json({
     totalPo,

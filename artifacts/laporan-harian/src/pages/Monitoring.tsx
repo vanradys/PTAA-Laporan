@@ -168,6 +168,7 @@ export default function Monitoring() {
   const canManageReminder = REMINDER_ACCESS_ROLES.includes(userRole);
   const jakartaHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", hour: "2-digit", hour12: false }).format(new Date()));
   const isAfterReminderTime = jakartaHour >= 16;
+  const showReminderNotice = true;
   const showReminderSection = canManageReminder;
   const reminderDate = filters.date || todayString;
 
@@ -323,7 +324,7 @@ export default function Monitoring() {
             <p className="text-sm text-muted-foreground">Pantau laporan harian seluruh karyawan</p>
           </div>
           <div className="flex items-center gap-2">
-            {showReminderSection && (
+            {showReminderNotice && (
               <div className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
                 Reminder akan dikirim otomatis setiap jam 16.00 WIB.
               </div>

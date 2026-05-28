@@ -239,9 +239,7 @@ export default function JadwalProject() {
 
   const canViewPoAmount =
     ["admin", "direktur", "dir"].includes(role) ||
-    (!["PUR", "ENG"].includes(departmentCode) &&
-      !departmentName.includes("purchasing") &&
-      !departmentName.includes("engineering"));
+    !["PUR", "ENG"].includes(departmentCode);
 
   const [filterMonth, setFilterMonth] = useState<string>(
     String(today.getMonth() + 1),
@@ -321,6 +319,12 @@ export default function JadwalProject() {
         totalAmountAxis: getNominalAxisValue(Number(item.totalAmount ?? 0)),
       }))
     : [];
+  const poCountMax = Math.max(...yearlyTrendItems.map((item) => item.totalPo), 0);
+  const poCountCeil = Math.max(20, Math.ceil(poCountMax / 5) * 5);
+  const poCountTicks = Array.from(
+    { length: Math.floor(poCountCeil / 5) + 1 },
+    (_, index) => index * 5,
+  );
   const depts = (Array.isArray(departments) ? departments : []) as {
     id: number;
     name: string;
@@ -382,13 +386,27 @@ export default function JadwalProject() {
     if (
       !form.noPo.trim() ||
       !form.namaProject.trim() ||
+      !form.customer.trim() ||
       !form.tanggalPoMasuk ||
       !form.deadline
     ) {
       toast({
         title: "Validasi Gagal",
         description:
-          "No PO, nama project, tanggal masuk, dan Tanggal Delivery wajib diisi",
+          "No PO, nama project, customer, tanggal masuk, dan Tanggal Delivery wajib diisi",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (
+      canViewPoAmount &&
+      form.poAmount.trim() &&
+      Number(form.poAmount) > 10000000000
+    ) {
+      toast({
+        title: "Validasi Gagal",
+        description: "Nominal PO maksimal 10.000.000.000",
         variant: "destructive",
       });
       return;
@@ -532,7 +550,7 @@ export default function JadwalProject() {
           bg: "bg-orange-50",
         },
         {
-          label: "Pencapaian",
+          label: "Pencapaian Target",
           value: `${(summary as { persentasePencapaian: number }).persentasePencapaian}%`,
           icon: TrendingUp,
           color: "text-purple-600",
@@ -633,7 +651,7 @@ export default function JadwalProject() {
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
                     data={yearlyTrendItems}
-                    margin={{ top: 10, right: 24, left: -10, bottom: 0 }}
+                    margin={{ top: 10, right: 24, left: 24, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} />
@@ -641,6 +659,9 @@ export default function JadwalProject() {
                       yAxisId="left"
                       allowDecimals={false}
                       tick={{ fontSize: 12 }}
+                      domain={[0, poCountCeil]}
+                      ticks={poCountTicks}
+                      width={64}
                       label={{
                         value: "Jumlah PO",
                         angle: -90,
@@ -1231,7 +1252,9 @@ export default function JadwalProject() {
                 className={`grid gap-4 ${canViewPoAmount ? "grid-cols-3" : "grid-cols-2"}`}
               >
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Customer</Label>
+                  <Label className="text-xs font-semibold">
+                    Customer <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     value={form.customer}
                     onChange={(e) =>
@@ -1247,6 +1270,7 @@ export default function JadwalProject() {
                     <Input
                       type="number"
                       min="0"
+                      max="10000000000"
                       value={form.poAmount}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, poAmount: e.target.value }))
@@ -1254,6 +1278,9 @@ export default function JadwalProject() {
                       placeholder="Contoh: 15000000"
                       className="h-9 text-sm"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Maksimal 10.000.000.000
+                    </p>
                   </div>
                 )}
                 <div className="space-y-1.5">
