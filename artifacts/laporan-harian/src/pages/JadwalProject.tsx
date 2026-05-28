@@ -61,7 +61,7 @@ const PO_STATUS_OPTS = [
   { value: "semua", label: "Semua Status" },
   { value: "belum_mulai", label: "Belum Mulai" },
   { value: "proses", label: "Proses" },
-  { value: "hampir_deadline", label: "Hampir Deadline" },
+  { value: "hampir_Tanggal Delivery", label: "Hampir Deadline" },
   { value: "delay", label: "Delay" },
   { value: "selesai", label: "Selesai" },
   { value: "close", label: "Close" },
@@ -85,7 +85,7 @@ const STATUS_STYLES: Record<string, StatusStyle> = {
     dot: "bg-blue-500",
   },
   hampir_deadline: {
-    label: "Hampir Deadline",
+    label: "Hampir Tanggal Delivery",
     badge: "bg-orange-100 text-orange-700 border-orange-200",
     dot: "bg-orange-500",
   },
@@ -138,6 +138,9 @@ interface PoItem {
   status: string;
   progress: number;
   catatan?: string | null;
+  closedAt?: string | null;
+  isEditLocked?: boolean;
+  editLockNotice?: string | null;
 }
 
 interface PoFormState {
@@ -184,6 +187,19 @@ function formatRupiahCompact(value: number) {
   if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}jt`;
   if (value >= 1_000) return `${Number((value / 1_000).toFixed(1))}rb`;
   return String(value);
+}
+
+function isFinishedPo(status: string) {
+  return status === "selesai" || status === "close";
+}
+
+function getFinishedPoNotice(po: PoItem) {
+  if (!po.isEditLocked) return null;
+
+  return (
+    po.editLockNotice ??
+    "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya"
+  );
 }
 
 const today = new Date();
@@ -268,7 +284,8 @@ export default function JadwalProject() {
   const deletePo = useDeletePo();
 
   const pos = (Array.isArray(poList) ? poList : []) as PoItem[];
-  const allPos = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
+  const allPosRaw = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
+  const allPos = allPosRaw.filter((po) => !isFinishedPo(po.status));
   const yearlyTrendItems = Array.isArray(
     (yearlyTrend as { items?: unknown[] } | undefined)?.items,
   )
@@ -349,7 +366,7 @@ export default function JadwalProject() {
       toast({
         title: "Validasi Gagal",
         description:
-          "No PO, nama project, tanggal masuk, dan deadline wajib diisi",
+          "No PO, nama project, tanggal masuk, dan Tanggal Delivery wajib diisi",
         variant: "destructive",
       });
       return;
@@ -383,10 +400,15 @@ export default function JadwalProject() {
       }
       closeForm();
       invalidate();
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Gagal menyimpan PO";
+
       toast({
         title: "Gagal",
-        description: "Gagal menyimpan PO",
+        description: message.includes("30 hari")
+          ? "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya"
+          : "Gagal menyimpan PO",
         variant: "destructive",
       });
     } finally {
@@ -401,10 +423,13 @@ export default function JadwalProject() {
       await closePo.mutateAsync({ id: po.id });
       toast({ title: "Berhasil", description: "PO ditandai sebagai close" });
       invalidate();
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Gagal menutup PO";
+
       toast({
         title: "Gagal",
-        description: "Gagal menutup PO",
+        description: message,
         variant: "destructive",
       });
     }
@@ -416,10 +441,13 @@ export default function JadwalProject() {
       await deletePo.mutateAsync({ id: po.id });
       toast({ title: "Berhasil", description: "PO berhasil dihapus" });
       invalidate();
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Gagal menghapus PO";
+
       toast({
         title: "Gagal",
-        description: "Gagal menghapus PO",
+        description: message,
         variant: "destructive",
       });
     }
@@ -475,7 +503,7 @@ export default function JadwalProject() {
           bg: "bg-red-50",
         },
         {
-          label: "Hampir Deadline",
+          label: "Hampir Tanggal Delivery",
           value: (summary as { poHampirDeadline: number }).poHampirDeadline,
           icon: ChevronDown,
           color: "text-orange-600",
@@ -501,8 +529,9 @@ export default function JadwalProject() {
       count: pos.filter((item) => item.status === "proses").length,
     },
     {
-      status: "Hampir Deadline",
-      count: pos.filter((item) => item.status === "hampir_deadline").length,
+      status: "Hampir Tanggal Delivery",
+      count: pos.filter((item) => item.status === "hampir_Tanggal Delivery")
+        .length,
     },
     {
       status: "Delay",
@@ -803,7 +832,10 @@ export default function JadwalProject() {
                         PIC
                       </th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
-                        Deadline
+                        Tanggal Masuk
+                      </th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Tanggal Delivery
                       </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
                         Sisa Hari
@@ -847,6 +879,11 @@ export default function JadwalProject() {
                                 {po.departmentName}
                               </p>
                             )}
+                            {po.isEditLocked && (
+                              <p className="text-xs text-red-600 mt-1">
+                                {getFinishedPoNotice(po)}
+                              </p>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                             {po.customer ?? "—"}
@@ -858,6 +895,11 @@ export default function JadwalProject() {
                           )}
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                             {po.picName ?? "—"}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className="text-sm text-foreground">
+                              {po.tanggalPoMasuk}
+                            </span>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className="text-sm text-foreground">
@@ -899,7 +941,13 @@ export default function JadwalProject() {
                                   variant="ghost"
                                   size="icon"
                                   className="w-7 h-7"
-                                  title="Edit"
+                                  title={
+                                    po.isEditLocked
+                                      ? (getFinishedPoNotice(po) ??
+                                        "PO terkunci")
+                                      : "Edit"
+                                  }
+                                  disabled={Boolean(po.isEditLocked)}
                                   onClick={() => openEdit(po)}
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
@@ -1011,6 +1059,11 @@ export default function JadwalProject() {
                               </p>
                             )}
                           </td>
+                          {po.isEditLocked && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {getFinishedPoNotice(po)}
+                            </p>
+                          )}
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                             {po.customer ?? "-"}
                           </td>
@@ -1055,7 +1108,13 @@ export default function JadwalProject() {
                                   variant="ghost"
                                   size="icon"
                                   className="w-7 h-7"
-                                  title="Edit"
+                                  title={
+                                    po.isEditLocked
+                                      ? (getFinishedPoNotice(po) ??
+                                        "PO terkunci")
+                                      : "Edit"
+                                  }
+                                  disabled={Boolean(po.isEditLocked)}
                                   onClick={() => openEdit(po)}
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
@@ -1076,7 +1135,13 @@ export default function JadwalProject() {
                                   variant="ghost"
                                   size="icon"
                                   className="w-7 h-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  title="Hapus"
+                                  title={
+                                    po.isEditLocked
+                                      ? (getFinishedPoNotice(po) ??
+                                        "PO terkunci")
+                                      : "Hapus"
+                                  }
+                                  disabled={Boolean(po.isEditLocked)}
                                   onClick={() => handleDelete(po)}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -1259,7 +1324,7 @@ export default function JadwalProject() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
-                    Deadline <span className="text-red-500">*</span>
+                    Tanggal Delivery <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     type="date"

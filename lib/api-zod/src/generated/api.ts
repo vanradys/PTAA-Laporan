@@ -605,6 +605,9 @@ export const ListPoResponseItem = zod.object({
   "status": zod.string(),
   "progress": zod.number(),
   "catatan": zod.string().nullish(),
+  "closedAt": zod.string().nullish(),
+  "isEditLocked": zod.boolean(),
+  "editLockNotice": zod.string().nullish(),
   "createdByUserId": zod.number().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -694,6 +697,9 @@ export const GetPoResponse = zod.object({
   "status": zod.string(),
   "progress": zod.number(),
   "catatan": zod.string().nullish(),
+  "closedAt": zod.string().nullish(),
+  "isEditLocked": zod.boolean(),
+  "editLockNotice": zod.string().nullish(),
   "createdByUserId": zod.number().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -739,6 +745,9 @@ export const UpdatePoResponse = zod.object({
   "status": zod.string(),
   "progress": zod.number(),
   "catatan": zod.string().nullish(),
+  "closedAt": zod.string().nullish(),
+  "isEditLocked": zod.boolean(),
+  "editLockNotice": zod.string().nullish(),
   "createdByUserId": zod.number().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
@@ -782,6 +791,9 @@ export const ClosePoResponse = zod.object({
   "status": zod.string(),
   "progress": zod.number(),
   "catatan": zod.string().nullish(),
+  "closedAt": zod.string().nullish(),
+  "isEditLocked": zod.boolean(),
+  "editLockNotice": zod.string().nullish(),
   "createdByUserId": zod.number().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()

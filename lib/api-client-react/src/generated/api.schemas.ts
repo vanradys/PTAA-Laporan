@@ -223,6 +223,11 @@ export interface PoItem {
   /** @nullable */
   catatan?: string | null;
   /** @nullable */
+  closedAt?: string | null;
+  isEditLocked: boolean;
+  /** @nullable */
+  editLockNotice?: string | null;
+  /** @nullable */
   createdByUserId?: number | null;
   createdAt: string;
   updatedAt: string;

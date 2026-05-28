@@ -993,6 +993,9 @@ components:
         status: { type: string }
         progress: { type: integer }
         catatan: { type: ["string", "null"] }
+        closedAt: { type: ["string", "null"] }
+        isEditLocked: { type: boolean }
+        editLockNotice: { type: ["string", "null"] }
         createdByUserId: { type: ["integer", "null"] }
         createdAt: { type: string }
         updatedAt: { type: string }
@@ -1007,6 +1010,7 @@ components:
           progress,
           createdAt,
           updatedAt,
+          isEditLocked,
         ]
 
     PoInput:

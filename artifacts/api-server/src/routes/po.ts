@@ -26,11 +26,7 @@ const PO_STATUSES = [
   "close",
 ] as const;
 
-const PO_AMOUNT_VISIBLE_ROLES = [
-  "admin",
-  "direktur",
-  "dir",
-];
+const PO_AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "dir"];
 
 const PO_AMOUNT_HIDDEN_DEPARTMENT_CODES = ["PUR", "ENG"];
 const PO_AMOUNT_HIDDEN_DEPARTMENT_NAMES = ["purchasing", "engineering"];
@@ -54,11 +50,7 @@ function canViewPoAmount(user?: {
 
 const PO_MANAGE_ROLES = ["admin", "direktur", "director", "dir", "hr"];
 const PO_MANAGE_DEPARTMENT_CODES = ["AAF", "FIN", "MKT", "GA"];
-const PO_MANAGE_DEPARTMENT_NAMES = [
-  "finance",
-  "marketing",
-  "general affairs",
-];
+const PO_MANAGE_DEPARTMENT_NAMES = ["finance", "marketing", "general affairs"];
 
 function canManagePo(user?: {
   role?: string | null;
@@ -83,6 +75,36 @@ function calcSisaHari(deadline: string): number {
   const dl = new Date(deadline);
   dl.setHours(0, 0, 0, 0);
   return Math.round((dl.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function calcDaysAfterClosed(closedAt?: Date | string | null): number | null {
+  if (!closedAt) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const closedDate = new Date(closedAt);
+  closedDate.setHours(0, 0, 0, 0);
+
+  return Math.floor(
+    (today.getTime() - closedDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
+}
+
+function isPoEditLocked(po: typeof projectsPoTable.$inferSelect): boolean {
+  const isFinished = po.status === "selesai" || po.status === "close";
+  if (!isFinished) return false;
+
+  const daysAfterClosed = calcDaysAfterClosed(po.closedAt);
+  return daysAfterClosed !== null && daysAfterClosed >= 30;
+}
+
+function getPoEditLockNotice(
+  po: typeof projectsPoTable.$inferSelect,
+): string | null {
+  if (!isPoEditLocked(po)) return null;
+
+  return "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya";
 }
 
 function autoStatus(
@@ -141,6 +163,9 @@ async function buildPoItem(
     status: computedStatus,
     progress: po.progress,
     catatan: po.catatan,
+    closedAt: po.closedAt ? po.closedAt.toISOString() : null,
+    isEditLocked: isPoEditLocked(po),
+    editLockNotice: getPoEditLockNotice(po),
     createdByUserId: po.createdByUserId,
     createdAt: po.createdAt,
     updatedAt: po.updatedAt,
@@ -163,7 +188,7 @@ async function sendDeadlineNotifications(
       await db.insert(notificationsTable).values({
         userId: uid,
         type: "po_overdue",
-        title: `Deadline PO Terlewat: ${po.noPo}`,
+        title: `Tanggal Delivery PO Terlewat: ${po.noPo}`,
         message: `Project "${po.namaProject}" telah melewati deadline (${po.deadline}). Segera tindak lanjut!`,
         isRead: false,
       });
@@ -177,7 +202,7 @@ async function sendDeadlineNotifications(
       await db.insert(notificationsTable).values({
         userId: uid,
         type: "po_deadline_7days",
-        title: `Deadline Mendekat: ${po.noPo}`,
+        title: `Tanggal Delivery Mendekat: ${po.noPo}`,
         message: `Project "${po.namaProject}" akan deadline dalam ${sisaHari} hari (${po.deadline}). Percepat penyelesaian!`,
         isRead: false,
       });
@@ -191,7 +216,7 @@ async function sendDeadlineNotifications(
       await db.insert(notificationsTable).values({
         userId: uid,
         type: "po_deadline_14days",
-        title: `Reminder Deadline: ${po.noPo}`,
+        title: `Reminder Tanggal Delivery: ${po.noPo}`,
         message: `Project "${po.namaProject}" akan deadline dalam ${sisaHari} hari (${po.deadline}).`,
         isRead: false,
       });
@@ -316,9 +341,7 @@ router.get("/po", async (req, res) => {
   }
 
   const items = await Promise.all(
-    pos.map((po) =>
-      buildPoItem(po, { includeAmount: canViewPoAmount(user) }),
-    ),
+    pos.map((po) => buildPoItem(po, { includeAmount: canViewPoAmount(user) })),
   );
 
   const filteredItems =
@@ -342,9 +365,10 @@ router.post("/po", async (req, res) => {
   }
 
   if (!canManagePo(user)) {
-    res
-      .status(403)
-      .json({ error: "Hanya Admin/Direktur atau departemen terkait yang dapat menambah PO" });
+    res.status(403).json({
+      error:
+        "Hanya Admin/Direktur atau departemen terkait yang dapat menambah PO",
+    });
     return;
   }
 
@@ -355,16 +379,17 @@ router.post("/po", async (req, res) => {
     poAmount,
     tanggalPoMasuk,
     targetPenyelesaian,
-    deadline,
+    tanggal_Delivery,
     picUserId,
     departmentId,
     status,
     progress,
     catatan,
   } = req.body;
-  if (!noPo || !namaProject || !tanggalPoMasuk || !deadline) {
+  if (!noPo || !namaProject || !tanggalPoMasuk || !tanggal_Delivery) {
     res.status(400).json({
-      error: "noPo, namaProject, tanggalPoMasuk, dan deadline diperlukan",
+      error:
+        "noPo, namaProject, tanggalPoMasuk, dan tanggal_Delivery diperlukan",
     });
     return;
   }
@@ -381,7 +406,7 @@ router.post("/po", async (req, res) => {
           : null,
       tanggalPoMasuk,
       targetPenyelesaian: targetPenyelesaian ?? null,
-      deadline,
+      tanggal_Delivery: tanggal_Delivery ?? null,
       picUserId: picUserId ? parseInt(picUserId) : null,
       departmentId: departmentId ? parseInt(departmentId) : null,
       status: status ?? "belum_mulai",
@@ -511,9 +536,10 @@ router.patch("/po/:id", async (req, res) => {
   }
 
   if (!canManagePo(user)) {
-    res
-      .status(403)
-      .json({ error: "Hanya Admin/Direktur atau departemen terkait yang dapat mengubah PO" });
+    res.status(403).json({
+      error:
+        "Hanya Admin/Direktur atau departemen terkait yang dapat mengubah PO",
+    });
     return;
   }
 
@@ -528,6 +554,14 @@ router.patch("/po/:id", async (req, res) => {
     return;
   }
 
+  if (isPoEditLocked(existing)) {
+    res.status(403).json({
+      error:
+        "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya",
+    });
+    return;
+  }
+
   const updates: Partial<typeof projectsPoTable.$inferInsert> = {};
   const {
     noPo,
@@ -536,7 +570,7 @@ router.patch("/po/:id", async (req, res) => {
     poAmount,
     tanggalPoMasuk,
     targetPenyelesaian,
-    deadline,
+    tanggal_Delivery,
     picUserId,
     departmentId,
     status,
@@ -553,12 +587,26 @@ router.patch("/po/:id", async (req, res) => {
   if (tanggalPoMasuk !== undefined) updates.tanggalPoMasuk = tanggalPoMasuk;
   if (targetPenyelesaian !== undefined)
     updates.targetPenyelesaian = targetPenyelesaian;
-  if (deadline !== undefined) updates.deadline = deadline;
+  if (tanggal_Delivery !== undefined)
+    updates.tanggal_Delivery = tanggal_Delivery;
   if (picUserId !== undefined)
     updates.picUserId = picUserId ? parseInt(picUserId) : null;
   if (departmentId !== undefined)
     updates.departmentId = departmentId ? parseInt(departmentId) : null;
-  if (status !== undefined) updates.status = status;
+  if (status !== undefined) {
+    updates.status = status;
+
+    if ((status === "selesai" || status === "close") && !existing.closedAt) {
+      updates.closedAt = new Date();
+      updates.closedByUserId = user.id;
+      updates.progress = 100;
+    }
+
+    if (status !== "selesai" && status !== "close") {
+      updates.closedAt = null;
+      updates.closedByUserId = null;
+    }
+  }
   if (progress !== undefined) updates.progress = parseInt(progress);
   if (catatan !== undefined) updates.catatan = catatan;
 
@@ -568,7 +616,9 @@ router.patch("/po/:id", async (req, res) => {
     .where(eq(projectsPoTable.id, id))
     .returning();
   await sendDeadlineNotifications(updated);
-  const item = await buildPoItem(updated, { includeAmount: canViewPoAmount(user) });
+  const item = await buildPoItem(updated, {
+    includeAmount: canViewPoAmount(user),
+  });
   res.json(item);
 });
 
@@ -600,6 +650,14 @@ router.post("/po/:id/close", async (req, res) => {
     return;
   }
 
+  if (isPoEditLocked(po)) {
+    res.status(403).json({
+      error:
+        "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya",
+    });
+    return;
+  }
+
   const [updated] = await db
     .update(projectsPoTable)
     .set({
@@ -611,7 +669,9 @@ router.post("/po/:id/close", async (req, res) => {
     .where(eq(projectsPoTable.id, id))
     .returning();
 
-  const item = await buildPoItem(updated, { includeAmount: canViewPoAmount(user) });
+  const item = await buildPoItem(updated, {
+    includeAmount: canViewPoAmount(user),
+  });
   res.json(item);
 });
 
@@ -634,13 +694,21 @@ router.delete("/po/:id", async (req, res) => {
 
   const id = parseInt(req.params.id);
   const [po] = await db
-    .select({ id: projectsPoTable.id })
+    .select()
     .from(projectsPoTable)
     .where(eq(projectsPoTable.id, id))
     .limit(1);
 
   if (!po) {
     res.status(404).json({ error: "PO tidak ditemukan" });
+    return;
+  }
+
+  if (isPoEditLocked(po)) {
+    res.status(403).json({
+      error:
+        "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya",
+    });
     return;
   }
 
