@@ -329,7 +329,7 @@ export default function JadwalProject() {
 
   const pos = (Array.isArray(poList) ? poList : []) as PoItem[];
   const allPosRaw = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
-  const allPos = allPosRaw;
+  const allPos = allPosRaw.filter((po) => !isFinishedPo(po.status));
   const yearlyTrendItems = Array.isArray(
     (yearlyTrend as { items?: unknown[] } | undefined)?.items,
   )
