@@ -979,13 +979,14 @@ components:
         noPo: { type: string }
         namaProject: { type: string }
         customer: { type: ["string", "null"] }
+        qty: { type: ["string", "null"] }
         poAmount:
           type: number
           nullable: true
         tanggalPoMasuk: { type: string }
         targetPenyelesaian: { type: ["string", "null"] }
         deadline: { type: string }
-        sisaHari: { type: integer }
+        sisaHari: { type: ["integer", "null"] }
         picUserId: { type: ["integer", "null"] }
         picName: { type: ["string", "null"] }
         departmentId: { type: ["integer", "null"] }
@@ -1019,6 +1020,7 @@ components:
         noPo: { type: string }
         namaProject: { type: string }
         customer: { type: string }
+        qty: { type: string }
         poAmount:
           type: number
           nullable: true
@@ -1038,6 +1040,7 @@ components:
         noPo: { type: string }
         namaProject: { type: string }
         customer: { type: string }
+        qty: { type: string }
         poAmount:
           type: number
           nullable: true

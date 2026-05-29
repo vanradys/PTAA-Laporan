@@ -62,9 +62,11 @@ export default function Layout({ children }: LayoutProps) {
       <aside className="flex w-[270px] shrink-0 flex-col bg-[#06258d] text-white">
         <div className="px-5 pb-5 pt-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-              <img src={logoSrc} alt="Adiyasa logo" className="h-14 w-14 object-contain" />
-            </div>
+            <img
+              src={logoSrc}
+              alt="Adiyasa logo"
+              className="h-16 w-16 shrink-0 object-contain"
+            />
             <div className="leading-tight">
               <p className="text-2xl font-black tracking-[0.16em]">ADIYASA</p>
               <p className="text-xs font-bold tracking-[0.22em] text-red-500">PTAA</p>

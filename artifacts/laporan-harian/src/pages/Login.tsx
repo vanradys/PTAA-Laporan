@@ -159,34 +159,16 @@ export default function Login() {
                 >
                   Password
                 </label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Masukkan password"
-                    {...register("password", {
-                      required: "Password diperlukan",
-                    })}
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all pr-10"
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                    aria-label={
-                      showPassword
-                        ? "Sembunyikan password"
-                        : "Tampilkan password"
-                    }
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
+                <input
+                  id="password"
+                  type="password"
+                  placeholder="Masukkan password"
+                  {...register("password", {
+                    required: "Password diperlukan",
+                  })}
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                  autoComplete="current-password"
+                />
                 {errors.password && (
                   <p className="text-xs text-red-600 mt-1">
                     {errors.password.message}

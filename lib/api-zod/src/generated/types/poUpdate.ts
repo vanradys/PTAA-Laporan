@@ -10,6 +10,7 @@ export interface PoUpdate {
   noPo?: string;
   namaProject?: string;
   customer?: string;
+  qty?: string;
   poAmount?: number | null;
   tanggalPoMasuk?: string;
   targetPenyelesaian?: string;

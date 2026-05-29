@@ -204,12 +204,15 @@ export interface PoItem {
   namaProject: string;
   /** @nullable */
   customer?: string | null;
+  /** @nullable */
+  qty?: string | null;
   poAmount?: number | null;
   tanggalPoMasuk?: string;
   /** @nullable */
   targetPenyelesaian?: string | null;
   deadline: string;
-  sisaHari: number;
+  /** @nullable */
+  sisaHari: number | null;
   /** @nullable */
   picUserId?: number | null;
   /** @nullable */
@@ -237,6 +240,7 @@ export interface PoInput {
   noPo: string;
   namaProject: string;
   customer?: string;
+  qty?: string;
   poAmount?: number | null;
   tanggalPoMasuk: string;
   targetPenyelesaian?: string;
@@ -252,6 +256,7 @@ export interface PoUpdate {
   noPo?: string;
   namaProject?: string;
   customer?: string;
+  qty?: string;
   poAmount?: number | null;
   tanggalPoMasuk?: string;
   targetPenyelesaian?: string;
@@ -316,4 +321,3 @@ date?: string;
 export type GetDepartmentProductivityParams = {
 date?: string;
 };
-
