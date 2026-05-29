@@ -69,7 +69,13 @@ function canManagePo(user?: {
   );
 }
 
-function calcSisaHari(deadline: string): number {
+function isDateOnly(value: string | null | undefined): value is string {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+function calcSisaHari(deadline: string): number | null {
+  if (!isDateOnly(deadline)) return null;
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dl = new Date(deadline);
@@ -110,9 +116,12 @@ function getPoEditLockNotice(
 function autoStatus(
   current: string,
   deadline: string,
-  sisaHari: number,
+  sisaHari: number | null,
+  progress = 0,
 ): string {
-  if (current === "selesai" || current === "close") return current;
+  if (current === "close") return current;
+  if (progress >= 100 || current === "selesai") return "selesai";
+  if (sisaHari === null) return current;
   if (sisaHari < 0) return "delay";
   if (sisaHari <= 7) return "hampir_deadline";
   return current === "delay" || current === "hampir_deadline"
@@ -125,7 +134,7 @@ async function buildPoItem(
   options?: { includeAmount?: boolean },
 ) {
   const sisaHari = calcSisaHari(po.deadline);
-  const computedStatus = autoStatus(po.status, po.deadline, sisaHari);
+  const computedStatus = autoStatus(po.status, po.deadline, sisaHari, po.progress);
   let picName: string | null = null;
   let deptName: string | null = null;
   if (po.picUserId) {
@@ -149,6 +158,7 @@ async function buildPoItem(
     noPo: po.noPo,
     namaProject: po.namaProject,
     customer: po.customer,
+    qty: po.qty,
     ...(options?.includeAmount
       ? { poAmount: po.poAmount ? Number(po.poAmount) : 0 }
       : {}),
@@ -176,6 +186,7 @@ async function sendDeadlineNotifications(
   po: typeof projectsPoTable.$inferSelect,
 ) {
   const sisaHari = calcSisaHari(po.deadline);
+  if (sisaHari === null) return;
   if (po.status === "selesai" || po.status === "close") return;
 
   const recipients: number[] = [];
@@ -258,12 +269,13 @@ router.get("/po/summary", async (req, res) => {
   const poDelay = pos.filter(
     (p) =>
       p.status === "delay" ||
-      (calcSisaHari(p.deadline) < 0 &&
+      ((calcSisaHari(p.deadline) ?? Number.POSITIVE_INFINITY) < 0 &&
         p.status !== "selesai" &&
         p.status !== "close"),
   ).length;
   const poHampirDeadline = pos.filter((p) => {
     const s = calcSisaHari(p.deadline);
+    if (s === null) return false;
     return s >= 0 && s <= 7 && p.status !== "selesai" && p.status !== "close";
   }).length;
   const monthlyTarget = 1500000000;
@@ -386,9 +398,11 @@ router.post("/po", async (req, res) => {
     noPo,
     namaProject,
     customer,
+    qty,
     poAmount,
     tanggalPoMasuk,
     targetPenyelesaian,
+    deadline,
     tanggal_Delivery,
     picUserId,
     departmentId,
@@ -396,10 +410,16 @@ router.post("/po", async (req, res) => {
     progress,
     catatan,
   } = req.body;
-  if (!noPo || !namaProject || !tanggalPoMasuk || !tanggal_Delivery) {
+  const deliveryValue = deadline ?? tanggal_Delivery;
+  const parsedProgress = progress !== undefined ? parseInt(progress) : 0;
+  const parsedStatus =
+    parsedProgress >= 100 && status !== "close"
+      ? "selesai"
+      : (status ?? "belum_mulai");
+
+  if (!noPo || !namaProject || !tanggalPoMasuk || !deliveryValue) {
     res.status(400).json({
-      error:
-        "noPo, namaProject, tanggalPoMasuk, dan tanggal_Delivery diperlukan",
+      error: "noPo, namaProject, tanggalPoMasuk, dan deadline diperlukan",
     });
     return;
   }
@@ -410,17 +430,21 @@ router.post("/po", async (req, res) => {
       noPo,
       namaProject,
       customer: customer ?? null,
+      qty: qty ?? null,
       poAmount:
         canViewPoAmount(user) && poAmount !== undefined && poAmount !== ""
           ? String(poAmount)
           : null,
       tanggalPoMasuk,
       targetPenyelesaian: targetPenyelesaian ?? null,
-      deadline: tanggal_Delivery ?? null,
+      deadline: deliveryValue,
       picUserId: picUserId ? parseInt(picUserId) : null,
       departmentId: departmentId ? parseInt(departmentId) : null,
-      status: status ?? "belum_mulai",
-      progress: progress ? parseInt(progress) : 0,
+      status: parsedStatus,
+      progress: parsedProgress,
+      ...(parsedStatus === "selesai"
+        ? { closedAt: new Date(), closedByUserId: user.id }
+        : {}),
       catatan: catatan ?? null,
       createdByUserId: user.id,
     })
@@ -577,9 +601,11 @@ router.patch("/po/:id", async (req, res) => {
     noPo,
     namaProject,
     customer,
+    qty,
     poAmount,
     tanggalPoMasuk,
     targetPenyelesaian,
+    deadline,
     tanggal_Delivery,
     picUserId,
     departmentId,
@@ -590,6 +616,7 @@ router.patch("/po/:id", async (req, res) => {
   if (noPo !== undefined) updates.noPo = noPo;
   if (namaProject !== undefined) updates.namaProject = namaProject;
   if (customer !== undefined) updates.customer = customer;
+  if (qty !== undefined) updates.qty = qty;
   if (poAmount !== undefined && canViewPoAmount(user)) {
     updates.poAmount =
       poAmount === "" || poAmount === null ? null : String(poAmount);
@@ -597,8 +624,9 @@ router.patch("/po/:id", async (req, res) => {
   if (tanggalPoMasuk !== undefined) updates.tanggalPoMasuk = tanggalPoMasuk;
   if (targetPenyelesaian !== undefined)
     updates.targetPenyelesaian = targetPenyelesaian;
-  if (tanggal_Delivery !== undefined)
-    updates.deadline = tanggal_Delivery;
+  const deliveryValue = deadline ?? tanggal_Delivery;
+  if (deliveryValue !== undefined)
+    updates.deadline = deliveryValue;
   if (picUserId !== undefined)
     updates.picUserId = picUserId ? parseInt(picUserId) : null;
   if (departmentId !== undefined)
@@ -617,7 +645,17 @@ router.patch("/po/:id", async (req, res) => {
       updates.closedByUserId = null;
     }
   }
-  if (progress !== undefined) updates.progress = parseInt(progress);
+  if (progress !== undefined) {
+    const parsedProgress = parseInt(progress);
+    updates.progress = parsedProgress;
+    if (parsedProgress >= 100 && status !== "close") {
+      updates.status = "selesai";
+      if (!existing.closedAt) {
+        updates.closedAt = new Date();
+        updates.closedByUserId = user.id;
+      }
+    }
+  }
   if (catatan !== undefined) updates.catatan = catatan;
 
   const [updated] = await db

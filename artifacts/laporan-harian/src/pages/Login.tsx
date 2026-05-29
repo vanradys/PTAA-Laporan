@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLogin } from "@workspace/api-client-react";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
 
@@ -14,7 +14,6 @@ interface LoginForm {
 export default function Login() {
   const { refetchUser } = useAuth();
   const login = useLogin();
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
   const {

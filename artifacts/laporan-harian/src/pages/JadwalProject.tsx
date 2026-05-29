@@ -61,7 +61,7 @@ const PO_STATUS_OPTS = [
   { value: "semua", label: "Semua Status" },
   { value: "belum_mulai", label: "Belum Mulai" },
   { value: "proses", label: "Proses" },
-  { value: "hampir_Tanggal Delivery", label: "Hampir Deadline" },
+  { value: "hampir_deadline", label: "Hampir Deadline" },
   { value: "delay", label: "Delay" },
   { value: "selesai", label: "Selesai" },
   { value: "close", label: "Close" },
@@ -106,15 +106,22 @@ const STATUS_STYLES: Record<string, StatusStyle> = {
   },
 };
 
-function getDeadlineStyle(sisaHari: number, status: string) {
-  if (status === "selesai" || status === "close") return "text-green-600";
+function getDeadlineStyle(sisaHari: number | null, status: string) {
+  if (sisaHari === null) return "text-muted-foreground";
+  if (status === "selesai" || status === "close") {
+    return sisaHari < 0 ? "text-green-600 font-semibold" : "text-green-600";
+  }
   if (sisaHari < 0) return "text-red-600 font-semibold";
   if (sisaHari <= 7) return "text-orange-600 font-semibold";
   if (sisaHari <= 14) return "text-yellow-600";
   return "text-muted-foreground";
 }
 
-function formatDeadlineLabel(sisaHari: number, status: string): string {
+function formatDeadlineLabel(sisaHari: number | null, status: string): string {
+  if (sisaHari === null) return "-";
+  if ((status === "selesai" || status === "close") && sisaHari < 0) {
+    return `Delay ${Math.abs(sisaHari)} hari`;
+  }
   if (status === "selesai" || status === "close") return "Selesai";
   if (sisaHari < 0) return `${Math.abs(sisaHari)} hari lewat`;
   if (sisaHari === 0) return "Hari ini!";
@@ -126,11 +133,12 @@ interface PoItem {
   noPo: string;
   namaProject: string;
   customer?: string | null;
+  qty?: string | null;
   poAmount?: number | null;
   tanggalPoMasuk: string;
   targetPenyelesaian?: string | null;
   deadline: string;
-  sisaHari: number;
+  sisaHari: number | null;
   picUserId?: number | null;
   picName?: string | null;
   departmentId?: number | null;
@@ -147,6 +155,7 @@ interface PoFormState {
   noPo: string;
   namaProject: string;
   customer: string;
+  qty: string;
   poAmount: string;
   tanggalPoMasuk: string;
   targetPenyelesaian: string;
@@ -162,6 +171,7 @@ const EMPTY_FORM: PoFormState = {
   noPo: "",
   namaProject: "",
   customer: "",
+  qty: "",
   tanggalPoMasuk: "",
   targetPenyelesaian: "",
   poAmount: "",
@@ -211,6 +221,21 @@ function isFinishedPo(status: string) {
   return status === "selesai" || status === "close";
 }
 
+function isDateOnly(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function clampProgress(progress: number) {
+  return Math.min(100, Math.max(0, Number.isFinite(progress) ? progress : 0));
+}
+
+function getStatusLabel(po: PoItem, fallback: string) {
+  if (po.status === "selesai" && po.sisaHari !== null && po.sisaHari < 0) {
+    return `Selesai, delay ${Math.abs(po.sisaHari)} hari`;
+  }
+  return fallback;
+}
+
 function getFinishedPoNotice(po: PoItem) {
   if (!po.isEditLocked) return null;
 
@@ -254,6 +279,9 @@ export default function JadwalProject() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<PoFormState>(EMPTY_FORM);
+  const [deliveryInputMode, setDeliveryInputMode] = useState<"date" | "text">(
+    "date",
+  );
   const [formLoading, setFormLoading] = useState(false);
 
   const poParams = {
@@ -301,7 +329,7 @@ export default function JadwalProject() {
 
   const pos = (Array.isArray(poList) ? poList : []) as PoItem[];
   const allPosRaw = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
-  const allPos = allPosRaw.filter((po) => !isFinishedPo(po.status));
+  const allPos = allPosRaw;
   const yearlyTrendItems = Array.isArray(
     (yearlyTrend as { items?: unknown[] } | undefined)?.items,
   )
@@ -354,6 +382,7 @@ export default function JadwalProject() {
       ...EMPTY_FORM,
       tanggalPoMasuk: today.toISOString().split("T")[0],
     });
+    setDeliveryInputMode("date");
     setShowForm(true);
   };
 
@@ -363,6 +392,7 @@ export default function JadwalProject() {
       noPo: po.noPo,
       namaProject: po.namaProject,
       customer: po.customer ?? "",
+      qty: po.qty ?? "",
       poAmount: po.poAmount ? String(po.poAmount) : "",
       tanggalPoMasuk: po.tanggalPoMasuk,
       targetPenyelesaian: po.targetPenyelesaian ?? "",
@@ -373,6 +403,7 @@ export default function JadwalProject() {
       progress: String(po.progress),
       catatan: po.catatan ?? "",
     });
+    setDeliveryInputMode(isDateOnly(po.deadline) ? "date" : "text");
     setShowForm(true);
   };
 
@@ -417,6 +448,7 @@ export default function JadwalProject() {
         noPo: form.noPo,
         namaProject: form.namaProject,
         customer: form.customer || undefined,
+        qty: form.qty || undefined,
         ...(canViewPoAmount
           ? { poAmount: form.poAmount ? Number(form.poAmount) : undefined }
           : {}),
@@ -570,7 +602,7 @@ export default function JadwalProject() {
     },
     {
       status: "Hampir Tanggal Delivery",
-      count: pos.filter((item) => item.status === "hampir_Tanggal Delivery")
+      count: pos.filter((item) => item.status === "hampir_deadline")
         .length,
     },
     {
@@ -861,6 +893,9 @@ export default function JadwalProject() {
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
                         Customer
                       </th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Qty
+                      </th>
                       {canViewPoAmount && (
                         <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
                           Nominal PO
@@ -926,6 +961,9 @@ export default function JadwalProject() {
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                             {po.customer ?? "—"}
                           </td>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                            {po.qty ?? "-"}
+                          </td>
                           {canViewPoAmount && (
                             <td className="px-4 py-3 text-right whitespace-nowrap font-medium">
                               {po.poAmount ? formatRupiah(po.poAmount) : "—"}
@@ -956,7 +994,7 @@ export default function JadwalProject() {
                               <span
                                 className={`inline-block w-1.5 h-1.5 rounded-full ${ss.dot} mr-1.5`}
                               />
-                              {ss.label}
+                              {getStatusLabel(po, ss.label)}
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -964,7 +1002,7 @@ export default function JadwalProject() {
                               <div className="flex-1 bg-muted rounded-full h-1.5">
                                 <div
                                   className={`h-1.5 rounded-full transition-all ${po.status === "delay" ? "bg-red-500" : po.status === "selesai" || po.status === "close" ? "bg-green-500" : "bg-primary"}`}
-                                  style={{ width: `${po.progress}%` }}
+                                  style={{ width: `${clampProgress(po.progress)}%` }}
                                 />
                               </div>
                               <span className="text-xs font-medium w-8 text-right">
@@ -996,7 +1034,7 @@ export default function JadwalProject() {
                                       variant="ghost"
                                       size="icon"
                                       className="w-7 h-7 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                      title="Close PO"
+                                      title="Progress Selesai"
                                       onClick={() => handleClose(po)}
                                     >
                                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1050,6 +1088,9 @@ export default function JadwalProject() {
                       </th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
                         Customer
+                      </th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Qty
                       </th>
                       {canViewPoAmount && (
                         <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
@@ -1105,6 +1146,9 @@ export default function JadwalProject() {
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                             {po.customer ?? "-"}
                           </td>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                            {po.qty ?? "-"}
+                          </td>
                           {canViewPoAmount && (
                             <td className="px-4 py-3 text-right whitespace-nowrap font-medium">
                               {po.poAmount ? formatRupiah(po.poAmount) : "-"}
@@ -1123,7 +1167,7 @@ export default function JadwalProject() {
                               <span
                                 className={`inline-block w-1.5 h-1.5 rounded-full ${ss.dot} mr-1.5`}
                               />
-                              {ss.label}
+                              {getStatusLabel(po, ss.label)}
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -1131,7 +1175,7 @@ export default function JadwalProject() {
                               <div className="flex-1 bg-muted rounded-full h-1.5">
                                 <div
                                   className={`h-1.5 rounded-full transition-all ${po.status === "delay" ? "bg-red-500" : po.status === "selesai" || po.status === "close" ? "bg-green-500" : "bg-primary"}`}
-                                  style={{ width: `${po.progress}%` }}
+                                  style={{ width: `${clampProgress(po.progress)}%` }}
                                 />
                               </div>
                               <span className="text-xs font-medium w-8 text-right">
@@ -1163,7 +1207,7 @@ export default function JadwalProject() {
                                       variant="ghost"
                                       size="icon"
                                       className="w-7 h-7 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                      title="Close PO"
+                                      title="Progress Selesai"
                                       onClick={() => handleClose(po)}
                                     >
                                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1261,6 +1305,17 @@ export default function JadwalProject() {
                       setForm((f) => ({ ...f, customer: e.target.value }))
                     }
                     placeholder="Nama customer..."
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Qty</Label>
+                  <Input
+                    value={form.qty}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, qty: e.target.value }))
+                    }
+                    placeholder="Contoh: 1 Unit / 1 Set / 1 Lot"
                     className="h-9 text-sm"
                   />
                 </div>
@@ -1370,11 +1425,30 @@ export default function JadwalProject() {
                   <Label className="text-xs font-semibold">
                     Tanggal Delivery <span className="text-red-500">*</span>
                   </Label>
+                  <Select
+                    value={deliveryInputMode}
+                    onValueChange={(v) =>
+                      setDeliveryInputMode(v as "date" | "text")
+                    }
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="date">Pilih Tanggal</SelectItem>
+                      <SelectItem value="text">Isi Teks Manual</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Input
-                    type="date"
+                    type={deliveryInputMode === "date" ? "date" : "text"}
                     value={form.deadline}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, deadline: e.target.value }))
+                    }
+                    placeholder={
+                      deliveryInputMode === "date"
+                        ? undefined
+                        : "Minggu ke-2 Juni / Urgent / Menunggu konfirmasi"
                     }
                     className="h-9 text-sm"
                   />
@@ -1414,7 +1488,7 @@ export default function JadwalProject() {
                     onChange={(e) =>
                       setForm((f) => ({ ...f, progress: e.target.value }))
                     }
-                    className="h-9"
+                    className="h-9 w-full accent-primary"
                   />
                 </div>
               </div>
