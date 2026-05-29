@@ -2,7 +2,7 @@ import { db, departmentsTable, usersTable, eq, inArray } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { activeDepartmentCodes } from "./auth";
 import { Router } from "express";
-import { reportingUserCondition } from "../services/dailyReportReminder";
+import { activeUserCondition } from "../services/dailyReportReminder";
 
 const router = Router();
 
@@ -37,7 +37,7 @@ router.get("/employees", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(reportingUserCondition())
+    .where(activeUserCondition())
     .orderBy(usersTable.name);
 
   res.json(employees.map((employee) => ({

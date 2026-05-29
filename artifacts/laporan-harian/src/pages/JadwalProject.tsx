@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListPo,
@@ -360,6 +361,7 @@ export default function JadwalProject() {
   const emps = (Array.isArray(employees) ? employees : []) as {
     id: number;
     name: string;
+    departmentId?: number | null;
   }[];
 
   const invalidate = () => {
@@ -480,7 +482,7 @@ export default function JadwalProject() {
         title: "Gagal",
         description: message.includes("30 hari")
           ? "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya"
-          : "Gagal menyimpan PO",
+          : message,
         variant: "destructive",
       });
     } finally {
@@ -1338,18 +1340,29 @@ export default function JadwalProject() {
                     </p>
                   </div>
                 )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
                     PIC (Person In Charge)
                   </Label>
                   <Select
                     value={form.picUserId || NONE_VALUE}
-                    onValueChange={(v) =>
+                    onValueChange={(v) => {
+                      const selectedEmployee = emps.find(
+                        (employee) => String(employee.id) === v,
+                      );
                       setForm((f) => ({
                         ...f,
                         picUserId: v === NONE_VALUE ? "" : v,
-                      }))
-                    }
+                        departmentId:
+                          v === NONE_VALUE
+                            ? ""
+                            : selectedEmployee?.departmentId
+                              ? String(selectedEmployee.departmentId)
+                              : f.departmentId,
+                      }));
+                    }}
                   >
                     <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Pilih PIC..." />
@@ -1359,32 +1372,6 @@ export default function JadwalProject() {
                       {emps.map((e) => (
                         <SelectItem key={e.id} value={String(e.id)}>
                           {e.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Departemen</Label>
-                  <Select
-                    value={form.departmentId || NONE_VALUE}
-                    onValueChange={(v) =>
-                      setForm((f) => ({
-                        ...f,
-                        departmentId: v === NONE_VALUE ? "" : v,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Pilih dept..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE_VALUE}>Tidak ada</SelectItem>
-                      {depts.map((d) => (
-                        <SelectItem key={d.id} value={String(d.id)}>
-                          {d.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1488,7 +1475,12 @@ export default function JadwalProject() {
                     onChange={(e) =>
                       setForm((f) => ({ ...f, progress: e.target.value }))
                     }
-                    className="h-9 w-full accent-primary"
+                    className="po-progress-range h-9 w-full"
+                    style={
+                      {
+                        "--progress-value": `${clampProgress(parseInt(form.progress))}%`,
+                      } as CSSProperties
+                    }
                   />
                 </div>
               </div>

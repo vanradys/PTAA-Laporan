@@ -195,4 +195,64 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  .po-progress-range {
+    --progress-value: 0%;
+    appearance: none;
+    border: 0;
+    box-shadow: none;
+    cursor: pointer;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .po-progress-range:focus-visible {
+    outline: none;
+  }
+
+  .po-progress-range::-webkit-slider-runnable-track {
+    height: 0.5rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 9999px;
+    background: linear-gradient(
+      to right,
+      hsl(var(--primary)) 0 var(--progress-value),
+      hsl(var(--background)) var(--progress-value) 100%
+    );
+  }
+
+  .po-progress-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-top: -0.4375rem;
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--primary));
+    background: hsl(var(--primary));
+  }
+
+  .po-progress-range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.25);
+  }
+
+  .po-progress-range::-moz-range-track {
+    height: 0.5rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 9999px;
+    background: hsl(var(--background));
+  }
+
+  .po-progress-range::-moz-range-progress {
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: hsl(var(--primary));
+  }
+
+  .po-progress-range::-moz-range-thumb {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--primary));
+    background: hsl(var(--primary));
+  }
 }
