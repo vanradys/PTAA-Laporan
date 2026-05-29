@@ -248,6 +248,79 @@ function getFinishedPoNotice(po: PoItem) {
 }
 
 const today = new Date();
+const currentDay = today.getDate();
+const currentMonth = today.getMonth() + 1;
+const currentYear = today.getFullYear();
+
+function padDateSegment(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function isoDateToDisplay(value: string) {
+  if (!isDateOnly(value)) return value;
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function deliveryDisplayToIso(value: string) {
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+
+  const [, dayText, monthText, yearText] = match;
+  const day = Number(dayText);
+  const month = Number(monthText);
+  const year = Number(yearText);
+
+  if (
+    !Number.isInteger(day) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(year) ||
+    day < 1 ||
+    day > currentDay ||
+    month < 1 ||
+    month > currentMonth ||
+    year < 1 ||
+    year > currentYear
+  ) {
+    return null;
+  }
+
+  return `${yearText}-${monthText}-${dayText}`;
+}
+
+function formatDeliveryDateInput(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  const dayDigits = digits.slice(0, 2);
+  const monthDigits = digits.slice(2, 4);
+  const yearDigits = digits.slice(4, 8);
+  const segments: string[] = [];
+
+  if (dayDigits.length > 0) {
+    const day =
+      dayDigits.length === 2
+        ? Math.min(currentDay, Math.max(1, Number(dayDigits) || 1))
+        : dayDigits;
+    segments.push(typeof day === "number" ? padDateSegment(day) : day);
+  }
+
+  if (monthDigits.length > 0) {
+    const month =
+      monthDigits.length === 2
+        ? Math.min(currentMonth, Math.max(1, Number(monthDigits) || 1))
+        : monthDigits;
+    segments.push(typeof month === "number" ? padDateSegment(month) : month);
+  }
+
+  if (yearDigits.length > 0) {
+    const year =
+      yearDigits.length === 4
+        ? String(Math.min(currentYear, Math.max(1, Number(yearDigits) || 1)))
+        : yearDigits;
+    segments.push(year);
+  }
+
+  return segments.join("/");
+}
 
 export default function JadwalProject() {
   const { user } = useAuth();
@@ -396,7 +469,7 @@ export default function JadwalProject() {
       poAmount: po.poAmount ? String(po.poAmount) : "",
       tanggalPoMasuk: po.tanggalPoMasuk,
       targetPenyelesaian: po.targetPenyelesaian ?? "",
-      deadline: po.deadline,
+      deadline: isoDateToDisplay(po.deadline),
       picUserId: po.picUserId ? String(po.picUserId) : "",
       departmentId: po.departmentId ? String(po.departmentId) : "",
       status: po.status,
@@ -429,6 +502,16 @@ export default function JadwalProject() {
       return;
     }
 
+    const normalizedDeadline = deliveryDisplayToIso(form.deadline);
+    if (!normalizedDeadline) {
+      toast({
+        title: "Validasi Gagal",
+        description: `Tanggal Delivery harus format DD/MM/YYYY dan maksimal ${padDateSegment(currentDay)}/${padDateSegment(currentMonth)}/${currentYear}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (
       canViewPoAmount &&
       form.poAmount.trim() &&
@@ -453,7 +536,7 @@ export default function JadwalProject() {
           : {}),
         tanggalPoMasuk: form.tanggalPoMasuk,
         targetPenyelesaian: form.targetPenyelesaian || undefined,
-        deadline: form.deadline,
+        deadline: normalizedDeadline,
         picUserId: form.picUserId ? parseInt(form.picUserId) : undefined,
         departmentId: form.departmentId
           ? parseInt(form.departmentId)
@@ -1413,9 +1496,14 @@ export default function JadwalProject() {
                     <Input
                       value={form.deadline}
                       onChange={(e) =>
-                        setForm((f) => ({ ...f, deadline: e.target.value }))
+                        setForm((f) => ({
+                          ...f,
+                          deadline: formatDeliveryDateInput(e.target.value),
+                        }))
                       }
-                      placeholder="Pilih tanggal atau ketik manual..."
+                      placeholder="DD/MM/YYYY"
+                      inputMode="numeric"
+                      maxLength={10}
                       className="h-9 pr-10 text-sm"
                     />
                     <button
@@ -1439,9 +1527,13 @@ export default function JadwalProject() {
                     <input
                       ref={deliveryDateInputRef}
                       type="date"
-                      value={isDateOnly(form.deadline) ? form.deadline : ""}
+                      value={deliveryDisplayToIso(form.deadline) ?? ""}
+                      max={`${currentYear}-${padDateSegment(currentMonth)}-${padDateSegment(currentDay)}`}
                       onChange={(e) =>
-                        setForm((f) => ({ ...f, deadline: e.target.value }))
+                        setForm((f) => ({
+                          ...f,
+                          deadline: isoDateToDisplay(e.target.value),
+                        }))
                       }
                       className="pointer-events-none absolute right-2 top-1/2 h-0 w-0 -translate-y-1/2 opacity-0"
                       tabIndex={-1}
