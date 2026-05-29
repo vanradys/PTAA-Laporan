@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Search,
   Filter,
+  CalendarDays,
   ChevronDown,
   Loader2,
   Package,
@@ -252,6 +253,7 @@ export default function JadwalProject() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const deliveryDateInputRef = useRef<HTMLInputElement>(null);
 
   const role = user?.role?.toLowerCase() ?? "";
   const departmentName = user?.departmentName?.toLowerCase() ?? "";
@@ -280,9 +282,6 @@ export default function JadwalProject() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<PoFormState>(EMPTY_FORM);
-  const [deliveryInputMode, setDeliveryInputMode] = useState<"date" | "text">(
-    "date",
-  );
   const [formLoading, setFormLoading] = useState(false);
 
   const poParams = {
@@ -384,7 +383,6 @@ export default function JadwalProject() {
       ...EMPTY_FORM,
       tanggalPoMasuk: today.toISOString().split("T")[0],
     });
-    setDeliveryInputMode("date");
     setShowForm(true);
   };
 
@@ -405,7 +403,6 @@ export default function JadwalProject() {
       progress: String(po.progress),
       catatan: po.catatan ?? "",
     });
-    setDeliveryInputMode(isDateOnly(po.deadline) ? "date" : "text");
     setShowForm(true);
   };
 
@@ -1412,33 +1409,44 @@ export default function JadwalProject() {
                   <Label className="text-xs font-semibold">
                     Tanggal Delivery <span className="text-red-500">*</span>
                   </Label>
-                  <Select
-                    value={deliveryInputMode}
-                    onValueChange={(v) =>
-                      setDeliveryInputMode(v as "date" | "text")
-                    }
-                  >
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="date">Pilih Tanggal</SelectItem>
-                      <SelectItem value="text">Isi Teks Manual</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    type={deliveryInputMode === "date" ? "date" : "text"}
-                    value={form.deadline}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, deadline: e.target.value }))
-                    }
-                    placeholder={
-                      deliveryInputMode === "date"
-                        ? undefined
-                        : "Minggu ke-2 Juni / Urgent / Menunggu konfirmasi"
-                    }
-                    className="h-9 text-sm"
-                  />
+                  <div className="relative">
+                    <Input
+                      value={form.deadline}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, deadline: e.target.value }))
+                      }
+                      placeholder="Pilih tanggal atau ketik manual..."
+                      className="h-9 pr-10 text-sm"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      onClick={() => {
+                        const input = deliveryDateInputRef.current;
+                        if (!input) return;
+
+                        if (typeof input.showPicker === "function") {
+                          input.showPicker();
+                          return;
+                        }
+
+                        input.click();
+                      }}
+                      aria-label="Pilih tanggal delivery"
+                    >
+                      <CalendarDays className="h-4 w-4" />
+                    </button>
+                    <input
+                      ref={deliveryDateInputRef}
+                      type="date"
+                      value={isDateOnly(form.deadline) ? form.deadline : ""}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, deadline: e.target.value }))
+                      }
+                      className="pointer-events-none absolute right-2 top-1/2 h-0 w-0 -translate-y-1/2 opacity-0"
+                      tabIndex={-1}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
