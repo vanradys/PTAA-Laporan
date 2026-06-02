@@ -4,15 +4,15 @@ export type ApiRequestOptions = RequestInit & {
 
 function getApiBaseUrl(): string {
   const envValue = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-  if (envValue) {
-    return envValue;
-  }
-
   if (import.meta.env.DEV) {
-    return "http://localhost:5000";
+    return envValue || "http://localhost:5000";
   }
 
-  return "";
+  if (typeof window !== "undefined" && window.location.hostname.endsWith("vercel.app")) {
+    return "";
+  }
+
+  return envValue;
 }
 
 function buildApiUrl(input: RequestInfo | URL): RequestInfo | URL {

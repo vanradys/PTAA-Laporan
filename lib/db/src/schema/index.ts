@@ -5,6 +5,7 @@ export * from "./daily_tasks";
 export * from "./report_comments";
 export * from "./notifications";
 export * from "./projects_po";
+export * from "./po_change_logs";
 export * from "./sessions";
 
 export * from "./device_tokens";

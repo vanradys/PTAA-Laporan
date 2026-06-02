@@ -44,6 +44,72 @@ function getReportStatusInfo(status: string) {
   return REPORT_STATUSES.find(s => s.value === status) ?? REPORT_STATUSES[0];
 }
 
+type DeliveryInputMode = "date" | "text";
+
+function isDateOnly(value: string | null | undefined) {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+function formatDeliveryValue(value: string | null | undefined) {
+  if (!value) return "";
+  if (!isDateOnly(value)) return value;
+
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function TaskDeliveryInput({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: string;
+  disabled?: boolean;
+  onCommit: (value: string) => void;
+}) {
+  const [mode, setMode] = useState<DeliveryInputMode>(isDateOnly(value) || !value ? "date" : "text");
+  const [draft, setDraft] = useState(value);
+
+  const handleModeChange = (nextMode: DeliveryInputMode) => {
+    setMode(nextMode);
+
+    if (nextMode === "date" && !isDateOnly(draft)) {
+      setDraft("");
+    }
+  };
+
+  const commit = () => {
+    onCommit(draft.trim());
+  };
+
+  return (
+    <div className="grid grid-cols-[140px_1fr] gap-2">
+      <Select
+        value={mode}
+        disabled={disabled}
+        onValueChange={(nextMode) => handleModeChange(nextMode as DeliveryInputMode)}
+      >
+        <SelectTrigger className="h-8 text-sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="date">Pilih Tanggal</SelectItem>
+          <SelectItem value="text">Isi Teks Manual</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input
+        type={mode === "date" ? "date" : "text"}
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        placeholder={mode === "date" ? undefined : "Urgent / Menunggu konfirmasi"}
+        className="h-8 text-sm"
+      />
+    </div>
+  );
+}
+
 interface TaskForm {
   title: string;
   project: string;
@@ -729,7 +795,7 @@ useEffect(() => {
 
                               {task.deadline && (
                                 <span className={`text-xs ${task.isDelay ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-                                  Tanggal Delivery: {task.deadline}
+                                  Tanggal Delivery: {formatDeliveryValue(task.deadline)}
                                 </span>
                               )}
 
@@ -765,12 +831,14 @@ useEffect(() => {
                                 </div>
                                 <div className="space-y-1">
                                   <Label className="text-xs">Tanggal Delivery</Label>
-                                  <Input
-                                    type="date"
-                                    defaultValue={task.deadline ?? ""}
+                                  <TaskDeliveryInput
+                                    value={task.deadline ?? ""}
                                     disabled={taskLocked}
-                                    onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "deadline", e.target.value) : handleUpdateExistingTask(task.id, "deadline", e.target.value)}
-                                    className="h-8 text-sm"
+                                    onCommit={(value) =>
+                                      isEditingSubmitted
+                                        ? updateEditableTask(task.id, "deadline", value)
+                                        : handleUpdateExistingTask(task.id, "deadline", value)
+                                    }
                                   />
                                 </div>
                               </div>
@@ -867,11 +935,9 @@ useEffect(() => {
 
                       <div className="space-y-1">
                         <Label className="text-xs">Tanggal Delivery</Label>
-                        <Input
-                          type="date"
+                        <TaskDeliveryInput
                           value={task.deadline}
-                          onChange={e => updateNewTask(task.id, "deadline", e.target.value)}
-                          className="h-8 text-sm"
+                          onCommit={(value) => updateNewTask(task.id, "deadline", value)}
                         />
                       </div>
                     </div>

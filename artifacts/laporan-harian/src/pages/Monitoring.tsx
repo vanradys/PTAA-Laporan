@@ -66,6 +66,7 @@ type ReportSummaryLike = {
   taskCount: number;
   avgProgress: number;
   status: string;
+  submittedAt?: string | null;
 };
 
 type MonitoringReportRow = {
@@ -81,6 +82,7 @@ type MonitoringReportRow = {
   taskCount: number;
   avgProgress: number;
   status: string;
+  submittedAt: string | null;
   hasReport: boolean;
   isSubmitted: boolean;
 };
@@ -96,6 +98,16 @@ function isSubmittedStatus(status: string) {
 function getDayName(date: string) {
   const dateObject = new Date(`${date}T00:00:00`);
   return DAY_NAMES[dateObject.getDay()] ?? "-";
+}
+
+function formatSubmitTime(value: string | null | undefined) {
+  if (!value) return "-";
+
+  return new Date(value).toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Jakarta",
+  });
 }
 
 function buildMissingSummary(users: MissingDailyReportUser[], totalEmployees: number, reportDate: string) {
@@ -142,6 +154,7 @@ function buildRowsFromEmployeesAndReports(
       taskCount: report?.taskCount ?? 0,
       avgProgress: report?.avgProgress ?? 0,
       status,
+      submittedAt: report?.submittedAt ?? null,
       hasReport: !!report,
       isSubmitted: isSubmittedStatus(status),
     };
@@ -223,6 +236,7 @@ export default function Monitoring() {
       taskCount: report.taskCount,
       avgProgress: report.avgProgress,
       status: report.status,
+      submittedAt: report.submittedAt ?? null,
       hasReport: true,
       isSubmitted: isSubmittedStatus(report.status),
     }));
@@ -549,6 +563,7 @@ export default function Monitoring() {
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Nama Karyawan</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Departemen</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground whitespace-nowrap">Waktu Submit</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Tanggal</th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground">Jml Tugas</th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground">Progress</th>
@@ -566,6 +581,7 @@ export default function Monitoring() {
                             <p className="font-medium text-foreground">{report.userName}</p>
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">{report.departmentName ?? "—"}</td>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatSubmitTime(report.submittedAt)}</td>
                           <td className="px-4 py-3">
                             <p className="text-foreground">{new Date(`${report.date}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}</p>
                             <p className="text-xs text-muted-foreground">{report.dayName}</p>

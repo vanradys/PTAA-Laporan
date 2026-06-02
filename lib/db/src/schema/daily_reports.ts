@@ -13,6 +13,7 @@ export const dailyReportsTable = pgTable("daily_reports", {
   additionalNotes: text("additional_notes"),
   tomorrowPlan: text("tomorrow_plan"),
   status: text("status").notNull().default("draf"),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

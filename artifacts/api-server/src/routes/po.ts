@@ -2,12 +2,14 @@ import {
   and,
   db,
   departmentsTable,
+  desc,
   eq,
   gte,
   like,
   lte,
   notificationsTable,
   or,
+  poChangeLogsTable,
   projectsPoTable,
   sql,
   usersTable,
@@ -27,6 +29,21 @@ const PO_STATUSES = [
 ] as const;
 
 const PO_AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "dir"];
+const MONTHLY_PO_TARGET = 10_000_000_000;
+const MONTH_NAMES = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
 
 const PO_AMOUNT_HIDDEN_DEPARTMENT_CODES = ["PUR", "ENG"];
 const PO_AMOUNT_HIDDEN_DEPARTMENT_NAMES = ["purchasing", "engineering"];
@@ -111,6 +128,48 @@ function getPoEditLockNotice(
   if (!isPoEditLocked(po)) return null;
 
   return "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya";
+}
+
+function normalizeLogValue(value: unknown) {
+  if (value instanceof Date) return value.toISOString();
+  if (value === undefined) return null;
+  return value;
+}
+
+function buildPoChanges(
+  before: Partial<typeof projectsPoTable.$inferSelect> | null,
+  after: Partial<typeof projectsPoTable.$inferSelect> | null,
+  fields: Array<keyof typeof projectsPoTable.$inferSelect>,
+) {
+  const changes: Record<string, { before: unknown; after: unknown }> = {};
+
+  for (const field of fields) {
+    const beforeValue = normalizeLogValue(before?.[field]);
+    const afterValue = normalizeLogValue(after?.[field]);
+
+    if (JSON.stringify(beforeValue) !== JSON.stringify(afterValue)) {
+      changes[String(field)] = { before: beforeValue, after: afterValue };
+    }
+  }
+
+  return changes;
+}
+
+async function recordPoChange(options: {
+  poId: number | null;
+  noPo: string;
+  action: string;
+  changes: Record<string, { before: unknown; after: unknown }>;
+  user: { id: number; name?: string | null };
+}) {
+  await db.insert(poChangeLogsTable).values({
+    poId: options.poId,
+    noPo: options.noPo,
+    action: options.action,
+    changes: options.changes,
+    changedByUserId: options.user.id,
+    changedByName: options.user.name ?? null,
+  });
 }
 
 function autoStatus(
@@ -254,8 +313,8 @@ router.get("/po/summary", async (req, res) => {
   const now = new Date();
   const month = parseInt(req.query.month as string) || now.getMonth() + 1;
   const year = parseInt(req.query.year as string) || now.getFullYear();
-  const targetPeriodStart = new Date(year, month - 1, 21);
-  const targetPeriodEnd = new Date(year, month, 20);
+  const targetPeriodStart = new Date(year, month - 2, 21);
+  const targetPeriodEnd = new Date(year, month - 1, 20);
   const targetStartDate = targetPeriodStart.toISOString().split("T")[0];
   const targetEndDate = targetPeriodEnd.toISOString().split("T")[0];
 
@@ -278,7 +337,7 @@ router.get("/po/summary", async (req, res) => {
     if (s === null) return false;
     return s >= 0 && s <= 7 && p.status !== "selesai" && p.status !== "close";
   }).length;
-  const monthlyTarget = 1500000000;
+  const monthlyTarget = MONTHLY_PO_TARGET;
   const targetPos = await db
     .select()
     .from(projectsPoTable)
@@ -303,10 +362,52 @@ router.get("/po/summary", async (req, res) => {
     poBelumSelesai,
     poDelay,
     poHampirDeadline,
+    totalNominal,
+    monthlyTarget,
     persentasePencapaian,
+    targetMonthName: MONTH_NAMES[month - 1] ?? String(month),
+    targetStartDate,
+    targetEndDate,
     month,
     year,
   });
+});
+
+router.get("/po/activity", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) {
+    res.status(401).json({ error: "Tidak terautentikasi" });
+    return;
+  }
+  const user = await getUserFromToken(token);
+  if (!user) {
+    res.status(401).json({ error: "Sesi tidak valid" });
+    return;
+  }
+
+  if (!canManagePo(user)) {
+    res.status(403).json({ error: "Tidak diizinkan" });
+    return;
+  }
+
+  const logs = await db
+    .select()
+    .from(poChangeLogsTable)
+    .orderBy(desc(poChangeLogsTable.createdAt))
+    .limit(30);
+
+  res.json(
+    logs.map((log) => ({
+      id: log.id,
+      poId: log.poId,
+      noPo: log.noPo,
+      action: log.action,
+      changes: log.changes,
+      changedByUserId: log.changedByUserId,
+      changedByName: log.changedByName,
+      createdAt: log.createdAt.toISOString(),
+    })),
+  );
 });
 
 router.get("/po", async (req, res) => {
@@ -451,6 +552,27 @@ router.post("/po", async (req, res) => {
     .returning();
 
   await sendDeadlineNotifications(po);
+  await recordPoChange({
+    poId: po.id,
+    noPo: po.noPo,
+    action: "created",
+    user,
+    changes: buildPoChanges(null, po, [
+      "noPo",
+      "namaProject",
+      "customer",
+      "qty",
+      "poAmount",
+      "tanggalPoMasuk",
+      "targetPenyelesaian",
+      "deadline",
+      "picUserId",
+      "departmentId",
+      "status",
+      "progress",
+      "catatan",
+    ]),
+  });
   const item = await buildPoItem(po, {
     includeAmount: canViewPoAmount(user),
   });
@@ -664,6 +786,33 @@ router.patch("/po/:id", async (req, res) => {
     .where(eq(projectsPoTable.id, id))
     .returning();
   await sendDeadlineNotifications(updated);
+  const changes = buildPoChanges(existing, updated, [
+    "noPo",
+    "namaProject",
+    "customer",
+    "qty",
+    "poAmount",
+    "tanggalPoMasuk",
+    "targetPenyelesaian",
+    "deadline",
+    "picUserId",
+    "departmentId",
+    "status",
+    "progress",
+    "catatan",
+    "closedAt",
+    "closedByUserId",
+  ]);
+
+  if (Object.keys(changes).length > 0) {
+    await recordPoChange({
+      poId: updated.id,
+      noPo: updated.noPo,
+      action: "updated",
+      user,
+      changes,
+    });
+  }
   const item = await buildPoItem(updated, {
     includeAmount: canViewPoAmount(user),
   });
@@ -717,6 +866,14 @@ router.post("/po/:id/close", async (req, res) => {
     .where(eq(projectsPoTable.id, id))
     .returning();
 
+  await recordPoChange({
+    poId: updated.id,
+    noPo: updated.noPo,
+    action: "closed",
+    user,
+    changes: buildPoChanges(po, updated, ["status", "progress", "closedAt", "closedByUserId"]),
+  });
+
   const item = await buildPoItem(updated, {
     includeAmount: canViewPoAmount(user),
   });
@@ -761,6 +918,27 @@ router.delete("/po/:id", async (req, res) => {
   }
 
   await db.delete(projectsPoTable).where(eq(projectsPoTable.id, id));
+  await recordPoChange({
+    poId: null,
+    noPo: po.noPo,
+    action: "deleted",
+    user,
+    changes: buildPoChanges(po, null, [
+      "noPo",
+      "namaProject",
+      "customer",
+      "qty",
+      "poAmount",
+      "tanggalPoMasuk",
+      "targetPenyelesaian",
+      "deadline",
+      "picUserId",
+      "departmentId",
+      "status",
+      "progress",
+      "catatan",
+    ]),
+  });
   res.json({ success: true, message: "PO berhasil dihapus" });
 });
 

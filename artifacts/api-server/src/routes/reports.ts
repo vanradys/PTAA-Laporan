@@ -122,6 +122,7 @@ function isTaskLockedByCount(editCount: number): boolean {
 function isTaskDelay(deadline: string | null, status: string): boolean {
   if (!deadline) return false;
   if (status === "selesai") return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
   return deadline < getTodayString();
 }
 
@@ -136,6 +137,7 @@ async function buildReportDetail(reportId: number) {
       additionalNotes: dailyReportsTable.additionalNotes,
       tomorrowPlan: dailyReportsTable.tomorrowPlan,
       status: dailyReportsTable.status,
+      submittedAt: dailyReportsTable.submittedAt,
       createdAt: dailyReportsTable.createdAt,
       updatedAt: dailyReportsTable.updatedAt,
       userName: usersTable.name,
@@ -189,6 +191,7 @@ async function buildReportDetail(reportId: number) {
     additionalNotes: r.additionalNotes ?? null,
     tomorrowPlan: r.tomorrowPlan ?? null,
     status: r.status,
+    submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
     tasks: tasks.map(t => {
       const editCount = t.editCount ?? 0;
 
@@ -262,6 +265,7 @@ router.get("/reports", async (req, res) => {
         departmentId: dailyReportsTable.departmentId,
         date: dailyReportsTable.date,
         status: dailyReportsTable.status,
+        submittedAt: dailyReportsTable.submittedAt,
         createdAt: dailyReportsTable.createdAt,
       })
       .from(dailyReportsTable)
@@ -314,6 +318,7 @@ router.get("/reports", async (req, res) => {
           avgProgress: stats.avg,
           status: rowStatus,
           isSubmitted: isSubmittedStatus(rowStatus),
+          submittedAt: report?.submittedAt?.toISOString() ?? null,
           createdAt: report?.createdAt?.toISOString() ?? null,
         };
       })
@@ -356,6 +361,7 @@ router.get("/reports", async (req, res) => {
       departmentId: dailyReportsTable.departmentId,
       date: dailyReportsTable.date,
       status: dailyReportsTable.status,
+      submittedAt: dailyReportsTable.submittedAt,
       createdAt: dailyReportsTable.createdAt,
       userName: usersTable.name,
       departmentName: departmentsTable.name,
@@ -399,6 +405,7 @@ router.get("/reports", async (req, res) => {
       avgProgress: stats.avg,
       status: report.status,
       isSubmitted: isSubmittedStatus(report.status),
+      submittedAt: report.submittedAt?.toISOString() ?? null,
       createdAt: report.createdAt.toISOString(),
     };
   }));
@@ -617,8 +624,7 @@ router.post("/reports/:id/submit", async (req, res) => {
   }
 
   await db.update(dailyReportsTable)
-    .set({ status: "dikirim" })
-    
+    .set({ status: "dikirim", submittedAt: new Date() })
     .where(eq(dailyReportsTable.id, id));
 
   const detail = await buildReportDetail(id);

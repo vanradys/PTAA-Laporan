@@ -32,6 +32,7 @@ function isTaskLockedByCount(editCount: number): boolean {
 function isTaskDelay(deadline: string | null, status: string): boolean {
   if (!deadline) return false;
   if (status === "selesai") return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
   return deadline < getTodayString();
 }
 

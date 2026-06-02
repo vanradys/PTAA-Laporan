@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useListPo,
   useListDepartments,
@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
+import { apiRequest } from "@/lib/apiRequest";
 
 const PO_STATUS_OPTS = [
   { value: "semua", label: "Semua Status" },
@@ -120,9 +121,6 @@ function getDeadlineStyle(sisaHari: number | null, status: string) {
 
 function formatDeadlineLabel(sisaHari: number | null, status: string): string {
   if (sisaHari === null) return "-";
-  if ((status === "selesai" || status === "close") && sisaHari < 0) {
-    return `Delay ${Math.abs(sisaHari)} hari`;
-  }
   if (status === "selesai" || status === "close") return "Selesai";
   if (sisaHari < 0) return `${Math.abs(sisaHari)} hari lewat`;
   if (sisaHari === 0) return "Hari ini!";
@@ -170,6 +168,34 @@ interface PoFormState {
 
 type DeliveryInputMode = "date" | "text";
 
+interface PoActivityLog {
+  id: number;
+  poId: number | null;
+  noPo: string;
+  action: string;
+  changes: Record<string, { before: unknown; after: unknown }>;
+  changedByName?: string | null;
+  createdAt: string;
+}
+
+const PO_FIELD_LABELS: Record<string, string> = {
+  noPo: "No PO",
+  namaProject: "Nama Project",
+  customer: "Customer",
+  qty: "Qty",
+  poAmount: "Nominal PO",
+  tanggalPoMasuk: "Tanggal PO Masuk",
+  targetPenyelesaian: "Target Penyelesaian",
+  deadline: "Tanggal Delivery",
+  picUserId: "PIC",
+  departmentId: "Departemen",
+  status: "Status",
+  progress: "Progress",
+  catatan: "Catatan",
+  closedAt: "Tanggal Close",
+  closedByUserId: "Ditutup Oleh",
+};
+
 const EMPTY_FORM: PoFormState = {
   noPo: "",
   namaProject: "",
@@ -200,6 +226,42 @@ function formatRupiahCompact(value: number) {
   if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}jt`;
   if (value >= 1_000) return `${Number((value / 1_000).toFixed(1))}rb`;
   return String(value);
+}
+
+function formatActivityTime(value: string) {
+  return new Date(value).toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "Asia/Jakarta",
+  });
+}
+
+function formatActivityValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "Ya" : "Tidak";
+  const text = String(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return isoDateToDisplay(text);
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    return new Date(text).toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Jakarta",
+    });
+  }
+  return text;
+}
+
+function getActivityActionLabel(action: string) {
+  if (action === "created") return "menambah PO";
+  if (action === "updated") return "mengubah PO";
+  if (action === "closed") return "menutup PO";
+  if (action === "deleted") return "menghapus PO";
+  return "mengubah PO";
 }
 
 function getNominalAxisValue(value: number) {
@@ -233,9 +295,6 @@ function clampProgress(progress: number) {
 }
 
 function getStatusLabel(po: PoItem, fallback: string) {
-  if (po.status === "selesai" && po.sisaHari !== null && po.sisaHari < 0) {
-    return `Selesai, delay ${Math.abs(po.sisaHari)} hari`;
-  }
   return fallback;
 }
 
@@ -326,6 +385,13 @@ export default function JadwalProject() {
     },
   );
 
+  const { data: poActivityLogs } = useQuery({
+    queryKey: ["po-activity"],
+    queryFn: () => apiRequest<PoActivityLog[]>("/api/po/activity"),
+    enabled: canManage,
+    refetchInterval: 5000,
+  });
+
   const { data: departments } = useListDepartments();
   const { data: employees } = useListEmployees();
   const createPo = useCreatePo();
@@ -333,6 +399,7 @@ export default function JadwalProject() {
   const closePo = useClosePo();
   const deletePo = useDeletePo();
 
+  const activityLogs = Array.isArray(poActivityLogs) ? poActivityLogs : [];
   const pos = (Array.isArray(poList) ? poList : []) as PoItem[];
   const allPosRaw = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
   const allPos = allPosRaw.filter((po) => !isFinishedPo(po.status));
@@ -381,6 +448,7 @@ export default function JadwalProject() {
     queryClient.invalidateQueries({
       queryKey: getGetPoYearlyTrendQueryKey({ year: parseInt(filterYear) }),
     });
+    queryClient.invalidateQueries({ queryKey: ["po-activity"] });
   };
 
   const openCreate = () => {
@@ -602,6 +670,8 @@ export default function JadwalProject() {
         {
           label: "Pencapaian Target",
           value: `${(summary as { persentasePencapaian: number }).persentasePencapaian}%`,
+          description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
+          targetLabel: `Target Bulan ${(summary as { targetMonthName?: string }).targetMonthName ?? months.find((item) => item.v === filterMonth)?.l ?? ""}`,
           icon: TrendingUp,
           color: "text-purple-600",
           bg: "bg-purple-50",
@@ -674,14 +744,71 @@ export default function JadwalProject() {
                     <p className={`text-xl font-bold ${card.color}`}>
                       {card.value}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {card.label}
-                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        {card.label}
+                      </p>
+                      {"targetLabel" in card && card.targetLabel && (
+                        <span className="rounded-md border border-purple-100 bg-purple-50 px-1.5 py-0.5 text-[11px] font-medium text-purple-700">
+                          {card.targetLabel}
+                        </span>
+                      )}
+                    </div>
+                    {"description" in card && card.description && (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {card.description}
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               );
             })}
           </div>
+        )}
+
+        {canManage && (
+          <Card className="border border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span>Aktivitas Perubahan PO</span>
+                <span className="text-xs font-normal text-muted-foreground">Live setiap 5 detik</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {activityLogs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Belum ada perubahan PO yang tercatat.</p>
+              ) : (
+                activityLogs.slice(0, 8).map((log) => {
+                  const entries = Object.entries(log.changes ?? {}).slice(0, 4);
+
+                  return (
+                    <div key={log.id} className="rounded-lg border border-border bg-white p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">
+                          {log.changedByName ?? "User"} {getActivityActionLabel(log.action)} {log.noPo}
+                        </p>
+                        <span className="text-xs text-muted-foreground">{formatActivityTime(log.createdAt)}</span>
+                      </div>
+                      {entries.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {entries.map(([field, change]) => (
+                            <span key={field} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                              {PO_FIELD_LABELS[field] ?? field}: {formatActivityValue(change.before)} {"->"} {formatActivityValue(change.after)}
+                            </span>
+                          ))}
+                          {Object.keys(log.changes ?? {}).length > entries.length && (
+                            <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                              +{Object.keys(log.changes ?? {}).length - entries.length} field lain
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
         )}
 
         {yearlyTrendItems.length > 0 && (
@@ -992,7 +1119,7 @@ export default function JadwalProject() {
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className="text-sm text-foreground">
-                              {po.tanggalPoMasuk}
+                              {isoDateToDisplay(po.tanggalPoMasuk)}
                             </span>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
@@ -1173,7 +1300,7 @@ export default function JadwalProject() {
                             </td>
                           )}
                           <td className="px-4 py-3 whitespace-nowrap">
-                            {po.tanggalPoMasuk}
+                            {isoDateToDisplay(po.tanggalPoMasuk)}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {isoDateToDisplay(po.deadline)}
