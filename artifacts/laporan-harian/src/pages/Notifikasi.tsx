@@ -1,9 +1,9 @@
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListNotifications, useMarkNotificationRead, useMarkAllNotificationsRead, useDeleteNotification,
 } from "@workspace/api-client-react";
-import { Bell, CheckCheck, Eye, Loader2, Trash2 } from "lucide-react";
+import { Bell, CheckCheck, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +26,17 @@ const TYPE_COLORS: Record<string, string> = {
   info: "bg-blue-100 text-blue-700",
 };
 
+function getNotificationTarget(notif: NotifItem) {
+  if (notif.relatedReportId) return `/laporan/${notif.relatedReportId}`;
+  if (notif.type.startsWith("po_")) return "/jadwal-project";
+  if (notif.type === "daily_report") return "/laporan-saya";
+  if (notif.type === "report_created") return "/monitoring";
+  if (notif.type === "review" || notif.type === "revision") return "/laporan-saya";
+  return null;
+}
+
 export default function Notifikasi() {
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: notifications, isLoading } = useListNotifications();
@@ -52,6 +62,19 @@ export default function Notifikasi() {
     await deleteNotification.mutateAsync({ notifId: id });
     queryClient.invalidateQueries();
     toast({ title: "Notifikasi dihapus" });
+  };
+
+  const handleOpenNotification = async (notif: NotifItem) => {
+    const target = getNotificationTarget(notif);
+
+    if (!notif.isRead) {
+      await markRead.mutateAsync({ notifId: notif.id });
+      queryClient.invalidateQueries();
+    }
+
+    if (target) {
+      setLocation(target);
+    }
   };
 
   return (
@@ -85,11 +108,25 @@ export default function Notifikasi() {
           </div>
         ) : (
           <div className="space-y-2">
-            {notifs.map((notif) => (
+            {notifs.map((notif) => {
+              const target = getNotificationTarget(notif);
+
+              return (
               <Card
                 key={notif.id}
+                role={target ? "button" : undefined}
+                tabIndex={target ? 0 : undefined}
+                onClick={() => handleOpenNotification(notif)}
+                onKeyDown={(event) => {
+                  if (!target) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleOpenNotification(notif);
+                  }
+                }}
                 className={cn(
                   "border border-border transition-colors",
+                  target && "cursor-pointer hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   !notif.isRead && "bg-primary/5 border-primary/20"
                 )}
               >
@@ -112,19 +149,15 @@ export default function Notifikasi() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {notif.relatedReportId && (
-                            <Link href={`/laporan/${notif.relatedReportId}`}>
-                              <Button variant="ghost" size="icon" className="w-7 h-7" title="Lihat Laporan">
-                                <Eye className="w-3.5 h-3.5" />
-                              </Button>
-                            </Link>
-                          )}
                           <Button
                             variant="ghost"
                             size="icon"
                             className="w-7 h-7"
                             title="Hapus Notifikasi"
-                            onClick={() => handleDeleteNotification(notif.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteNotification(notif.id);
+                            }}
                             disabled={deleteNotification.isPending}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -135,7 +168,10 @@ export default function Notifikasi() {
                               size="icon"
                               className="w-7 h-7"
                               title="Tandai Dibaca"
-                              onClick={() => handleMarkRead(notif.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleMarkRead(notif.id);
+                              }}
                               disabled={markRead.isPending}
                             >
                               <CheckCheck className="w-3.5 h-3.5" />
@@ -147,7 +183,8 @@ export default function Notifikasi() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
