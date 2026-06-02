@@ -575,11 +575,6 @@ useEffect(() => {
                   </p>
                 </div>
                 </div>
-                {showSubmittedReadOnly && (
-                  <Button type="button" variant="outline" size="sm" onClick={startEditSubmittedReport}>
-                    Edit
-                  </Button>
-                )}
               </CardContent>
             </Card>
 
@@ -587,8 +582,15 @@ useEffect(() => {
             <Card className="border border-border">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center justify-between">
-                  Daftar Tugas
-                  <span className="text-sm font-normal text-muted-foreground">{existingTasks.length} tugas</span>
+                  <span>Daftar Tugas Hari Ini</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-normal text-muted-foreground">{existingTasks.length} tugas</span>
+                    {showSubmittedReadOnly && (
+                      <Button type="button" variant="outline" size="sm" onClick={startEditSubmittedReport}>
+                        Edit
+                      </Button>
+                    )}
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
