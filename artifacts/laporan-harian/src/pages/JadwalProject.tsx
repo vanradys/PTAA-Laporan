@@ -42,7 +42,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-  ReferenceLine,
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -866,6 +865,19 @@ export default function JadwalProject() {
                         position: "insideLeft",
                       }}
                     />
+                    <YAxis
+                      yAxisId="leftMarkers"
+                      orientation="left"
+                      domain={[0, poCountCeil]}
+                      ticks={poCountReferenceValues}
+                      axisLine={false}
+                      tick={false}
+                      tickLine={{
+                        stroke: "#2563eb",
+                        strokeWidth: 2,
+                      }}
+                      width={0}
+                    />
                     {canViewPoAmount && (
                       <YAxis
                         yAxisId="right"
@@ -909,17 +921,6 @@ export default function JadwalProject() {
                       fill="#2563eb"
                       radius={[6, 6, 0, 0]}
                     />
-                    {poCountReferenceValues.map((value) => (
-                      <ReferenceLine
-                        key={`po-count-${value}`}
-                        yAxisId="left"
-                        y={value}
-                        stroke="#1d4ed8"
-                        strokeDasharray="6 6"
-                        strokeOpacity={0.8}
-                        strokeWidth={2}
-                      />
-                    ))}
                     {canViewPoAmount && (
                       <Line
                         yAxisId="right"
