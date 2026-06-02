@@ -42,6 +42,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -264,13 +265,30 @@ function getActivityActionLabel(action: string) {
   return "mengubah PO";
 }
 
+const NOMINAL_AXIS_TICKS = [
+  { value: 0, axis: 0 },
+  { value: 200_000_000, axis: 1 },
+  { value: 500_000_000, axis: 2 },
+  { value: 2_000_000_000, axis: 3 },
+  { value: 5_000_000_000, axis: 4 },
+  { value: 10_000_000_000, axis: 5 },
+] as const;
+
 function getNominalAxisValue(value: number) {
   if (value <= 0) return 0;
-  if (value <= 200_000_000) return 1;
-  if (value <= 500_000_000) return 2;
-  if (value <= 2_000_000_000) return 3;
-  if (value <= 5_000_000_000) return 4;
-  return 5;
+
+  for (let i = 1; i < NOMINAL_AXIS_TICKS.length; i += 1) {
+    const previous = NOMINAL_AXIS_TICKS[i - 1];
+    const current = NOMINAL_AXIS_TICKS[i];
+
+    if (value <= current.value) {
+      const ratio =
+        (value - previous.value) / (current.value - previous.value);
+      return previous.axis + ratio * (current.axis - previous.axis);
+    }
+  }
+
+  return NOMINAL_AXIS_TICKS[NOMINAL_AXIS_TICKS.length - 1].axis;
 }
 
 function formatNominalAxisLabel(value: number) {
@@ -422,6 +440,13 @@ export default function JadwalProject() {
     : [];
   const poCountCeil = 35;
   const poCountTicks = [0, 7, 14, 21, 28, 35];
+  const poCountReferenceValues = Array.from(
+    new Set(
+      yearlyTrendItems
+        .map((item) => Number(item.totalPo))
+        .filter((value) => value > 0 && !poCountTicks.includes(value)),
+    ),
+  );
   const depts = (Array.isArray(departments) ? departments : []) as {
     id: number;
     name: string;
@@ -877,6 +902,16 @@ export default function JadwalProject() {
                       }}
                     />
                     <Legend />
+                    {poCountReferenceValues.map((value) => (
+                      <ReferenceLine
+                        key={`po-count-${value}`}
+                        yAxisId="left"
+                        y={value}
+                        stroke="#2563eb"
+                        strokeDasharray="4 8"
+                        strokeOpacity={0.35}
+                      />
+                    ))}
                     <Bar
                       yAxisId="left"
                       dataKey="totalPo"

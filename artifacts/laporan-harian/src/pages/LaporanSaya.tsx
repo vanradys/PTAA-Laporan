@@ -83,13 +83,13 @@ function TaskDeliveryInput({
   };
 
   return (
-    <div className="grid grid-cols-[140px_1fr] gap-2">
+    <div className="flex flex-wrap gap-2">
       <Select
         value={mode}
         disabled={disabled}
         onValueChange={(nextMode) => handleModeChange(nextMode as DeliveryInputMode)}
       >
-        <SelectTrigger className="h-8 text-sm">
+        <SelectTrigger className="h-8 w-36 text-sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -104,7 +104,7 @@ function TaskDeliveryInput({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         placeholder={mode === "date" ? undefined : "Urgent / Menunggu konfirmasi"}
-        className="h-8 text-sm"
+        className="h-8 min-w-40 flex-1 text-sm"
       />
     </div>
   );
@@ -810,7 +810,7 @@ useEffect(() => {
                         </div>
                         {isExpanded && (
                           <div className="p-4 bg-muted/20 border-t border-border space-y-3">
-                              <div className="grid grid-cols-3 gap-3">
+                              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                                 <div className="space-y-1">
                                   <Label className="text-xs">Nama Tugas</Label>
                                   <Input
@@ -848,7 +848,7 @@ useEffect(() => {
                                   ? "Tugas terkunci. Batas edit/hapus sudah habis atau tanggal laporan sudah berganti."
                                   : `Sisa kesempatan edit/hapus tugas ini: ${task.remainingActions}x.`}
                               </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <div className="space-y-1">
                                 <Label className="text-xs">Status</Label>
                                   <Select disabled={taskLocked} defaultValue={task.status} onValueChange={v => isEditingSubmitted ? updateEditableTask(task.id, "status", v) : handleUpdateExistingTask(task.id, "status", v)}>
@@ -912,7 +912,7 @@ useEffect(() => {
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                       <div className="space-y-1">
                         <Label className="text-xs">Nama Tugas *</Label>
                         <Input
@@ -941,7 +941,7 @@ useEffect(() => {
                         />
                       </div>
                     </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="space-y-1">
                           <Label className="text-xs">Status</Label>
                           <Select value={task.status} onValueChange={v => updateNewTask(task.id, "status", v)}>
