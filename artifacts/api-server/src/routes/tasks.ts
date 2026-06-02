@@ -60,8 +60,8 @@ function getAddTaskError(report: typeof dailyReportsTable.$inferSelect): string 
     return "Tugas dari tanggal sebelumnya sudah terkunci dan tidak bisa ditambahkan.";
   }
 
-  if (report.status === "dikirim" || report.status === "direview") {
-    return "Laporan sudah dikirim, tugas baru tidak bisa ditambahkan. Hanya tugas yang sudah ada yang bisa diedit atau dihapus.";
+  if (report.status === "direview") {
+    return "Laporan sudah direview, tugas baru tidak bisa ditambahkan.";
   }
 
   return null;

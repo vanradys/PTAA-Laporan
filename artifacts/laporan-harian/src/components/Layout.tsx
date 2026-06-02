@@ -11,7 +11,6 @@ import {
   ChevronRight,
   CalendarClock,
   ClipboardList,
-  ChevronDown,
 } from "lucide-react";
 
 const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
@@ -133,7 +132,6 @@ export default function Layout({ children }: LayoutProps) {
               <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={handleLogout} title="Keluar">
                 <LogOut className="h-4 w-4" />
               </Button>
-              <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
             </div>
           </div>
         </header>

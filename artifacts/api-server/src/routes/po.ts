@@ -200,7 +200,7 @@ async function sendDeadlineNotifications(
         userId: uid,
         type: "po_overdue",
         title: `Tanggal Delivery PO Terlewat: ${po.noPo}`,
-        message: `Project "${po.namaProject}" telah melewati deadline (${po.deadline}). Segera tindak lanjut!`,
+        message: `Project "${po.namaProject}" telah melewati Tanggal Delivery (${po.deadline}). Segera tindak lanjut!`,
         isRead: false,
       });
     }
@@ -214,7 +214,7 @@ async function sendDeadlineNotifications(
         userId: uid,
         type: "po_deadline_7days",
         title: `Tanggal Delivery Mendekat: ${po.noPo}`,
-        message: `Project "${po.namaProject}" akan deadline dalam ${sisaHari} hari (${po.deadline}). Percepat penyelesaian!`,
+        message: `Project "${po.namaProject}" akan mencapai Tanggal Delivery dalam ${sisaHari} hari (${po.deadline}). Percepat penyelesaian!`,
         isRead: false,
       });
     }
@@ -228,7 +228,7 @@ async function sendDeadlineNotifications(
         userId: uid,
         type: "po_deadline_14days",
         title: `Reminder Tanggal Delivery: ${po.noPo}`,
-        message: `Project "${po.namaProject}" akan deadline dalam ${sisaHari} hari (${po.deadline}).`,
+        message: `Project "${po.namaProject}" akan mencapai Tanggal Delivery dalam ${sisaHari} hari (${po.deadline}).`,
         isRead: false,
       });
     }
@@ -419,7 +419,7 @@ router.post("/po", async (req, res) => {
 
   if (!noPo || !namaProject || !tanggalPoMasuk || !deliveryValue) {
     res.status(400).json({
-      error: "noPo, namaProject, tanggalPoMasuk, dan deadline diperlukan",
+      error: "noPo, namaProject, tanggalPoMasuk, dan Tanggal Delivery diperlukan",
     });
     return;
   }

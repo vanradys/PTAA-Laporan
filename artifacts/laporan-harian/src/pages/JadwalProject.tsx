@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,7 +26,6 @@ import {
   TrendingUp,
   Search,
   Filter,
-  CalendarDays,
   ChevronDown,
   Loader2,
   Package,
@@ -63,7 +62,7 @@ const PO_STATUS_OPTS = [
   { value: "semua", label: "Semua Status" },
   { value: "belum_mulai", label: "Belum Mulai" },
   { value: "proses", label: "Proses" },
-  { value: "hampir_deadline", label: "Hampir Deadline" },
+  { value: "hampir_deadline", label: "Hampir Tanggal Delivery" },
   { value: "delay", label: "Delay" },
   { value: "selesai", label: "Selesai" },
   { value: "close", label: "Close" },
@@ -169,6 +168,8 @@ interface PoFormState {
   catatan: string;
 }
 
+type DeliveryInputMode = "date" | "text";
+
 const EMPTY_FORM: PoFormState = {
   noPo: "",
   namaProject: "",
@@ -248,85 +249,16 @@ function getFinishedPoNotice(po: PoItem) {
 }
 
 const today = new Date();
-const currentDay = today.getDate();
-const currentMonth = today.getMonth() + 1;
-const currentYear = today.getFullYear();
-
-function padDateSegment(value: number) {
-  return String(value).padStart(2, "0");
-}
-
 function isoDateToDisplay(value: string) {
   if (!isDateOnly(value)) return value;
   const [year, month, day] = value.split("-");
   return `${day}/${month}/${year}`;
 }
 
-function deliveryDisplayToIso(value: string) {
-  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!match) return null;
-
-  const [, dayText, monthText, yearText] = match;
-  const day = Number(dayText);
-  const month = Number(monthText);
-  const year = Number(yearText);
-
-  if (
-    !Number.isInteger(day) ||
-    !Number.isInteger(month) ||
-    !Number.isInteger(year) ||
-    day < 1 ||
-    day > currentDay ||
-    month < 1 ||
-    month > currentMonth ||
-    year < 1 ||
-    year > currentYear
-  ) {
-    return null;
-  }
-
-  return `${yearText}-${monthText}-${dayText}`;
-}
-
-function formatDeliveryDateInput(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  const dayDigits = digits.slice(0, 2);
-  const monthDigits = digits.slice(2, 4);
-  const yearDigits = digits.slice(4, 8);
-  const segments: string[] = [];
-
-  if (dayDigits.length > 0) {
-    const day =
-      dayDigits.length === 2
-        ? Math.min(currentDay, Math.max(1, Number(dayDigits) || 1))
-        : dayDigits;
-    segments.push(typeof day === "number" ? padDateSegment(day) : day);
-  }
-
-  if (monthDigits.length > 0) {
-    const month =
-      monthDigits.length === 2
-        ? Math.min(currentMonth, Math.max(1, Number(monthDigits) || 1))
-        : monthDigits;
-    segments.push(typeof month === "number" ? padDateSegment(month) : month);
-  }
-
-  if (yearDigits.length > 0) {
-    const year =
-      yearDigits.length === 4
-        ? String(Math.min(currentYear, Math.max(1, Number(yearDigits) || 1)))
-        : yearDigits;
-    segments.push(year);
-  }
-
-  return segments.join("/");
-}
-
 export default function JadwalProject() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const deliveryDateInputRef = useRef<HTMLInputElement>(null);
 
   const role = user?.role?.toLowerCase() ?? "";
   const departmentName = user?.departmentName?.toLowerCase() ?? "";
@@ -355,6 +287,7 @@ export default function JadwalProject() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<PoFormState>(EMPTY_FORM);
+  const [deliveryInputMode, setDeliveryInputMode] = useState<DeliveryInputMode>("date");
   const [formLoading, setFormLoading] = useState(false);
 
   const poParams = {
@@ -452,6 +385,7 @@ export default function JadwalProject() {
 
   const openCreate = () => {
     setEditingId(null);
+    setDeliveryInputMode("date");
     setForm({
       ...EMPTY_FORM,
       tanggalPoMasuk: today.toISOString().split("T")[0],
@@ -461,6 +395,7 @@ export default function JadwalProject() {
 
   const openEdit = (po: PoItem) => {
     setEditingId(po.id);
+    setDeliveryInputMode(isDateOnly(po.deadline) ? "date" : "text");
     setForm({
       noPo: po.noPo,
       namaProject: po.namaProject,
@@ -469,7 +404,7 @@ export default function JadwalProject() {
       poAmount: po.poAmount ? String(po.poAmount) : "",
       tanggalPoMasuk: po.tanggalPoMasuk,
       targetPenyelesaian: po.targetPenyelesaian ?? "",
-      deadline: isoDateToDisplay(po.deadline),
+      deadline: po.deadline,
       picUserId: po.picUserId ? String(po.picUserId) : "",
       departmentId: po.departmentId ? String(po.departmentId) : "",
       status: po.status,
@@ -483,6 +418,7 @@ export default function JadwalProject() {
     setShowForm(false);
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setDeliveryInputMode("date");
   };
 
   const handleSave = async () => {
@@ -502,11 +438,11 @@ export default function JadwalProject() {
       return;
     }
 
-    const normalizedDeadline = deliveryDisplayToIso(form.deadline);
+    const normalizedDeadline = form.deadline.trim();
     if (!normalizedDeadline) {
       toast({
         title: "Validasi Gagal",
-        description: `Tanggal Delivery harus format DD/MM/YYYY dan maksimal ${padDateSegment(currentDay)}/${padDateSegment(currentMonth)}/${currentYear}`,
+        description: "Tanggal Delivery wajib diisi",
         variant: "destructive",
       });
       return;
@@ -1061,7 +997,7 @@ export default function JadwalProject() {
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className="text-sm text-foreground">
-                              {po.deadline}
+                              {isoDateToDisplay(po.deadline)}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -1240,7 +1176,7 @@ export default function JadwalProject() {
                             {po.tanggalPoMasuk}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            {po.deadline}
+                            {isoDateToDisplay(po.deadline)}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span
@@ -1492,51 +1428,38 @@ export default function JadwalProject() {
                   <Label className="text-xs font-semibold">
                     Tanggal Delivery <span className="text-red-500">*</span>
                   </Label>
-                  <div className="relative">
+                  <div className="grid grid-cols-[150px_1fr] gap-2">
+                    <Select
+                      value={deliveryInputMode}
+                      onValueChange={(value) => {
+                        const mode = value as DeliveryInputMode;
+                        setDeliveryInputMode(mode);
+                        setForm((f) => ({
+                          ...f,
+                          deadline: mode === "date" && !isDateOnly(f.deadline) ? "" : f.deadline,
+                        }));
+                      }}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="date">Pilih Tanggal</SelectItem>
+                        <SelectItem value="text">Isi Teks Manual</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Input
+                      type={deliveryInputMode === "date" ? "date" : "text"}
                       value={form.deadline}
                       onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          deadline: formatDeliveryDateInput(e.target.value),
-                        }))
+                        setForm((f) => ({ ...f, deadline: e.target.value }))
                       }
-                      placeholder="DD/MM/YYYY"
-                      inputMode="numeric"
-                      maxLength={10}
-                      className="h-9 pr-10 text-sm"
-                    />
-                    <button
-                      type="button"
-                      className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      onClick={() => {
-                        const input = deliveryDateInputRef.current;
-                        if (!input) return;
-
-                        if (typeof input.showPicker === "function") {
-                          input.showPicker();
-                          return;
-                        }
-
-                        input.click();
-                      }}
-                      aria-label="Pilih tanggal delivery"
-                    >
-                      <CalendarDays className="h-4 w-4" />
-                    </button>
-                    <input
-                      ref={deliveryDateInputRef}
-                      type="date"
-                      value={deliveryDisplayToIso(form.deadline) ?? ""}
-                      max={`${currentYear}-${padDateSegment(currentMonth)}-${padDateSegment(currentDay)}`}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          deadline: isoDateToDisplay(e.target.value),
-                        }))
+                      placeholder={
+                        deliveryInputMode === "date"
+                          ? undefined
+                          : "Minggu ke-2 Juni / Urgent / Estimasi akhir bulan"
                       }
-                      className="pointer-events-none absolute right-2 top-1/2 h-0 w-0 -translate-y-1/2 opacity-0"
-                      tabIndex={-1}
+                      className="h-9 text-sm"
                     />
                   </div>
                 </div>

@@ -22,7 +22,7 @@ tags:
   - name: dashboard
     description: Dashboard summary operations
   - name: po
-    description: Project/PO deadline monitoring
+    description: Project/PO Tanggal Delivery monitoring
 paths:
   /healthz:
     get:

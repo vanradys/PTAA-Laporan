@@ -107,6 +107,9 @@ export default function LaporanSaya() {
   const [expandedTasks, setExpandedTasks] = useState<Set<string | number>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditingSubmitted, setIsEditingSubmitted] = useState(false);
+  const [editableTasks, setEditableTasks] = useState<ExistingTask[]>([]);
+  const [deletedTaskIds, setDeletedTaskIds] = useState<number[]>([]);
   const hasAutoCopiedYesterdayTasks = useRef(false);
 
   const report = (isError ? null : todayReport) as ReportData | null;
@@ -116,15 +119,17 @@ const isReviewed = report?.status === "direview";
 const isPastReport = !!report?.date && report.date !== today;
 
 const isLocked = isReviewed || isPastReport;
+const showSubmittedReadOnly = isSubmitted && !isEditingSubmitted;
+const displayedExistingTasks = isEditingSubmitted ? editableTasks : existingTasks;
 
 const canEditReportFields =
-  !report || report.status === "draf" || report.status === "perlu_revisi";
+  !report || report.status === "draf" || report.status === "perlu_revisi" || isEditingSubmitted;
 
 const canModifyExistingTasks =
   !!report && !isReviewed && !isPastReport;
 
 const canAddNewTasks = canEditReportFields;
-const showSubmitActions = canEditReportFields && !isLocked;
+const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitted;
    const { register, handleSubmit, setValue, getValues, watch } = useForm({
     defaultValues: {
       obstacles: "",
@@ -136,7 +141,7 @@ const showSubmitActions = canEditReportFields && !isLocked;
   const watchedTomorrowPlan = watch("tomorrowPlan") ?? "";
 
   const hasRequiredTask =
-    existingTasks.some((task) => task.title.trim().length > 0) ||
+    displayedExistingTasks.some((task) => task.title.trim().length > 0) ||
     newTasks.some((task) => task.title.trim().length > 0);
 
   const hasRequiredTomorrowPlan = watchedTomorrowPlan.trim().length > 0;
@@ -236,7 +241,7 @@ useEffect(() => {
     additionalNotes: string;
     tomorrowPlan: string;
   }) => {
-    const hasExistingTask = existingTasks.some((task) => task.title.trim().length > 0);
+    const hasExistingTask = displayedExistingTasks.some((task) => task.title.trim().length > 0);
     const hasNewTask = newTasks.some((task) => task.title.trim().length > 0);
     const hasTask = hasExistingTask || hasNewTask;
 
@@ -259,6 +264,47 @@ useEffect(() => {
     }
 
     return true;
+  };
+
+  const startEditSubmittedReport = () => {
+    if (!report) return;
+
+    setEditableTasks(existingTasks.map((task) => ({ ...task })));
+    setDeletedTaskIds([]);
+    setNewTasks([]);
+    setExpandedTasks(new Set(existingTasks.map((task) => task.id)));
+    setValue("obstacles", report.obstacles ?? "");
+    setValue("additionalNotes", report.additionalNotes ?? "");
+    setValue("tomorrowPlan", report.tomorrowPlan ?? "");
+    setIsEditingSubmitted(true);
+  };
+
+  const cancelEditSubmittedReport = () => {
+    setIsEditingSubmitted(false);
+    setEditableTasks([]);
+    setDeletedTaskIds([]);
+    setNewTasks([]);
+    setExpandedTasks(new Set());
+    if (report) {
+      setValue("obstacles", report.obstacles ?? "");
+      setValue("additionalNotes", report.additionalNotes ?? "");
+      setValue("tomorrowPlan", report.tomorrowPlan ?? "");
+    }
+  };
+
+  const updateEditableTask = (taskId: number, field: keyof TaskForm, value: string | number) => {
+    setEditableTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? { ...task, [field]: value } : task)),
+    );
+  };
+
+  const deleteEditableTask = (taskId: number) => {
+    const task = editableTasks.find((item) => item.id === taskId);
+    if (!task) return;
+    if (!window.confirm(`Hapus tugas "${task.title}"?`)) return;
+
+    setEditableTasks((prev) => prev.filter((item) => item.id !== taskId));
+    setDeletedTaskIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]));
   };
 
   // Core save: returns the reportId after saving report + all pending new tasks
@@ -289,6 +335,78 @@ useEffect(() => {
     }
     setNewTasks([]);
     return reportId;
+  };
+
+  const handleSaveSubmittedChanges = async (data: { obstacles: string; additionalNotes: string; tomorrowPlan: string }) => {
+    if (!report || !validateRequiredReportFields(data)) return;
+
+    setIsSaving(true);
+    try {
+      await updateReport.mutateAsync({ id: report.id, data });
+
+      for (const taskId of deletedTaskIds) {
+        await deleteTask.mutateAsync({ taskId });
+      }
+
+      const originalTasks = new Map(existingTasks.map((task) => [task.id, task]));
+      for (const task of editableTasks) {
+        if (!task.title.trim()) continue;
+
+        const original = originalTasks.get(task.id);
+        const dataToSave = {
+          title: task.title,
+          project: task.project ?? "",
+          deadline: task.deadline || undefined,
+          progress: task.progress,
+          status: task.status,
+          notes: task.notes ?? "",
+        };
+
+        if (
+          !original ||
+          original.title !== task.title ||
+          (original.project ?? "") !== (task.project ?? "") ||
+          (original.deadline ?? "") !== (task.deadline ?? "") ||
+          original.progress !== task.progress ||
+          original.status !== task.status ||
+          (original.notes ?? "") !== (task.notes ?? "")
+        ) {
+          await updateTask.mutateAsync({ taskId: task.id, data: dataToSave });
+        }
+      }
+
+      for (const task of newTasks) {
+        if (!task.title.trim()) continue;
+        await createTask.mutateAsync({
+          id: report.id,
+          data: {
+            title: task.title,
+            project: task.project,
+            deadline: task.deadline || undefined,
+            progress: task.progress,
+            status: task.status,
+            notes: task.notes,
+          },
+        });
+      }
+
+      setIsEditingSubmitted(false);
+      setEditableTasks([]);
+      setDeletedTaskIds([]);
+      setNewTasks([]);
+      setExpandedTasks(new Set());
+      queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
+      refreshDashboardAndMonitoring();
+      toast({ title: "Perubahan tersimpan", description: "Laporan terkirim berhasil diperbarui" });
+    } catch (error) {
+      toast({
+        title: "Gagal",
+        description: error instanceof Error ? error.message : "Gagal menyimpan perubahan",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
    const handleSaveReport = async (data: { obstacles: string; additionalNotes: string; tomorrowPlan: string }) => {
@@ -368,6 +486,8 @@ useEffect(() => {
     return;
   }
 
+  if (!window.confirm(`Hapus tugas "${task.title}"?`)) return;
+
   try {
     await deleteTask.mutateAsync({ taskId });
     queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
@@ -433,11 +553,12 @@ useEffect(() => {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
-        ) : isLocked ? (
+        ) : isLocked || showSubmittedReadOnly ? (
           /* Locked/submitted view */
           <div className="space-y-5">
             <Card className={`border ${report?.status === "direview" ? "border-green-200 bg-green-50" : "border-blue-200 bg-blue-50"}`}>
-              <CardContent className="p-4 flex items-center gap-3">
+              <CardContent className="p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
                 {report?.status === "direview"
                   ? <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
                   : <Clock className="w-5 h-5 text-blue-600 shrink-0" />}
@@ -448,9 +569,17 @@ useEffect(() => {
                       : "Laporan sudah dikirim — menunggu review"}
                   </p>
                   <p className={`text-xs mt-0.5 ${report?.status === "direview" ? "text-green-600" : "text-blue-600"}`}>
-                    Laporan tidak dapat diubah setelah dikirim
+                    {showSubmittedReadOnly
+                      ? "Klik Edit untuk mengubah tugas dan detail laporan hari ini"
+                      : "Laporan tidak dapat diubah setelah direview atau tanggal laporan sudah berganti"}
                   </p>
                 </div>
+                </div>
+                {showSubmittedReadOnly && (
+                  <Button type="button" variant="outline" size="sm" onClick={startEditSubmittedReport}>
+                    Edit
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
@@ -502,25 +631,10 @@ useEffect(() => {
               </CardContent>
             </Card>
 
-            {/* Read-only notes */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                { title: "Persoalan yang Dihadapi", value: report?.obstacles },
-                { title: "Catatan Tambahan", value: report?.additionalNotes },
-                { title: "Rencana Besok & Target", value: report?.tomorrowPlan },
-              ].map(f => (
-                <Card key={f.title} className="border border-border">
-                  <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground font-medium">{f.title}</CardTitle></CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-foreground whitespace-pre-wrap">{f.value || <span className="italic text-muted-foreground">Tidak diisi</span>}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
           </div>
         ) : (
           /* Editable form */
-          <form onSubmit={handleSubmit(handleSaveReport)}>
+          <form onSubmit={handleSubmit(isEditingSubmitted ? handleSaveSubmittedChanges : handleSaveReport)}>
             <div className="space-y-5">
               {isSubmitted && (
                 <Card className="border border-blue-200 bg-blue-50">
@@ -529,7 +643,7 @@ useEffect(() => {
                     <div>
                       <p className="text-sm font-semibold text-blue-800">Laporan sudah dikirim</p>
                       <p className="text-xs text-blue-600 mt-0.5">
-                        Anda masih bisa edit/hapus tugas hari ini maksimal 2x per tugas. Setelah berganti hari, tugas akan terkunci.
+                        Anda bisa menambah, mengedit, menghapus tugas, dan memperbarui detail laporan hari ini.
                       </p>
                     </div>
                   </CardContent>
@@ -571,7 +685,7 @@ useEffect(() => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {existingTasks.length === 0 && newTasks.length === 0 && (
+                  {displayedExistingTasks.length === 0 && newTasks.length === 0 && (
                     <div className="text-center py-8 text-muted-foreground">
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
                       <p className="text-sm">Belum ada tugas. Klik "Tambah Tugas" untuk mulai.</p>
@@ -579,9 +693,10 @@ useEffect(() => {
                   )}
 
                   {/* Existing Tasks */}
-                  {existingTasks.map(task => {
+                  {displayedExistingTasks.map(task => {
                     const statusInfo = getStatusInfo(task.status);
                     const isExpanded = expandedTasks.has(task.id);
+                    const taskLocked = !canModifyExistingTasks || task.isLocked || task.remainingActions <= 0;
                     return (
                           <div key={task.id} className="border border-border rounded-lg overflow-hidden bg-white">                        
                           <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(task.id)}>
@@ -612,7 +727,7 @@ useEffect(() => {
 
                               {task.deadline && (
                                 <span className={`text-xs ${task.isDelay ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-                                  Deadline: {task.deadline}
+                                  Tanggal Delivery: {task.deadline}
                                 </span>
                               )}
 
@@ -627,18 +742,13 @@ useEffect(() => {
                         </div>
                         {isExpanded && (
                           <div className="p-4 bg-muted/20 border-t border-border space-y-3">
-                            {(() => {
-                          const taskLocked = !canModifyExistingTasks || task.isLocked || task.remainingActions <= 0;
-
-                          return (
-                            <>
                               <div className="grid grid-cols-3 gap-3">
                                 <div className="space-y-1">
                                   <Label className="text-xs">Nama Tugas</Label>
                                   <Input
                                     defaultValue={task.title}
                                     disabled={taskLocked}
-                                    onBlur={e => handleUpdateExistingTask(task.id, "title", e.target.value)}
+                                    onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "title", e.target.value) : handleUpdateExistingTask(task.id, "title", e.target.value)}
                                     className="h-8 text-sm"
                                   />
                                 </div>
@@ -647,17 +757,17 @@ useEffect(() => {
                                   <Input
                                     defaultValue={task.project ?? ""}
                                     disabled={taskLocked}
-                                    onBlur={e => handleUpdateExistingTask(task.id, "project", e.target.value)}
+                                    onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "project", e.target.value) : handleUpdateExistingTask(task.id, "project", e.target.value)}
                                     className="h-8 text-sm"
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Deadline</Label>
+                                  <Label className="text-xs">Tanggal Delivery</Label>
                                   <Input
                                     type="date"
                                     defaultValue={task.deadline ?? ""}
                                     disabled={taskLocked}
-                                    onBlur={e => handleUpdateExistingTask(task.id, "deadline", e.target.value)}
+                                    onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "deadline", e.target.value) : handleUpdateExistingTask(task.id, "deadline", e.target.value)}
                                     className="h-8 text-sm"
                                   />
                                 </div>
@@ -668,13 +778,10 @@ useEffect(() => {
                                   ? "Tugas terkunci. Batas edit/hapus sudah habis atau tanggal laporan sudah berganti."
                                   : `Sisa kesempatan edit/hapus tugas ini: ${task.remainingActions}x.`}
                               </div>
-                            </>
-                          );
-                        })()}
                             <div className="grid grid-cols-2 gap-3">
                               <div className="space-y-1">
                                 <Label className="text-xs">Status</Label>
-                                  <Select disabled={task.isLocked || task.remainingActions <= 0 || !canModifyExistingTasks} defaultValue={task.status} onValueChange={v => handleUpdateExistingTask(task.id, "status", v)}>
+                                  <Select disabled={taskLocked} defaultValue={task.status} onValueChange={v => isEditingSubmitted ? updateEditableTask(task.id, "status", v) : handleUpdateExistingTask(task.id, "status", v)}>
                                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     {TASK_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
@@ -685,12 +792,13 @@ useEffect(() => {
                                 <Label className="text-xs">Progress ({task.progress}%)</Label>
                                 <div className="pt-2">
                                   <Slider
-                                    disabled={task.isLocked || task.remainingActions <= 0 || !canModifyExistingTasks}
+                                    disabled={taskLocked}
                                     defaultValue={[task.progress]}
                                     min={0}
                                     max={100}
                                     step={5}
-                                    onValueCommit={v => handleUpdateExistingTask(task.id, "progress", v[0])}
+                                    onValueChange={v => isEditingSubmitted && updateEditableTask(task.id, "progress", v[0])}
+                                    onValueCommit={v => !isEditingSubmitted && handleUpdateExistingTask(task.id, "progress", v[0])}
                                   /> 
                                  </div>
                               </div>
@@ -699,8 +807,8 @@ useEffect(() => {
                               <Label className="text-xs">Catatan Tugas</Label>
                                 <Input
                                   defaultValue={task.notes ?? ""}
-                                  disabled={task.isLocked || task.remainingActions <= 0 || !canModifyExistingTasks}
-                                  onBlur={e => handleUpdateExistingTask(task.id, "notes", e.target.value)}
+                                  disabled={taskLocked}
+                                  onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "notes", e.target.value) : handleUpdateExistingTask(task.id, "notes", e.target.value)}
                                   className="h-8 text-sm"
                                   placeholder="Catatan opsional..."
                                 /> 
@@ -710,9 +818,9 @@ useEffect(() => {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                disabled={task.isLocked || task.remainingActions <= 0 || !canModifyExistingTasks}
+                                disabled={taskLocked}
                                 className="text-destructive hover:text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                                onClick={() => handleDeleteExistingTask(task.id)}
+                                onClick={() => isEditingSubmitted ? deleteEditableTask(task.id) : handleDeleteExistingTask(task.id)}
                               >
                                 <Trash2 className="w-3.5 h-3.5 mr-1.5" />
                                 Hapus Tugas
@@ -756,7 +864,7 @@ useEffect(() => {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs">Deadline</Label>
+                        <Label className="text-xs">Tanggal Delivery</Label>
                         <Input
                           type="date"
                           value={task.deadline}
@@ -820,27 +928,39 @@ useEffect(() => {
                 <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <p>
-                    Lengkapi minimal 1 tugas hari ini dan isi Rencana Besok & Target sebelum menyimpan atau mengirim laporan.
+                    Lengkapi minimal 1 tugas hari ini dan isi Rencana Besok & Target sebelum menyimpan laporan.
                   </p>
                 </div>
               )}
               <div className="flex justify-end gap-3 pt-2">
+                {isEditingSubmitted && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSaving}
+                    onClick={cancelEditSubmittedReport}
+                  >
+                    Batal
+                  </Button>
+                )}
                 <Button
                 type="submit"
                 variant="outline"
                 disabled={isSaving || isSubmitting || isReportIncomplete}
               >
                 {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                Simpan Draf
+                {isEditingSubmitted ? "Simpan Perubahan" : "Simpan Draf"}
               </Button>
-              <Button
-                type="button"
-                onClick={handleSubmitReport}
-                disabled={isSubmitting || isSaving || isReportIncomplete}
-              >
-                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                Kirim Laporan
-              </Button>
+              {!isEditingSubmitted && (
+                <Button
+                  type="button"
+                  onClick={handleSubmitReport}
+                  disabled={isSubmitting || isSaving || isReportIncomplete}
+                >
+                  {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                  Kirim Laporan
+                </Button>
+              )}
               </div>
             </div>
           </form>
