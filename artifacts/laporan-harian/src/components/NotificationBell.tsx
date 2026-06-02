@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListNotifications,
@@ -6,7 +6,7 @@ import {
   useMarkNotificationRead,
   useDeleteNotification,
 } from "@workspace/api-client-react";
-import { Bell, CheckCheck, ExternalLink, Trash2 } from "lucide-react";
+import { Bell, CheckCheck, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +30,40 @@ interface NotificationItem {
   createdAt: string;
 }
 
+function getNotificationTarget(item: NotificationItem) {
+  const searchableText = `${item.type} ${item.title} ${item.message}`.toLowerCase();
+
+  if (item.relatedReportId) return `/laporan/${item.relatedReportId}`;
+  if (
+    searchableText.includes("po") ||
+    searchableText.includes("project") ||
+    searchableText.includes("delivery") ||
+    searchableText.includes("deadline")
+  ) {
+    return "/jadwal-project";
+  }
+  if (
+    searchableText.includes("review") ||
+    searchableText.includes("revisi") ||
+    searchableText.includes("revision") ||
+    searchableText.includes("laporan harian baru") ||
+    searchableText.includes("report_created")
+  ) {
+    return "/monitoring";
+  }
+  if (
+    searchableText.includes("daily_report") ||
+    searchableText.includes("laporan") ||
+    searchableText.includes("report")
+  ) {
+    return "/laporan-saya";
+  }
+
+  return "/dashboard";
+}
+
 export default function NotificationBell() {
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: notifications } = useListNotifications();
@@ -54,6 +87,15 @@ export default function NotificationBell() {
   const handleMarkRead = async (notificationId: number) => {
     await markRead.mutateAsync({ notifId: notificationId });
     refreshNotifications();
+  };
+
+  const handleOpenNotification = async (item: NotificationItem) => {
+    if (!item.isRead) {
+      await markRead.mutateAsync({ notifId: item.id });
+      refreshNotifications();
+    }
+
+    setLocation(getNotificationTarget(item));
   };
 
   const handleMarkAllRead = async () => {
@@ -106,9 +148,18 @@ export default function NotificationBell() {
               <DropdownMenuItem key={item.id} asChild>
                 <div
                   className={cn(
-                    "flex cursor-default items-start gap-3 px-4 py-3 focus:bg-slate-50",
+                    "flex cursor-pointer items-start gap-3 px-4 py-3 focus:bg-slate-50",
                     !item.isRead && "bg-red-50/70",
                   )}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleOpenNotification(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleOpenNotification(item);
+                    }
+                  }}
                 >
                   <span className={cn("mt-2 h-2 w-2 rounded-full bg-slate-300", !item.isRead && "bg-[#E30613]")} />
                   <div className="min-w-0 flex-1">
@@ -132,7 +183,10 @@ export default function NotificationBell() {
                         size="icon"
                         className="h-7 w-7"
                         title="Tandai dibaca"
-                        onClick={() => handleMarkRead(item.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleMarkRead(item.id);
+                        }}
                         disabled={markRead.isPending}
                       >
                         <CheckCheck className="h-3.5 w-3.5" />
@@ -144,18 +198,14 @@ export default function NotificationBell() {
                       size="icon"
                       className="h-7 w-7"
                       title="Hapus notifikasi"
-                      onClick={() => handleDeleteNotification(item.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteNotification(item.id);
+                      }}
                       disabled={deleteNotification.isPending}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
-                    {item.relatedReportId && (
-                      <Link href={`/laporan/${item.relatedReportId}`}>
-                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Lihat laporan">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Button>
-                      </Link>
-                    )}
                   </div>
                 </div>
               </DropdownMenuItem>

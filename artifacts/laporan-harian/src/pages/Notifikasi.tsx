@@ -27,12 +27,35 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 function getNotificationTarget(notif: NotifItem) {
+  const searchableText = `${notif.type} ${notif.title} ${notif.message}`.toLowerCase();
+
   if (notif.relatedReportId) return `/laporan/${notif.relatedReportId}`;
-  if (notif.type.startsWith("po_")) return "/jadwal-project";
-  if (notif.type === "daily_report") return "/laporan-saya";
-  if (notif.type === "report_created") return "/monitoring";
-  if (notif.type === "review" || notif.type === "revision") return "/laporan-saya";
-  return null;
+  if (
+    searchableText.includes("po") ||
+    searchableText.includes("project") ||
+    searchableText.includes("delivery") ||
+    searchableText.includes("deadline")
+  ) {
+    return "/jadwal-project";
+  }
+  if (
+    searchableText.includes("review") ||
+    searchableText.includes("revisi") ||
+    searchableText.includes("revision") ||
+    searchableText.includes("laporan harian baru") ||
+    searchableText.includes("report_created")
+  ) {
+    return "/monitoring";
+  }
+  if (
+    searchableText.includes("daily_report") ||
+    searchableText.includes("laporan") ||
+    searchableText.includes("report")
+  ) {
+    return "/laporan-saya";
+  }
+
+  return "/dashboard";
 }
 
 export default function Notifikasi() {
@@ -114,11 +137,10 @@ export default function Notifikasi() {
               return (
               <Card
                 key={notif.id}
-                role={target ? "button" : undefined}
-                tabIndex={target ? 0 : undefined}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleOpenNotification(notif)}
                 onKeyDown={(event) => {
-                  if (!target) return;
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     handleOpenNotification(notif);
@@ -126,7 +148,7 @@ export default function Notifikasi() {
                 }}
                 className={cn(
                   "border border-border transition-colors",
-                  target && "cursor-pointer hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "cursor-pointer hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   !notif.isRead && "bg-primary/5 border-primary/20"
                 )}
               >
