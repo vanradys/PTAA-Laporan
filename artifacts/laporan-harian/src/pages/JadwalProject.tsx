@@ -902,16 +902,6 @@ export default function JadwalProject() {
                       }}
                     />
                     <Legend />
-                    {poCountReferenceValues.map((value) => (
-                      <ReferenceLine
-                        key={`po-count-${value}`}
-                        yAxisId="left"
-                        y={value}
-                        stroke="#2563eb"
-                        strokeDasharray="4 8"
-                        strokeOpacity={0.35}
-                      />
-                    ))}
                     <Bar
                       yAxisId="left"
                       dataKey="totalPo"
@@ -919,6 +909,17 @@ export default function JadwalProject() {
                       fill="#2563eb"
                       radius={[6, 6, 0, 0]}
                     />
+                    {poCountReferenceValues.map((value) => (
+                      <ReferenceLine
+                        key={`po-count-${value}`}
+                        yAxisId="left"
+                        y={value}
+                        stroke="#1d4ed8"
+                        strokeDasharray="6 6"
+                        strokeOpacity={0.8}
+                        strokeWidth={2}
+                      />
+                    ))}
                     {canViewPoAmount && (
                       <Line
                         yAxisId="right"
