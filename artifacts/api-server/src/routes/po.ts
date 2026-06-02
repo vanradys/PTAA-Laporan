@@ -254,6 +254,17 @@ async function sendDeadlineNotifications(
     recipients.push(po.createdByUserId);
 
   if (sisaHari < 0 && !po.notifiedPassed) {
+    const leadershipRecipients = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(sql`lower(${usersTable.role}) in ('admin', 'direktur', 'director')`);
+
+    for (const recipient of leadershipRecipients) {
+      if (!recipients.includes(recipient.id)) {
+        recipients.push(recipient.id);
+      }
+    }
+
     for (const uid of recipients) {
       await db.insert(notificationsTable).values({
         userId: uid,
@@ -352,8 +363,8 @@ router.get("/po/summary", async (req, res) => {
     (sum, p) => sum + Number(p.poAmount ?? 0),
     0,
   );
-  const persentasePencapaian = Math.round(
-    monthlyTarget > 0 ? (totalNominal / monthlyTarget) * 100 : 0,
+  const persentasePencapaian = Number(
+    (monthlyTarget > 0 ? (totalNominal / monthlyTarget) * 100 : 0).toFixed(2),
   );
 
   res.json({

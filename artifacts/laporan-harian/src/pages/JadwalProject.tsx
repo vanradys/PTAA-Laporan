@@ -420,12 +420,8 @@ export default function JadwalProject() {
         totalAmountAxis: getNominalAxisValue(Number(item.totalAmount ?? 0)),
       }))
     : [];
-  const poCountMax = Math.max(...yearlyTrendItems.map((item) => item.totalPo), 0);
-  const poCountCeil = Math.max(20, Math.ceil(poCountMax / 5) * 5);
-  const poCountTicks = Array.from(
-    { length: Math.floor(poCountCeil / 5) + 1 },
-    (_, index) => index * 5,
-  );
+  const poCountCeil = 35;
+  const poCountTicks = [0, 7, 14, 21, 28, 35];
   const depts = (Array.isArray(departments) ? departments : []) as {
     id: number;
     name: string;
