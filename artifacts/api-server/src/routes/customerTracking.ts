@@ -176,8 +176,8 @@ async function findPoByCustomerAndNumber(customerName: string, poNumber: string)
     .from(projectsPoTable)
     .where(
       and(
-        sql`lower(trim(${projectsPoTable.customer})) = lower(trim(${customerName}))`,
-        sql`lower(trim(${projectsPoTable.noPo})) = lower(trim(${poNumber}))`,
+        sql`lower(regexp_replace(coalesce(${projectsPoTable.customer}, ''), '[^a-zA-Z0-9]', '', 'g')) = lower(regexp_replace(${customerName}, '[^a-zA-Z0-9]', '', 'g'))`,
+        sql`lower(regexp_replace(${projectsPoTable.noPo}, '[^a-zA-Z0-9]', '', 'g')) = lower(regexp_replace(${poNumber}, '[^a-zA-Z0-9]', '', 'g'))`,
       ),
     )
     .limit(1);

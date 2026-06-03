@@ -1,4 +1,5 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import {
   ArrowLeft,
   Loader2,
@@ -14,6 +15,8 @@ import { Progress } from "@/components/ui/progress";
 import { apiRequest } from "@/lib/apiRequest";
 
 const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
+const TRACKING_ROUTE = "/customer-tracking";
+const TRACKING_STORAGE_PREFIX = "ptaa_customer_tracking_search_";
 
 interface TrackingStage {
   key: string;
@@ -88,7 +91,41 @@ function stageClass(state: TrackingStage["state"]) {
   return "border-slate-200 bg-slate-100 text-slate-400";
 }
 
+function toTrackingSlugPart(value: string) {
+  const normalized = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+
+  return normalized || "PO";
+}
+
+function buildTrackingSlug(customer: string, po: string) {
+  return `${toTrackingSlugPart(customer)}-${toTrackingSlugPart(po)}`;
+}
+
+function parseTrackingSlug(slug: string) {
+  const decoded = decodeURIComponent(slug).trim();
+  const separatorIndex = decoded.lastIndexOf("-");
+
+  if (separatorIndex <= 0 || separatorIndex === decoded.length - 1) {
+    return null;
+  }
+
+  return {
+    customerName: decoded.slice(0, separatorIndex),
+    poNumber: decoded.slice(separatorIndex + 1),
+  };
+}
+
+function getTrackingSlugFromLocation(location: string) {
+  if (!location.startsWith(`${TRACKING_ROUTE}/`)) return "";
+  return location.slice(TRACKING_ROUTE.length + 1);
+}
+
 export default function CustomerTracking() {
+  const [location, setLocation] = useLocation();
   const [customerName, setCustomerName] = useState("");
   const [poNumber, setPoNumber] = useState("");
   const [detail, setDetail] = useState<TrackingDetail | null>(null);
@@ -106,23 +143,66 @@ export default function CustomerTracking() {
     setComments(data);
   };
 
+  const loadTrackingDetail = async (search: {
+    customerName: string;
+    poNumber: string;
+  }) => {
+    const data = await apiRequest<TrackingDetail>(
+      "/api/customer-tracking/search",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(search),
+      },
+    );
+
+    setDetail(data);
+    setCustomerName(search.customerName);
+    setPoNumber(search.poNumber);
+    setCommentName(search.customerName);
+    await loadComments(data.id);
+    return data;
+  };
+
+  useEffect(() => {
+    const slug = getTrackingSlugFromLocation(location);
+    if (!slug || detail || isSearching) return;
+
+    const savedSearch = localStorage.getItem(`${TRACKING_STORAGE_PREFIX}${slug}`);
+    const parsedSearch = savedSearch
+      ? (JSON.parse(savedSearch) as { customerName: string; poNumber: string })
+      : parseTrackingSlug(slug);
+
+    if (!parsedSearch) return;
+
+    setError("");
+    setIsSearching(true);
+    loadTrackingDetail(parsedSearch)
+      .catch((err) => {
+        setDetail(null);
+        setComments([]);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Data PO tidak ditemukan. Pastikan Nomor PO sesuai.",
+        );
+      })
+      .finally(() => setIsSearching(false));
+  }, [detail, isSearching, location]);
+
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
     setIsSearching(true);
 
     try {
-      const data = await apiRequest<TrackingDetail>(
-        "/api/customer-tracking/search",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ customerName, poNumber }),
-        },
+      await loadTrackingDetail({ customerName, poNumber });
+      const slug = buildTrackingSlug(customerName, poNumber);
+      localStorage.setItem(
+        `${TRACKING_STORAGE_PREFIX}${slug}`,
+        JSON.stringify({ customerName, poNumber }),
       );
-      setDetail(data);
-      setCommentName(customerName);
-      await loadComments(data.id);
+      setLocation(`${TRACKING_ROUTE}/${encodeURIComponent(slug)}`);
     } catch (err) {
       setDetail(null);
       setComments([]);
@@ -160,6 +240,7 @@ export default function CustomerTracking() {
     setDetail(null);
     setComments([]);
     setError("");
+    setLocation(TRACKING_ROUTE);
   };
 
   return (

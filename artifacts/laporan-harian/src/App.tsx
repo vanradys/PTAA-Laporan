@@ -28,7 +28,10 @@ function AppRoutes() {
 
   const [location] = useLocation();
 
-  if (location === "/customer-tracking") {
+  if (
+    location === "/customer-tracking" ||
+    location.startsWith("/customer-tracking/")
+  ) {
     return <CustomerTracking />;
   }
 
