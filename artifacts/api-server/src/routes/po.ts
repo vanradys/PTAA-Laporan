@@ -68,6 +68,9 @@ function canViewPoAmount(user?: {
 const PO_MANAGE_ROLES = ["admin", "direktur", "director", "dir", "hr"];
 const PO_MANAGE_DEPARTMENT_CODES = ["AAF", "FIN", "MKT", "GA"];
 const PO_MANAGE_DEPARTMENT_NAMES = ["finance", "marketing", "general affairs"];
+const PO_ACTIVITY_VISIBLE_ROLES = ["admin", "direktur", "director", "dir"];
+const PO_ACTIVITY_VISIBLE_DEPARTMENT_CODES = ["GA"];
+const PO_ACTIVITY_VISIBLE_DEPARTMENT_NAMES = ["general affairs"];
 
 function canManagePo(user?: {
   role?: string | null;
@@ -88,6 +91,23 @@ function canManagePo(user?: {
 
 function isDateOnly(value: string | null | undefined): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+function canViewPoActivity(user?: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}): boolean {
+  const role = String(user?.role ?? "").toLowerCase();
+  if (PO_ACTIVITY_VISIBLE_ROLES.includes(role)) return true;
+
+  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  if (PO_ACTIVITY_VISIBLE_DEPARTMENT_CODES.includes(departmentCode)) return true;
+
+  const departmentName = String(user?.departmentName ?? "").toLowerCase();
+  return PO_ACTIVITY_VISIBLE_DEPARTMENT_NAMES.some((name) =>
+    departmentName.includes(name),
+  );
 }
 
 function calcSisaHari(deadline: string): number | null {
@@ -373,8 +393,7 @@ router.get("/po/summary", async (req, res) => {
     poBelumSelesai,
     poDelay,
     poHampirDeadline,
-    totalNominal,
-    monthlyTarget,
+    ...(canViewPoAmount(user) ? { totalNominal, monthlyTarget } : {}),
     persentasePencapaian,
     targetMonthName: MONTH_NAMES[month - 1] ?? String(month),
     targetStartDate,
@@ -396,7 +415,7 @@ router.get("/po/activity", async (req, res) => {
     return;
   }
 
-  if (!canManagePo(user)) {
+  if (!canViewPoActivity(user)) {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }

@@ -10,6 +10,7 @@ import Monitoring from "@/pages/Monitoring";
 import DetailLaporan from "@/pages/DetailLaporan";
 import Notifikasi from "@/pages/Notifikasi";
 import JadwalProject from "@/pages/JadwalProject";
+import CustomerTracking from "@/pages/CustomerTracking";
 import { Loader2 } from "lucide-react";
 import NotificationPermissionPrompt from "@/components/NotificationPermissionPrompt";
 
@@ -24,6 +25,12 @@ const queryClient = new QueryClient({
 
 function AppRoutes() {
   const { user, isLoading } = useAuth();
+
+  const [location] = useLocation();
+
+  if (location === "/customer-tracking") {
+    return <CustomerTracking />;
+  }
 
   if (isLoading) {
     return (

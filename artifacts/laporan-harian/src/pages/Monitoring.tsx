@@ -331,13 +331,13 @@ export default function Monitoring() {
 
   return (
     <Layout>
-      <div className="p-6 space-y-5">
-        <div className="flex items-center justify-between gap-3">
+      <div className="page-shell space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Monitoring Laporan Harian</h1>
             <p className="text-sm text-muted-foreground">Pantau laporan harian seluruh karyawan</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {showReminderNotice && (
               <div className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
                 Reminder akan dikirim otomatis setiap jam 16.00 WIB.
@@ -398,7 +398,7 @@ export default function Monitoring() {
                   </div>
 
                   <div className="overflow-x-auto rounded-lg border border-border">
-                    <table className="w-full text-sm">
+                    <table className="w-full min-w-[680px] text-sm">
                       <thead>
                         <tr className="border-b border-border bg-muted/40">
                           <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Nama</th>
@@ -558,7 +558,7 @@ export default function Monitoring() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[860px] text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Nama Karyawan</th>

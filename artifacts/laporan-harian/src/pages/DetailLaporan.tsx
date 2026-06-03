@@ -130,7 +130,7 @@ export default function DetailLaporan() {
   if (!r) {
     return (
       <Layout>
-        <div className="p-6 text-center text-muted-foreground">
+        <div className="page-shell text-center text-muted-foreground">
           <p>Laporan tidak ditemukan</p>
           <Button variant="ghost" onClick={() => navigate("/monitoring")} className="mt-4">
             Kembali ke Monitoring
@@ -146,14 +146,14 @@ export default function DetailLaporan() {
 
   return (
     <Layout>
-      <div className="p-6 space-y-5 max-w-4xl">
+      <div className="page-shell space-y-5 max-w-4xl">
         {/* Header */}
         <div className="flex items-start gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate("/monitoring")} className="mt-0.5">
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-1">
+            <div className="flex flex-wrap items-center gap-3 mb-1">
               <h1 className="text-xl font-bold text-foreground">Detail Laporan Harian</h1>
               <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${statusInfo.color}`}>
                 {statusInfo.label}
@@ -166,13 +166,13 @@ export default function DetailLaporan() {
         {/* Employee Info */}
         <Card className="border border-border">
           <CardContent className="p-4">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <Avatar className="w-12 h-12">
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
                   {r.userName?.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)}
                 </AvatarFallback>
               </Avatar>
-              <div className="grid grid-cols-3 gap-4 flex-1">
+              <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-muted-foreground shrink-0" />
                   <div>
@@ -211,7 +211,8 @@ export default function DetailLaporan() {
             {tasks.length === 0 ? (
               <div className="px-5 py-8 text-center text-muted-foreground text-sm">Tidak ada tugas</div>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Tugas</th>
@@ -247,6 +248,7 @@ export default function DetailLaporan() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </CardContent>
         </Card>

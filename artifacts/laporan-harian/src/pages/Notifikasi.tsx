@@ -102,9 +102,9 @@ export default function Notifikasi() {
 
   return (
     <Layout>
-      <div className="p-6 space-y-5 max-w-2xl">
+      <div className="page-shell space-y-5 max-w-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Notifikasi</h1>
             <p className="text-sm text-muted-foreground">

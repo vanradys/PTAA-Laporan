@@ -30,6 +30,9 @@ import {
   Loader2,
   Package,
   Trash2,
+  MessageSquare,
+  Eye,
+  Send,
 } from "lucide-react";
 import {
   ComposedChart,
@@ -178,6 +181,26 @@ interface PoActivityLog {
   createdAt: string;
 }
 
+interface CustomerTrackingComment {
+  id: number;
+  poId: number;
+  customerName: string;
+  comment: string;
+  createdAt: string;
+  isRead: boolean;
+  noPo?: string | null;
+  namaProject?: string | null;
+}
+
+interface PoInternalComment {
+  id: number;
+  poId: number;
+  userId?: number | null;
+  userName: string;
+  comment: string;
+  createdAt: string;
+}
+
 const PO_FIELD_LABELS: Record<string, string> = {
   noPo: "No PO",
   namaProject: "Nama Project",
@@ -233,6 +256,17 @@ function formatActivityTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: "Asia/Jakarta",
+  });
+}
+
+function formatActivityDateTime(value: string) {
+  return new Date(value).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     timeZone: "Asia/Jakarta",
   });
 }
@@ -347,8 +381,16 @@ export default function JadwalProject() {
     departmentName.includes("general affairs");
 
   const canViewPoAmount =
-    ["admin", "direktur", "dir"].includes(role) ||
-    !["PUR", "ENG"].includes(departmentCode);
+    ["admin", "direktur", "director", "dir"].includes(role) ||
+    (!["PUR", "ENG"].includes(departmentCode) &&
+      !departmentName.includes("purchasing") &&
+      !departmentName.includes("engineering"));
+
+  const canViewPoActivity =
+    ["admin", "direktur", "director", "dir"].includes(role) ||
+    departmentCode === "GA" ||
+    departmentName.includes("general affairs");
+  const canViewPoDetail = Boolean(user);
 
   const [filterMonth, setFilterMonth] = useState<string>(
     String(today.getMonth() + 1),
@@ -361,6 +403,8 @@ export default function JadwalProject() {
   const [searchText, setSearchText] = useState("");
 
   const [showForm, setShowForm] = useState(false);
+  const [viewingPo, setViewingPo] = useState<PoItem | null>(null);
+  const [internalCommentDraft, setInternalCommentDraft] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<PoFormState>(EMPTY_FORM);
   const [deliveryInputMode, setDeliveryInputMode] = useState<DeliveryInputMode>("date");
@@ -405,8 +449,40 @@ export default function JadwalProject() {
   const { data: poActivityLogs } = useQuery({
     queryKey: ["po-activity"],
     queryFn: () => apiRequest<PoActivityLog[]>("/api/po/activity"),
-    enabled: canManage,
+    enabled: canViewPoActivity,
     refetchInterval: 5000,
+  });
+
+  const { data: customerComments } = useQuery({
+    queryKey: ["customer-tracking-comments"],
+    queryFn: () =>
+      apiRequest<CustomerTrackingComment[]>(
+        "/api/customer-tracking/internal/comments",
+      ),
+    enabled: Boolean(user),
+    refetchInterval: 15000,
+  });
+
+  const { data: selectedCustomerComments } = useQuery({
+    queryKey: ["customer-tracking-comments", viewingPo?.id],
+    queryFn: () =>
+      apiRequest<CustomerTrackingComment[]>(
+        `/api/customer-tracking/${viewingPo?.id}/comments`,
+      ),
+    enabled: Boolean(viewingPo?.id),
+  });
+
+  const {
+    data: internalPoComments,
+    refetch: refetchInternalPoComments,
+    isFetching: internalCommentsLoading,
+  } = useQuery({
+    queryKey: ["po-internal-comments", viewingPo?.id],
+    queryFn: () =>
+      apiRequest<PoInternalComment[]>(
+        `/api/po/${viewingPo?.id}/internal-comments`,
+      ),
+    enabled: Boolean(viewingPo?.id),
   });
 
   const { data: departments } = useListDepartments();
@@ -417,6 +493,15 @@ export default function JadwalProject() {
   const deletePo = useDeletePo();
 
   const activityLogs = Array.isArray(poActivityLogs) ? poActivityLogs : [];
+  const trackingComments = Array.isArray(customerComments)
+    ? customerComments
+    : [];
+  const poCustomerComments = Array.isArray(selectedCustomerComments)
+    ? selectedCustomerComments
+    : [];
+  const poInternalComments = Array.isArray(internalPoComments)
+    ? internalPoComments
+    : [];
   const pos = (Array.isArray(poList) ? poList : []) as PoItem[];
   const allPosRaw = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
   const allPos = allPosRaw.filter((po) => !isFinishedPo(po.status));
@@ -507,6 +592,33 @@ export default function JadwalProject() {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setDeliveryInputMode("date");
+  };
+
+  const closeDetail = () => {
+    setViewingPo(null);
+    setInternalCommentDraft("");
+  };
+
+  const handleSendInternalComment = async () => {
+    if (!viewingPo || !internalCommentDraft.trim()) return;
+
+    try {
+      await apiRequest(`/api/po/${viewingPo.id}/internal-comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: internalCommentDraft }),
+      });
+      setInternalCommentDraft("");
+      await refetchInternalPoComments();
+      toast({ title: "Berhasil", description: "Komentar internal terkirim" });
+    } catch (error) {
+      toast({
+        title: "Gagal",
+        description:
+          error instanceof Error ? error.message : "Gagal mengirim komentar",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -690,7 +802,9 @@ export default function JadwalProject() {
         {
           label: "Pencapaian Target",
           value: `${(summary as { persentasePencapaian: number }).persentasePencapaian}%`,
-          description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
+          description: canViewPoAmount
+            ? `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`
+            : undefined,
           targetLabel: `Target Bulan ${(summary as { targetMonthName?: string }).targetMonthName ?? months.find((item) => item.v === filterMonth)?.l ?? ""}`,
           icon: TrendingUp,
           color: "text-purple-600",
@@ -727,11 +841,24 @@ export default function JadwalProject() {
     },
   ];
 
+  const selectedPoActivity = viewingPo
+    ? activityLogs.filter((log) => log.poId === viewingPo.id)
+    : [];
+  const selectedStatusStyle = viewingPo
+    ? (STATUS_STYLES[viewingPo.status] ?? STATUS_STYLES.belum_mulai)
+    : STATUS_STYLES.belum_mulai;
+  const selectedDeadlineStyle = viewingPo
+    ? getDeadlineStyle(viewingPo.sisaHari, viewingPo.status)
+    : "text-muted-foreground";
+  const selectedDeadlineLabel = viewingPo
+    ? formatDeadlineLabel(viewingPo.sisaHari, viewingPo.status)
+    : "-";
+
   return (
     <Layout>
-      <div className="p-6 space-y-5 max-w-7xl">
+      <div className="page-shell space-y-5 max-w-7xl">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">
               Jadwal Project & Monitoring PO
@@ -786,7 +913,7 @@ export default function JadwalProject() {
           </div>
         )}
 
-        {canManage && (
+        {canViewPoActivity && (
           <Card className="border border-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center justify-between">
@@ -831,6 +958,46 @@ export default function JadwalProject() {
           </Card>
         )}
 
+        <Card className="border border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              Komentar Customer
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {trackingComments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Belum ada komentar customer.
+              </p>
+            ) : (
+              trackingComments.slice(0, 8).map((comment) => (
+                <div
+                  key={comment.id}
+                  className="rounded-lg border border-border bg-white p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        {comment.customerName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {comment.noPo ?? "-"} · {comment.namaProject ?? "-"}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {formatActivityTime(comment.createdAt)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-700">
+                    {comment.comment}
+                  </p>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
         {yearlyTrendItems.length > 0 && (
           <Card className="border border-border">
             <CardHeader className="pb-3">
@@ -843,8 +1010,8 @@ export default function JadwalProject() {
                   : "Grafik menunjukkan jumlah PO per bulan."}
               </p>
             </CardHeader>
-            <CardContent className="p-4">
-              <div className="h-80">
+            <CardContent className="overflow-x-auto p-4">
+              <div className="h-80 min-w-[620px] sm:min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
                     data={yearlyTrendItems}
@@ -1059,7 +1226,7 @@ export default function JadwalProject() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[980px] text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
@@ -1097,7 +1264,7 @@ export default function JadwalProject() {
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
                         Progress
                       </th>
-                      {canManage && (
+                      {canViewPoDetail && (
                         <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
                           Aksi
                         </th>
@@ -1188,9 +1355,20 @@ export default function JadwalProject() {
                               </span>
                             </div>
                           </td>
-                          {canManage && (
+                          {canViewPoDetail && (
                             <td className="px-4 py-3">
                               <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="w-7 h-7 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                  title="Lihat Detail"
+                                  onClick={() => setViewingPo(po)}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Button>
+                                {canManage && (
+                                  <>
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -1218,6 +1396,8 @@ export default function JadwalProject() {
                                       <CheckCircle2 className="w-3.5 h-3.5" />
                                     </Button>
                                   )}
+                                  </>
+                                )}
                               </div>
                             </td>
                           )}
@@ -1255,7 +1435,7 @@ export default function JadwalProject() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[860px] text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
@@ -1287,7 +1467,7 @@ export default function JadwalProject() {
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
                         Progress
                       </th>
-                      {canManage && (
+                      {canViewPoDetail && (
                         <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
                           Aksi
                         </th>
@@ -1361,9 +1541,20 @@ export default function JadwalProject() {
                               </span>
                             </div>
                           </td>
-                          {canManage && (
+                          {canViewPoDetail && (
                             <td className="px-4 py-3">
                               <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="w-7 h-7 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                  title="Lihat Detail"
+                                  onClick={() => setViewingPo(po)}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Button>
+                                {canManage && (
+                                  <>
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -1406,6 +1597,8 @@ export default function JadwalProject() {
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           )}
@@ -1419,6 +1612,288 @@ export default function JadwalProject() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Detail PO Modal */}
+      {viewingPo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={closeDetail}
+          />
+          <div className="relative z-10 max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border border-border bg-background shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-4 py-3 sm:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={closeDetail}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+                <div className="min-w-0">
+                  <h2 className="truncate text-xl font-bold text-foreground">
+                    Detail PO
+                  </h2>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {viewingPo.noPo} · {viewingPo.namaProject}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-4 sm:p-6">
+              <section className="grid gap-4 lg:grid-cols-[1fr_1.15fr]">
+                <Card className="border border-border">
+                  <CardContent className="p-5">
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-foreground">
+                        Status PO: {viewingPo.noPo}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {getStatusLabel(viewingPo, selectedStatusStyle.label)}
+                      </p>
+                    </div>
+                    <div className="mt-5 flex items-center gap-3">
+                      <div className="h-2 flex-1 rounded-full bg-muted">
+                        <div
+                          className={`h-2 rounded-full ${
+                            viewingPo.status === "delay"
+                              ? "bg-red-500"
+                              : isFinishedPo(viewingPo.status)
+                                ? "bg-green-500"
+                                : "bg-primary"
+                          }`}
+                          style={{
+                            width: `${clampProgress(viewingPo.progress)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="w-12 text-right text-sm font-bold">
+                        {viewingPo.progress}%
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-border">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      Informasi Umum PO
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                    <DetailInfo label="Nomor PO" value={viewingPo.noPo} />
+                    <DetailInfo
+                      label="Nama Customer"
+                      value={viewingPo.customer ?? "-"}
+                    />
+                    <DetailInfo
+                      label="Nama Project"
+                      value={viewingPo.namaProject}
+                    />
+                    <DetailInfo
+                      label="Tanggal PO Masuk"
+                      value={isoDateToDisplay(viewingPo.tanggalPoMasuk)}
+                    />
+                    <DetailInfo
+                      label="Deadline"
+                      value={isoDateToDisplay(
+                        viewingPo.targetPenyelesaian || viewingPo.deadline,
+                      )}
+                    />
+                    <DetailInfo
+                      label="PIC Project"
+                      value={viewingPo.picName ?? "-"}
+                    />
+                    <DetailInfo
+                      label="Status Project"
+                      value={getStatusLabel(viewingPo, selectedStatusStyle.label)}
+                    />
+                  </CardContent>
+                </Card>
+              </section>
+
+              <section className="grid gap-4 lg:grid-cols-3">
+                <Card className="border border-border">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Detail Progress</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div
+                      className={`rounded-lg border px-3 py-2 text-sm ${
+                        viewingPo.status === "delay" ||
+                        selectedDeadlineLabel.includes("lewat")
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : selectedDeadlineLabel.includes("hari lagi") &&
+                              (viewingPo.sisaHari ?? 99) <= 7
+                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                            : "border-green-200 bg-green-50 text-green-700"
+                      }`}
+                    >
+                      <p className="font-semibold">
+                        Status Ketepatan Waktu:{" "}
+                        <span className={selectedDeadlineStyle}>
+                          {viewingPo.status === "delay" ||
+                          selectedDeadlineLabel.includes("lewat")
+                            ? "Delay"
+                            : selectedDeadlineLabel.includes("hari lagi") &&
+                                (viewingPo.sisaHari ?? 99) <= 7
+                              ? "At Risk"
+                              : "On Time"}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-xs">{selectedDeadlineLabel}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-border">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Kendala Project</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-slate-700">
+                      {viewingPo.catatan?.trim() ||
+                        "Tidak ada kendala yang dilaporkan."}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-border">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      Timeline Progress
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {selectedPoActivity.length > 0 ? (
+                      selectedPoActivity.slice(0, 6).map((log) => (
+                        <div
+                          key={log.id}
+                          className="border-l-2 border-blue-200 pl-3"
+                        >
+                          <p className="text-xs font-semibold text-slate-900">
+                            {formatActivityDateTime(log.createdAt)}
+                          </p>
+                          <p className="text-sm text-slate-600">
+                            {getActivityActionLabel(log.action)} {log.noPo}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="border-l-2 border-blue-200 pl-3">
+                        <p className="text-xs font-semibold text-slate-900">
+                          {isoDateToDisplay(viewingPo.tanggalPoMasuk)}
+                        </p>
+                        <p className="text-sm text-slate-600">PO diterima</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </section>
+
+              <Card className="border border-border">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <MessageSquare className="h-4 w-4" />
+                    Komentar Customer ({poCustomerComments.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {poCustomerComments.length === 0 ? (
+                    <p className="py-5 text-center text-sm text-muted-foreground">
+                      Belum ada komentar customer
+                    </p>
+                  ) : (
+                    poCustomerComments.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border p-3"
+                      >
+                        <div className="flex flex-wrap justify-between gap-2 text-sm">
+                          <span className="font-semibold">
+                            {item.customerName}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatActivityDateTime(item.createdAt)}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm text-slate-700">
+                          {item.comment}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border border-border">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <MessageSquare className="h-4 w-4" />
+                    Komentar Internal PTAA ({poInternalComments.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {internalCommentsLoading ? (
+                    <div className="flex justify-center py-5">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    </div>
+                  ) : poInternalComments.length === 0 ? (
+                    <p className="py-5 text-center text-sm text-muted-foreground">
+                      Belum ada komentar internal
+                    </p>
+                  ) : (
+                    poInternalComments.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-border bg-slate-50 p-3"
+                      >
+                        <div className="flex flex-wrap justify-between gap-2 text-sm">
+                          <span className="font-semibold">
+                            {item.userName}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatActivityDateTime(item.createdAt)}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm text-slate-700">
+                          {item.comment}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Textarea
+                      value={internalCommentDraft}
+                      onChange={(event) =>
+                        setInternalCommentDraft(event.target.value)
+                      }
+                      placeholder="Tambahkan komentar internal..."
+                      rows={2}
+                      className="min-h-16 resize-none text-sm"
+                    />
+                    <Button
+                      type="button"
+                      className="shrink-0"
+                      disabled={!internalCommentDraft.trim()}
+                      onClick={handleSendInternalComment}
+                    >
+                      <Send className="mr-2 h-4 w-4" />
+                      Kirim Komentar
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Komentar internal ini hanya untuk pengguna PTAA dan tidak
+                    muncul di Customer Tracking Portal.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Form Modal */}
       {showForm && (
@@ -1441,8 +1916,8 @@ export default function JadwalProject() {
                 <X className="w-4 h-4" />
               </Button>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4 p-4 sm:p-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
                     No PO <span className="text-red-500">*</span>
@@ -1471,7 +1946,7 @@ export default function JadwalProject() {
                 </div>
               </div>
               <div
-                className={`grid gap-4 ${canViewPoAmount ? "grid-cols-3" : "grid-cols-2"}`}
+                className={`grid grid-cols-1 gap-4 ${canViewPoAmount ? "lg:grid-cols-3" : "sm:grid-cols-2"}`}
               >
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
@@ -1517,7 +1992,7 @@ export default function JadwalProject() {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
                     PIC (Person In Charge)
@@ -1567,7 +2042,7 @@ export default function JadwalProject() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
                     Target Penyelesaian
@@ -1588,7 +2063,7 @@ export default function JadwalProject() {
                   <Label className="text-xs font-semibold">
                     Tanggal Delivery <span className="text-red-500">*</span>
                   </Label>
-                  <div className="grid grid-cols-[150px_1fr] gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[150px_1fr]">
                     <Select
                       value={deliveryInputMode}
                       onValueChange={(value) => {
@@ -1624,7 +2099,7 @@ export default function JadwalProject() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">Status</Label>
                   <Select
@@ -1680,7 +2155,7 @@ export default function JadwalProject() {
                 />
               </div>
             </div>
-            <div className="sticky bottom-0 bg-background border-t border-border px-6 py-4 flex justify-end gap-3 rounded-b-xl">
+            <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 rounded-b-xl border-t border-border bg-background px-4 py-4 sm:px-6">
               <Button
                 variant="outline"
                 onClick={closeForm}
@@ -1699,5 +2174,14 @@ export default function JadwalProject() {
         </div>
       )}
     </Layout>
+  );
+}
+
+function DetailInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
+    </div>
   );
 }

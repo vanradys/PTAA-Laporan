@@ -579,11 +579,11 @@ useEffect(() => {
 
   return (
     <Layout>
-      <div className="p-6 space-y-5 max-w-4xl">
+      <div className="page-shell space-y-5 max-w-4xl">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="flex items-center gap-3 mb-1">
+            <div className="flex flex-wrap items-center gap-3 mb-1">
               <h1 className="text-xl font-bold text-foreground">Laporan Harian Saya</h1>
               {report && (
                 <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${reportStatus.color}`}>
@@ -595,7 +595,7 @@ useEffect(() => {
             <p className="text-xs text-muted-foreground mt-0.5">{user?.name} &bull; {user?.departmentName ?? "—"}</p>
           </div>
               {showSubmitActions && (
-              <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
               <Button
             variant="outline"
             onClick={handleSubmit(handleSaveReport)}
@@ -663,7 +663,8 @@ useEffect(() => {
                 {existingTasks.length === 0 ? (
                   <p className="px-5 py-8 text-center text-sm text-muted-foreground">Tidak ada tugas</p>
                 ) : (
-                  <table className="w-full text-sm">
+                  <div className="overflow-x-auto">
+                  <table className="w-full min-w-[620px] text-sm">
                     <thead>
                       <tr className="border-b border-border bg-muted/40">
                         <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tugas</th>
@@ -695,6 +696,7 @@ useEffect(() => {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -733,10 +735,10 @@ useEffect(() => {
               {/* Tasks Section */}
                 <Card className="border border-border bg-white">
                   <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <CardTitle className="text-base">
                       Daftar Tugas Hari Ini <span className="text-destructive">*</span>
-                    </CardTitle>                    <div className="flex gap-2">
+                    </CardTitle>                    <div className="flex flex-wrap gap-2">
                       {yesterdayTasks && Array.isArray(yesterdayTasks) && yesterdayTasks.length > 0 && (
                         <Button type="button" variant="outline" size="sm" onClick={handleCopyYesterday}>
                           <Copy className="w-3.5 h-3.5 mr-1.5" />

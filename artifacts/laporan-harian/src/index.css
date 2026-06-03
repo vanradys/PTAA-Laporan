@@ -196,6 +196,22 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 
+  .page-shell {
+    width: 100%;
+    padding: 1.5rem;
+  }
+
+  @media (max-width: 640px) {
+    .page-shell {
+      padding: 1rem;
+    }
+
+    .recharts-wrapper,
+    .recharts-surface {
+      overflow: visible;
+    }
+  }
+
   .po-progress-range {
     --progress-value: 0%;
     appearance: none;

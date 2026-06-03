@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLogout, useListNotifications } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,6 +12,8 @@ import {
   ChevronRight,
   CalendarClock,
   ClipboardList,
+  Menu,
+  X,
 } from "lucide-react";
 
 const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
@@ -34,6 +37,7 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { user, clearUser } = useAuth();
   const queryClient = useQueryClient();
   const logout = useLogout();
@@ -58,7 +62,20 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-950">
-      <aside className="flex w-[270px] shrink-0 flex-col bg-[#06258d] text-white">
+      {mobileNavOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          aria-label="Tutup menu"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex w-[270px] shrink-0 flex-col bg-[#06258d] text-white transition-transform duration-200 lg:static lg:translate-x-0",
+          mobileNavOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
         <div className="px-5 pb-5 pt-6">
           <div className="flex items-center gap-3">
             <img
@@ -70,6 +87,14 @@ export default function Layout({ children }: LayoutProps) {
               <p className="text-2xl font-black tracking-[0.16em]">ADIYASA</p>
               <p className="text-xs font-bold tracking-[0.22em] text-red-500">PTAA</p>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto h-8 w-8 text-white hover:bg-white/10 lg:hidden"
+              onClick={() => setMobileNavOpen(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
@@ -82,6 +107,7 @@ export default function Layout({ children }: LayoutProps) {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setMobileNavOpen(false)}
                 className={cn(
                   "group relative flex items-center gap-3 rounded-lg px-4 py-3 text-[15px] font-semibold transition-all",
                   isActive
@@ -110,13 +136,21 @@ export default function Layout({ children }: LayoutProps) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[58px] shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+        <header className="flex h-[58px] shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 lg:hidden"
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
             <ClipboardList className="h-4 w-4 text-[#06258d]" />
-            <span>Sistem Laporan Harian</span>
+            <span className="truncate">Sistem Laporan Harian</span>
           </div>
 
-          <div className="flex items-center gap-5">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-5">
             <NotificationBell />
 
             <div className="flex items-center gap-3">

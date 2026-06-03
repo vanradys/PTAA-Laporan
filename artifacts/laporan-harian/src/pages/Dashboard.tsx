@@ -118,17 +118,17 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="space-y-6 p-6">
+      <div className="page-shell space-y-6">
         <div>
           <h1 className="text-xl font-bold text-slate-950">Dashboard</h1>
         </div>
 
-        <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-7 py-6 text-white shadow-sm">
+        <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6">
           <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
           <p className="text-sm font-medium text-blue-100">
             Selamat datang kembali,
           </p>
-          <h2 className="mt-1 text-2xl font-black">
+          <h2 className="mt-1 text-xl font-black sm:text-2xl">
             {user?.name ?? "Admin PTAA"} — PT Adiyasa Abadi
           </h2>
           <div className="mt-2 flex items-center gap-2 text-sm font-medium text-blue-100">
@@ -185,20 +185,21 @@ export default function Dashboard() {
               />
             </section>
 
-            <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_470px]">
+            <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_470px]">
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base font-bold text-slate-800">
                     Rekap Laporan Departemen Hari Ini
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="overflow-x-auto">
                   {deptLoading ? (
                     <div className="flex h-[285px] items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-[#06258d]" />
                     </div>
                   ) : chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={285}>
+                    <div className="h-[285px] min-w-[560px] sm:min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={chartData}
                         margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
@@ -242,6 +243,7 @@ export default function Dashboard() {
                         />
                       </BarChart>
                     </ResponsiveContainer>
+                    </div>
                   ) : (
                     <div className="flex h-[285px] items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
                       Belum ada data laporan hari ini
