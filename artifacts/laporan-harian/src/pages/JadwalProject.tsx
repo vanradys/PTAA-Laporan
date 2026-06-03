@@ -72,6 +72,17 @@ const PO_STATUS_OPTS = [
   { value: "close", label: "Close" },
 ];
 
+const CUSTOMER_TRACKING_STAGES = [
+  { key: "po_diterima", label: "PO Diterima" },
+  { key: "engineering", label: "Engineering" },
+  { key: "approval_drawing", label: "Approval Drawing" },
+  { key: "procurement", label: "Procurement" },
+  { key: "produksi", label: "Produksi" },
+  { key: "qc", label: "QC" },
+  { key: "pengiriman", label: "Pengiriman" },
+  { key: "selesai", label: "Selesai" },
+] as const;
+
 interface StatusStyle {
   label: string;
   badge: string;
@@ -147,6 +158,8 @@ interface PoItem {
   departmentName?: string | null;
   status: string;
   progress: number;
+  trackingStages?: string[];
+  trackingTimeline?: TrackingTimelineItem[];
   catatan?: string | null;
   closedAt?: string | null;
   isEditLocked?: boolean;
@@ -166,7 +179,14 @@ interface PoFormState {
   departmentId: string;
   status: string;
   progress: string;
+  trackingStages: string[];
+  trackingTimeline: TrackingTimelineItem[];
   catatan: string;
+}
+
+interface TrackingTimelineItem {
+  date: string;
+  description: string;
 }
 
 type DeliveryInputMode = "date" | "text";
@@ -214,6 +234,8 @@ const PO_FIELD_LABELS: Record<string, string> = {
   departmentId: "Departemen",
   status: "Status",
   progress: "Progress",
+  trackingStages: "Tahapan Customer",
+  trackingTimeline: "Timeline Customer",
   catatan: "Catatan",
   closedAt: "Tanggal Close",
   closedByUserId: "Ditutup Oleh",
@@ -232,6 +254,8 @@ const EMPTY_FORM: PoFormState = {
   departmentId: "",
   status: "belum_mulai",
   progress: "0",
+  trackingStages: [],
+  trackingTimeline: [],
   catatan: "",
 };
 const NONE_VALUE = "none";
@@ -582,6 +606,12 @@ export default function JadwalProject() {
       departmentId: po.departmentId ? String(po.departmentId) : "",
       status: po.status,
       progress: String(po.progress),
+      trackingStages: Array.isArray(po.trackingStages)
+        ? po.trackingStages
+        : [],
+      trackingTimeline: Array.isArray(po.trackingTimeline)
+        ? po.trackingTimeline
+        : [],
       catatan: po.catatan ?? "",
     });
     setShowForm(true);
@@ -592,6 +622,47 @@ export default function JadwalProject() {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setDeliveryInputMode("date");
+  };
+
+  const toggleTrackingStage = (stageKey: string) => {
+    setForm((current) => ({
+      ...current,
+      trackingStages: current.trackingStages.includes(stageKey)
+        ? current.trackingStages.filter((item) => item !== stageKey)
+        : [...current.trackingStages, stageKey],
+    }));
+  };
+
+  const addTrackingTimelineItem = () => {
+    setForm((current) => ({
+      ...current,
+      trackingTimeline: [
+        ...current.trackingTimeline,
+        { date: "", description: "" },
+      ],
+    }));
+  };
+
+  const updateTrackingTimelineItem = (
+    index: number,
+    field: keyof TrackingTimelineItem,
+    value: string,
+  ) => {
+    setForm((current) => ({
+      ...current,
+      trackingTimeline: current.trackingTimeline.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item,
+      ),
+    }));
+  };
+
+  const removeTrackingTimelineItem = (index: number) => {
+    setForm((current) => ({
+      ...current,
+      trackingTimeline: current.trackingTimeline.filter(
+        (_item, itemIndex) => itemIndex !== index,
+      ),
+    }));
   };
 
   const closeDetail = () => {
@@ -679,6 +750,13 @@ export default function JadwalProject() {
           : undefined,
         status: form.status,
         progress: parseInt(form.progress),
+        trackingStages: form.trackingStages,
+        trackingTimeline: form.trackingTimeline
+          .map((item) => ({
+            date: item.date.trim(),
+            description: item.description.trim(),
+          }))
+          .filter((item) => item.date || item.description),
         catatan: form.catatan || undefined,
       };
       if (editingId) {
@@ -2141,6 +2219,103 @@ export default function JadwalProject() {
                     }
                   />
                 </div>
+              </div>
+              <div className="space-y-3 rounded-lg border border-border bg-slate-50 p-3">
+                <div>
+                  <Label className="text-xs font-semibold">
+                    Status Tahapan Customer
+                  </Label>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Centang tahapan yang sudah selesai. Tahapan pertama yang
+                    belum dicentang akan tampil kuning sebagai tahapan aktif.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {CUSTOMER_TRACKING_STAGES.map((stage) => (
+                    <label
+                      key={stage.key}
+                      className="flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.trackingStages.includes(stage.key)}
+                        onChange={() => toggleTrackingStage(stage.key)}
+                        className="h-4 w-4"
+                      />
+                      <span>{stage.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-3 rounded-lg border border-border bg-slate-50 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <Label className="text-xs font-semibold">
+                      Timeline Progress Customer
+                    </Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Isi manual update yang boleh dilihat customer.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addTrackingTimelineItem}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Tambah Timeline
+                  </Button>
+                </div>
+                {form.trackingTimeline.length === 0 ? (
+                  <p className="rounded-md border border-dashed border-border bg-white px-3 py-4 text-center text-xs text-muted-foreground">
+                    Belum ada timeline customer.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {form.trackingTimeline.map((item, index) => (
+                      <div
+                        key={index}
+                        className="grid grid-cols-1 gap-2 rounded-md border border-border bg-white p-2 sm:grid-cols-[150px_1fr_auto]"
+                      >
+                        <Input
+                          type="date"
+                          value={item.date}
+                          onChange={(event) =>
+                            updateTrackingTimelineItem(
+                              index,
+                              "date",
+                              event.target.value,
+                            )
+                          }
+                          className="h-8 text-sm"
+                        />
+                        <Input
+                          value={item.description}
+                          onChange={(event) =>
+                            updateTrackingTimelineItem(
+                              index,
+                              "description",
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Contoh: Engineering 1 - Proses instalasi"
+                          className="h-8 text-sm"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => removeTrackingTimelineItem(index)}
+                          title="Hapus timeline"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Catatan</Label>

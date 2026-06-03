@@ -1,12 +1,9 @@
 import { FormEvent, useState } from "react";
 import {
   ArrowLeft,
-  CheckCircle2,
-  Clock,
   Loader2,
   MessageSquare,
   Search,
-  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,9 +23,8 @@ interface TrackingStage {
 
 interface TrackingTimelineItem {
   id: number;
+  date?: string | null;
   title: string;
-  changedByName?: string | null;
-  createdAt: string;
 }
 
 interface TrackingHistoryItem {
@@ -51,11 +47,6 @@ interface TrackingDetail {
   statusLabel: string;
   progress: number;
   catatan?: string | null;
-  deadlineStatus: {
-    value: "on_time" | "at_risk" | "delay";
-    label: string;
-    description: string;
-  };
   stages: TrackingStage[];
   timeline: TrackingTimelineItem[];
   history: TrackingHistoryItem[];
@@ -80,7 +71,7 @@ function formatDate(value?: string | null) {
   });
 }
 
-function formatTime(value: string) {
+function formatDateTime(value: string) {
   return new Date(value).toLocaleString("id-ID", {
     day: "2-digit",
     month: "long",
@@ -89,12 +80,6 @@ function formatTime(value: string) {
     minute: "2-digit",
     timeZone: "Asia/Jakarta",
   });
-}
-
-function deadlineClass(value: TrackingDetail["deadlineStatus"]["value"]) {
-  if (value === "delay") return "border-red-200 bg-red-50 text-red-700";
-  if (value === "at_risk") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
 function stageClass(state: TrackingStage["state"]) {
@@ -263,17 +248,6 @@ export default function CustomerTracking() {
                       {detail.statusLabel}
                     </p>
                   </div>
-                  <div className={`rounded-lg border p-3 text-sm ${deadlineClass(detail.deadlineStatus.value)}`}>
-                    <div className="flex items-center gap-2 font-bold">
-                      {detail.deadlineStatus.value === "delay" ? (
-                        <AlertTriangle className="h-4 w-4" />
-                      ) : (
-                        <CheckCircle2 className="h-4 w-4" />
-                      )}
-                      {detail.deadlineStatus.label}
-                    </div>
-                    <p className="mt-1">{detail.deadlineStatus.description}</p>
-                  </div>
                 </CardContent>
               </Card>
 
@@ -286,38 +260,20 @@ export default function CustomerTracking() {
                   <Info label="Nama Customer" value={detail.customer ?? "-"} />
                   <Info label="Nama Project" value={detail.namaProject} />
                   <Info label="Tanggal PO Masuk" value={formatDate(detail.tanggalPoMasuk)} />
-                  <Info label="Deadline" value={formatDate(detail.deadline)} />
+                  <Info label="Deadline Target Penyelesaian" value={formatDate(detail.deadline)} />
                   <Info label="PIC Project" value={detail.picName ?? "-"} />
                   <Info label="Status Project" value={detail.statusLabel} />
                 </CardContent>
               </Card>
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-3">
-              <Card className="border border-slate-200 bg-white shadow-sm">
-                <CardHeader>
-                  <CardTitle>Status Tahapan</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {detail.stages.map((stage) => (
-                    <div key={stage.key} className="flex items-center gap-3">
-                      <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs ${stageClass(stage.state)}`}
-                      >
-                        {stage.state === "done" ? "✓" : ""}
-                      </span>
-                      <span className="text-sm font-medium">{stage.label}</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
+            <section className="grid gap-4 lg:grid-cols-2">
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
                   <CardTitle>Kendala Project</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-slate-700">
+                  <p className="whitespace-pre-line text-sm text-slate-700">
                     {detail.catatan?.trim() || "Tidak ada kendala yang dilaporkan."}
                   </p>
                 </CardContent>
@@ -333,7 +289,7 @@ export default function CustomerTracking() {
                   ) : (
                     detail.timeline.map((item) => (
                       <div key={item.id} className="border-l-2 border-blue-200 pl-3">
-                        <p className="text-sm font-semibold">{formatTime(item.createdAt)}</p>
+                        <p className="text-sm font-semibold">{formatDate(item.date)}</p>
                         <p className="text-sm text-slate-600">{item.title}</p>
                       </div>
                     ))
@@ -341,34 +297,6 @@ export default function CustomerTracking() {
                 </CardContent>
               </Card>
             </section>
-
-            <Card className="border border-slate-200 bg-white shadow-sm">
-              <CardHeader>
-                <CardTitle>Riwayat PO Customer</CardTitle>
-              </CardHeader>
-              <CardContent className="overflow-x-auto p-0">
-                <table className="w-full min-w-[640px] text-sm">
-                  <thead className="border-b bg-slate-50 text-left text-xs text-slate-500">
-                    <tr>
-                      <th className="px-4 py-3">Nomor PO</th>
-                      <th className="px-4 py-3">Nama Project</th>
-                      <th className="px-4 py-3">Tanggal</th>
-                      <th className="px-4 py-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.history.map((item) => (
-                      <tr key={item.id} className="border-b last:border-0">
-                        <td className="px-4 py-3 font-mono text-xs">{item.noPo}</td>
-                        <td className="px-4 py-3">{item.namaProject}</td>
-                        <td className="px-4 py-3">{formatDate(item.tanggalPoMasuk)}</td>
-                        <td className="px-4 py-3">{item.statusLabel}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
 
             <Card className="border border-slate-200 bg-white shadow-sm">
               <CardHeader>
@@ -386,7 +314,7 @@ export default function CustomerTracking() {
                       <div key={item.id} className="rounded-lg border border-slate-200 p-3">
                         <div className="flex flex-wrap justify-between gap-2 text-sm">
                           <span className="font-semibold">{item.customerName}</span>
-                          <span className="text-xs text-slate-500">{formatTime(item.createdAt)}</span>
+                          <span className="text-xs text-slate-500">{formatDateTime(item.createdAt)}</span>
                         </div>
                         <p className="mt-2 text-sm text-slate-700">{item.comment}</p>
                       </div>

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, date, boolean, timestamp, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, date, boolean, timestamp, numeric, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -18,6 +18,10 @@ export const projectsPoTable = pgTable("projects_po", {
   departmentId: integer("department_id").references(() => departmentsTable.id),
   status: text("status").notNull().default("belum_mulai"),
   progress: integer("progress").notNull().default(0),
+  trackingStages: jsonb("tracking_stages").$type<string[]>(),
+  trackingTimeline: jsonb("tracking_timeline").$type<
+    { date: string; description: string }[]
+  >(),
   catatan: text("catatan"),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   closedByUserId: integer("closed_by_user_id").references(() => usersTable.id),

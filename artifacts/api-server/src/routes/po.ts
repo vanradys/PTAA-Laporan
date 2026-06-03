@@ -27,6 +27,16 @@ const PO_STATUSES = [
   "selesai",
   "close",
 ] as const;
+const CUSTOMER_TRACKING_STAGE_KEYS = [
+  "po_diterima",
+  "engineering",
+  "approval_drawing",
+  "procurement",
+  "produksi",
+  "qc",
+  "pengiriman",
+  "selesai",
+] as const;
 
 const PO_AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "dir"];
 const MONTHLY_PO_TARGET = 10_000_000_000;
@@ -156,6 +166,30 @@ function normalizeLogValue(value: unknown) {
   return value;
 }
 
+function normalizeTrackingStages(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const validKeys = new Set(CUSTOMER_TRACKING_STAGE_KEYS);
+  return value.map((item) => String(item)).filter((item) => validKeys.has(item as any));
+}
+
+function normalizeTrackingTimeline(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const raw = item as Record<string, unknown>;
+      const date = String(raw.date ?? "").trim();
+      const description = String(raw.description ?? "").trim();
+      if (!date && !description) return null;
+      return { date, description };
+    })
+    .filter((item): item is { date: string; description: string } =>
+      Boolean(item),
+    );
+}
+
 function buildPoChanges(
   before: Partial<typeof projectsPoTable.$inferSelect> | null,
   after: Partial<typeof projectsPoTable.$inferSelect> | null,
@@ -251,6 +285,8 @@ async function buildPoItem(
     departmentName: deptName,
     status: computedStatus,
     progress: po.progress,
+    trackingStages: normalizeTrackingStages(po.trackingStages),
+    trackingTimeline: normalizeTrackingTimeline(po.trackingTimeline),
     catatan: po.catatan,
     closedAt: po.closedAt ? po.closedAt.toISOString() : null,
     isEditLocked: isPoEditLocked(po),
@@ -539,6 +575,8 @@ router.post("/po", async (req, res) => {
     departmentId,
     status,
     progress,
+    trackingStages,
+    trackingTimeline,
     catatan,
   } = req.body;
   const deliveryValue = deadline ?? tanggal_Delivery;
@@ -573,6 +611,8 @@ router.post("/po", async (req, res) => {
       departmentId: departmentId ? parseInt(departmentId) : null,
       status: parsedStatus,
       progress: parsedProgress,
+      trackingStages: normalizeTrackingStages(trackingStages),
+      trackingTimeline: normalizeTrackingTimeline(trackingTimeline),
       ...(parsedStatus === "selesai"
         ? { closedAt: new Date(), closedByUserId: user.id }
         : {}),
@@ -600,6 +640,8 @@ router.post("/po", async (req, res) => {
       "departmentId",
       "status",
       "progress",
+      "trackingStages",
+      "trackingTimeline",
       "catatan",
     ]),
   });
@@ -763,6 +805,8 @@ router.patch("/po/:id", async (req, res) => {
     departmentId,
     status,
     progress,
+    trackingStages,
+    trackingTimeline,
     catatan,
   } = req.body;
   if (noPo !== undefined) updates.noPo = noPo;
@@ -808,6 +852,10 @@ router.patch("/po/:id", async (req, res) => {
       }
     }
   }
+  if (trackingStages !== undefined)
+    updates.trackingStages = normalizeTrackingStages(trackingStages);
+  if (trackingTimeline !== undefined)
+    updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
   if (catatan !== undefined) updates.catatan = catatan;
 
   const [updated] = await db
@@ -829,6 +877,8 @@ router.patch("/po/:id", async (req, res) => {
     "departmentId",
     "status",
     "progress",
+    "trackingStages",
+    "trackingTimeline",
     "catatan",
     "closedAt",
     "closedByUserId",

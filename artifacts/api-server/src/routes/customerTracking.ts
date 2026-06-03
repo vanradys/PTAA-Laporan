@@ -27,72 +27,16 @@ const TRACKING_STAGES = [
   { key: "selesai", label: "Selesai", minProgress: 100 },
 ] as const;
 
-function isDateOnly(value: string | null | undefined): value is string {
-  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
-}
+type TrackingTimelineItem = { date: string; description: string };
 
-function daysUntil(value: string | null | undefined): number | null {
-  if (!isDateOnly(value)) return null;
+function stageState(stageKey: string, completedStages: string[]) {
+  if (completedStages.includes(stageKey)) return "done";
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(value);
-  target.setHours(0, 0, 0, 0);
+  const firstPending = TRACKING_STAGES.find(
+    (stage) => !completedStages.includes(stage.key),
+  );
+  if (firstPending?.key === stageKey) return "active";
 
-  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
-}
-
-function deadlineStatus(po: typeof projectsPoTable.$inferSelect) {
-  if (po.status === "selesai" || po.status === "close" || po.progress >= 100) {
-    return {
-      value: "on_time",
-      label: "On Time",
-      description: "Project selesai.",
-    };
-  }
-
-  const targetDate = po.targetPenyelesaian ?? (isDateOnly(po.deadline) ? po.deadline : null);
-  const remainingDays = daysUntil(targetDate);
-
-  if (remainingDays === null) {
-    return {
-      value: "on_time",
-      label: "On Time",
-      description: "Target penyelesaian masih dipantau.",
-    };
-  }
-
-  if (remainingDays < 0) {
-    return {
-      value: "delay",
-      label: "Delay",
-      description: `${Math.abs(remainingDays)} hari melewati target penyelesaian.`,
-    };
-  }
-
-  if (remainingDays <= 7 && po.progress < 100) {
-    return {
-      value: "at_risk",
-      label: "At Risk",
-      description: `${remainingDays} hari menuju target penyelesaian.`,
-    };
-  }
-
-  return {
-    value: "on_time",
-    label: "On Time",
-    description: "Deadline aman.",
-  };
-}
-
-function stageState(stageIndex: number, progress: number) {
-  let currentIndex = -1;
-  TRACKING_STAGES.forEach((stage, index) => {
-    if (progress >= stage.minProgress) currentIndex = index;
-  });
-
-  if (stageIndex < currentIndex) return "done";
-  if (stageIndex === currentIndex) return progress >= 100 ? "done" : "active";
   return "pending";
 }
 
@@ -107,6 +51,36 @@ function statusLabel(status: string) {
   };
 
   return labels[status] ?? status;
+}
+
+function customerStatusLabel(status: string) {
+  if (status === "delay" || status === "hampir_deadline") return "Proses";
+  return statusLabel(status);
+}
+
+function normalizeTrackingStages(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const validKeys = new Set<string>(TRACKING_STAGES.map((stage) => stage.key));
+  return value
+    .map((item) => String(item))
+    .filter((item) => validKeys.has(item));
+}
+
+function normalizeTrackingTimeline(value: unknown): TrackingTimelineItem[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const raw = item as Record<string, unknown>;
+      const date = String(raw.date ?? "").trim();
+      const description = String(raw.description ?? "").trim();
+      if (!date && !description) return null;
+      return { date, description };
+    })
+    .filter((item): item is TrackingTimelineItem => Boolean(item))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
 async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
@@ -126,13 +100,6 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
         .limit(1)
     : [];
 
-  const logs = await db
-    .select()
-    .from(poChangeLogsTable)
-    .where(eq(poChangeLogsTable.poId, po.id))
-    .orderBy(desc(poChangeLogsTable.createdAt))
-    .limit(30);
-
   const customerHistory = po.customer
     ? await db
         .select()
@@ -143,6 +110,27 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
         .orderBy(desc(projectsPoTable.tanggalPoMasuk))
     : [];
 
+  const completedStages = normalizeTrackingStages(po.trackingStages);
+  const manualTimeline = normalizeTrackingTimeline(po.trackingTimeline);
+  const catatanLogs = await db
+    .select()
+    .from(poChangeLogsTable)
+    .where(eq(poChangeLogsTable.poId, po.id))
+    .orderBy(desc(poChangeLogsTable.createdAt))
+    .limit(30);
+  const catatanHistory = catatanLogs
+    .map((log) => {
+      const changes = log.changes as
+        | Record<string, { before: unknown; after: unknown }>
+        | undefined;
+      const nextValue = changes?.catatan?.after;
+      const text = String(nextValue ?? "").trim();
+      if (!text || text === "-") return null;
+      return text;
+    })
+    .filter((item): item is string => Boolean(item));
+  const uniqueCatatanHistory = Array.from(new Set(catatanHistory));
+
   return {
     id: po.id,
     noPo: po.noPo,
@@ -150,31 +138,26 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
     customer: po.customer,
     tanggalPoMasuk: po.tanggalPoMasuk,
     targetPenyelesaian: po.targetPenyelesaian,
-    deadline: po.targetPenyelesaian ?? po.deadline,
+    deadline: po.targetPenyelesaian,
     tanggalDelivery: po.deadline,
     picName: pic?.name ?? null,
     departmentName: department?.name ?? null,
     status: po.status,
-    statusLabel: statusLabel(po.status),
+    statusLabel: customerStatusLabel(po.status),
     progress: Math.min(100, Math.max(0, po.progress)),
-    catatan: po.catatan,
-    deadlineStatus: deadlineStatus(po),
-    stages: TRACKING_STAGES.map((stage, index) => ({
+    catatan:
+      uniqueCatatanHistory.length > 0
+        ? uniqueCatatanHistory.join("\n")
+        : po.catatan,
+    stages: TRACKING_STAGES.map((stage) => ({
       key: stage.key,
       label: stage.label,
-      state: stageState(index, po.progress),
+      state: stageState(stage.key, completedStages),
     })),
-    timeline: logs.map((log) => ({
-      id: log.id,
-      action: log.action,
-      title:
-        log.action === "created"
-          ? "PO diterima"
-          : log.action === "closed"
-            ? "Project selesai"
-            : "Progress project diperbarui",
-      changedByName: log.changedByName,
-      createdAt: log.createdAt.toISOString(),
+    timeline: manualTimeline.map((item, index) => ({
+      id: index + 1,
+      date: item.date,
+      title: item.description,
     })),
     history: customerHistory.map((item) => ({
       id: item.id,
@@ -182,7 +165,7 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
       namaProject: item.namaProject,
       tanggalPoMasuk: item.tanggalPoMasuk,
       status: item.status,
-      statusLabel: statusLabel(item.status),
+      statusLabel: customerStatusLabel(item.status),
     })),
   };
 }
