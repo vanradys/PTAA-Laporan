@@ -5,7 +5,9 @@ import {
   Loader2,
   MessageSquare,
   Search,
+  Trash2,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -57,9 +59,11 @@ interface TrackingDetail {
 
 interface TrackingComment {
   id: number;
-  customerName: string;
+  displayName?: string;
+  customerName?: string;
   comment: string;
   createdAt: string;
+  source?: "customer" | "internal";
 }
 
 function formatDate(value?: string | null) {
@@ -126,6 +130,7 @@ function getTrackingSlugFromLocation(location: string) {
 
 export default function CustomerTracking() {
   const [location, setLocation] = useLocation();
+  const { user } = useAuth();
   const [customerName, setCustomerName] = useState("");
   const [poNumber, setPoNumber] = useState("");
   const [detail, setDetail] = useState<TrackingDetail | null>(null);
@@ -135,6 +140,18 @@ export default function CustomerTracking() {
   const [isSearching, setIsSearching] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
+  const canDeleteComments = ["admin", "direktur", "director", "dir"].includes(
+    String(user?.role ?? "").toLowerCase(),
+  );
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = "PO PTAA";
+
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
 
   const loadComments = async (poId: number) => {
     const data = await apiRequest<TrackingComment[]>(
@@ -168,10 +185,19 @@ export default function CustomerTracking() {
     const slug = getTrackingSlugFromLocation(location);
     if (!slug || detail || isSearching) return;
 
+    let parsedSearch = parseTrackingSlug(slug);
     const savedSearch = localStorage.getItem(`${TRACKING_STORAGE_PREFIX}${slug}`);
-    const parsedSearch = savedSearch
-      ? (JSON.parse(savedSearch) as { customerName: string; poNumber: string })
-      : parseTrackingSlug(slug);
+
+    if (savedSearch) {
+      try {
+        parsedSearch = JSON.parse(savedSearch) as {
+          customerName: string;
+          poNumber: string;
+        };
+      } catch {
+        localStorage.removeItem(`${TRACKING_STORAGE_PREFIX}${slug}`);
+      }
+    }
 
     if (!parsedSearch) return;
 
@@ -234,6 +260,19 @@ export default function CustomerTracking() {
     } finally {
       setIsSending(false);
     }
+  };
+
+  const handleDeleteComment = async (item: TrackingComment) => {
+    if (!detail || !canDeleteComments) return;
+    if (!confirm("Hapus komentar ini?")) return;
+
+    const endpoint =
+      item.source === "internal"
+        ? `/api/po/${detail.id}/internal-comments/${item.id}`
+        : `/api/customer-tracking/${detail.id}/comments/${item.id}`;
+
+    await apiRequest(endpoint, { method: "DELETE" });
+    await loadComments(detail.id);
   };
 
   const resetSearch = () => {
@@ -348,7 +387,25 @@ export default function CustomerTracking() {
               </Card>
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-2">
+            <section className="grid gap-4 lg:grid-cols-3">
+              <Card className="border border-slate-200 bg-white shadow-sm">
+                <CardHeader>
+                  <CardTitle>Status Tahapan</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {detail.stages.map((stage) => (
+                    <div key={stage.key} className="flex items-center gap-3">
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs ${stageClass(stage.state)}`}
+                      >
+                        {stage.state === "done" ? "✓" : ""}
+                      </span>
+                      <span className="text-sm font-medium">{stage.label}</span>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
                   <CardTitle>Kendala Project</CardTitle>
@@ -394,8 +451,24 @@ export default function CustomerTracking() {
                     comments.map((item) => (
                       <div key={item.id} className="rounded-lg border border-slate-200 p-3">
                         <div className="flex flex-wrap justify-between gap-2 text-sm">
-                          <span className="font-semibold">{item.customerName}</span>
-                          <span className="text-xs text-slate-500">{formatDateTime(item.createdAt)}</span>
+                          <span className="font-semibold">
+                            {item.displayName ?? item.customerName ?? "-"}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">{formatDateTime(item.createdAt)}</span>
+                            {canDeleteComments && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => handleDeleteComment(item)}
+                                title="Hapus komentar"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <p className="mt-2 text-sm text-slate-700">{item.comment}</p>
                       </div>

@@ -29,6 +29,37 @@ const TRACKING_STAGES = [
 
 type TrackingTimelineItem = { date: string; description: string };
 
+function isAdminOrDirector(user?: { role?: string | null }) {
+  const role = String(user?.role ?? "").toLowerCase();
+  return ["admin", "direktur", "director", "dir"].includes(role);
+}
+
+function getInternalCommentDisplayName(user: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}) {
+  const role = String(user.role ?? "").toLowerCase();
+  if (["direktur", "director", "dir"].includes(role)) return "Director";
+  if (role === "admin") return "Admin";
+
+  const code = String(user.departmentCode ?? "").toUpperCase();
+  if (code === "MKT") return "MKT";
+  if (code === "ENG") return "ENG";
+  if (code === "PUR") return "PUR";
+  if (code === "GA") return "GA";
+  if (code === "AAF" || code === "FIN") return "Finance";
+
+  const departmentName = String(user.departmentName ?? "").toLowerCase();
+  if (departmentName.includes("marketing")) return "MKT";
+  if (departmentName.includes("engineering")) return "ENG";
+  if (departmentName.includes("purchasing")) return "PUR";
+  if (departmentName.includes("general affairs")) return "GA";
+  if (departmentName.includes("finance")) return "Finance";
+
+  return "PTAA";
+}
+
 function stageState(stageKey: string, completedStages: string[]) {
   if (completedStages.includes(stageKey)) return "done";
 
@@ -311,7 +342,7 @@ router.post("/po/:poId/internal-comments", async (req, res) => {
     .values({
       poId,
       userId: user.id,
-      userName: user.name ?? "User PTAA",
+      userName: getInternalCommentDisplayName(user),
       comment,
     })
     .returning();
@@ -324,6 +355,38 @@ router.post("/po/:poId/internal-comments", async (req, res) => {
     comment: saved.comment,
     createdAt: saved.createdAt.toISOString(),
   });
+});
+
+router.delete("/po/:poId/internal-comments/:commentId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) {
+    res.status(401).json({ error: "Tidak terautentikasi" });
+    return;
+  }
+
+  const user = await getUserFromToken(token);
+  if (!user) {
+    res.status(401).json({ error: "Sesi tidak valid" });
+    return;
+  }
+
+  if (!isAdminOrDirector(user)) {
+    res.status(403).json({ error: "Tidak diizinkan" });
+    return;
+  }
+
+  const poId = Number(req.params.poId);
+  const commentId = Number(req.params.commentId);
+  await db
+    .delete(poInternalCommentsTable)
+    .where(
+      and(
+        eq(poInternalCommentsTable.id, commentId),
+        eq(poInternalCommentsTable.poId, poId),
+      ),
+    );
+
+  res.json({ success: true });
 });
 
 router.get("/customer-tracking/:poId", async (req, res) => {
@@ -344,22 +407,41 @@ router.get("/customer-tracking/:poId", async (req, res) => {
 
 router.get("/customer-tracking/:poId/comments", async (req, res) => {
   const poId = Number(req.params.poId);
-  const comments = await db
+  const customerComments = await db
     .select()
     .from(customerTrackingCommentsTable)
     .where(eq(customerTrackingCommentsTable.poId, poId))
     .orderBy(desc(customerTrackingCommentsTable.createdAt));
+  const internalComments = await db
+    .select()
+    .from(poInternalCommentsTable)
+    .where(eq(poInternalCommentsTable.poId, poId))
+    .orderBy(desc(poInternalCommentsTable.createdAt));
 
-  res.json(
-    comments.map((comment) => ({
+  const comments = [
+    ...customerComments.map((comment) => ({
       id: comment.id,
       poId: comment.poId,
-      customerName: comment.customerName,
+      displayName: comment.customerName,
       comment: comment.comment,
       createdAt: comment.createdAt.toISOString(),
       isRead: comment.isRead,
+      source: "customer",
     })),
+    ...internalComments.map((comment) => ({
+      id: comment.id,
+      poId: comment.poId,
+      displayName: comment.userName,
+      comment: comment.comment,
+      createdAt: comment.createdAt.toISOString(),
+      source: "internal",
+    })),
+  ].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
+
+  res.json(comments);
 });
 
 router.post("/customer-tracking/:poId/comments", async (req, res) => {
@@ -391,11 +473,44 @@ router.post("/customer-tracking/:poId/comments", async (req, res) => {
   res.status(201).json({
     id: saved.id,
     poId: saved.poId,
-    customerName: saved.customerName,
+    displayName: saved.customerName,
     comment: saved.comment,
     createdAt: saved.createdAt.toISOString(),
     isRead: saved.isRead,
+    source: "customer",
   });
+});
+
+router.delete("/customer-tracking/:poId/comments/:commentId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) {
+    res.status(401).json({ error: "Tidak terautentikasi" });
+    return;
+  }
+
+  const user = await getUserFromToken(token);
+  if (!user) {
+    res.status(401).json({ error: "Sesi tidak valid" });
+    return;
+  }
+
+  if (!isAdminOrDirector(user)) {
+    res.status(403).json({ error: "Tidak diizinkan" });
+    return;
+  }
+
+  const poId = Number(req.params.poId);
+  const commentId = Number(req.params.commentId);
+  await db
+    .delete(customerTrackingCommentsTable)
+    .where(
+      and(
+        eq(customerTrackingCommentsTable.id, commentId),
+        eq(customerTrackingCommentsTable.poId, poId),
+      ),
+    );
+
+  res.json({ success: true });
 });
 
 export default router;

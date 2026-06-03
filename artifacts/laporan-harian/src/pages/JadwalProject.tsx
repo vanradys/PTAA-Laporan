@@ -204,10 +204,12 @@ interface PoActivityLog {
 interface CustomerTrackingComment {
   id: number;
   poId: number;
-  customerName: string;
+  customerName?: string;
+  displayName?: string;
   comment: string;
   createdAt: string;
   isRead: boolean;
+  source?: "customer" | "internal";
   noPo?: string | null;
   namaProject?: string | null;
 }
@@ -415,6 +417,9 @@ export default function JadwalProject() {
     departmentCode === "GA" ||
     departmentName.includes("general affairs");
   const canViewPoDetail = Boolean(user);
+  const canDeleteComments = ["admin", "direktur", "director", "dir"].includes(
+    role,
+  );
 
   const [filterMonth, setFilterMonth] = useState<string>(
     String(today.getMonth() + 1),
@@ -690,6 +695,35 @@ export default function JadwalProject() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleDeleteCustomerComment = async (comment: CustomerTrackingComment) => {
+    if (!comment.poId || !canDeleteComments) return;
+    if (!confirm("Hapus komentar customer ini?")) return;
+
+    await apiRequest(
+      `/api/customer-tracking/${comment.poId}/comments/${comment.id}`,
+      { method: "DELETE" },
+    );
+    queryClient.invalidateQueries({ queryKey: ["customer-tracking-comments"] });
+    if (viewingPo?.id === comment.poId) {
+      queryClient.invalidateQueries({
+        queryKey: ["customer-tracking-comments", viewingPo.id],
+      });
+    }
+    toast({ title: "Berhasil", description: "Komentar customer dihapus" });
+  };
+
+  const handleDeleteInternalComment = async (comment: PoInternalComment) => {
+    if (!viewingPo || !canDeleteComments) return;
+    if (!confirm("Hapus komentar internal ini?")) return;
+
+    await apiRequest(
+      `/api/po/${viewingPo.id}/internal-comments/${comment.id}`,
+      { method: "DELETE" },
+    );
+    await refetchInternalPoComments();
+    toast({ title: "Berhasil", description: "Komentar internal dihapus" });
   };
 
   const handleSave = async () => {
@@ -1055,17 +1089,31 @@ export default function JadwalProject() {
                   className="rounded-lg border border-border bg-white p-3"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        {comment.customerName}
-                      </p>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {comment.displayName ?? comment.customerName ?? "-"}
+                        </p>
                       <p className="text-xs text-muted-foreground">
                         {comment.noPo ?? "-"} · {comment.namaProject ?? "-"}
                       </p>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {formatActivityTime(comment.createdAt)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {formatActivityTime(comment.createdAt)}
+                      </span>
+                      {canDeleteComments && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => handleDeleteCustomerComment(comment)}
+                          title="Hapus komentar"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <p className="mt-2 text-sm text-slate-700">
                     {comment.comment}
@@ -1891,11 +1939,25 @@ export default function JadwalProject() {
                       >
                         <div className="flex flex-wrap justify-between gap-2 text-sm">
                           <span className="font-semibold">
-                            {item.customerName}
+                            {item.displayName ?? item.customerName ?? "-"}
                           </span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatActivityDateTime(item.createdAt)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {formatActivityDateTime(item.createdAt)}
+                            </span>
+                            {canDeleteComments && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => handleDeleteCustomerComment(item)}
+                                title="Hapus komentar"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <p className="mt-2 text-sm text-slate-700">
                           {item.comment}
@@ -1932,9 +1994,23 @@ export default function JadwalProject() {
                           <span className="font-semibold">
                             {item.userName}
                           </span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatActivityDateTime(item.createdAt)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {formatActivityDateTime(item.createdAt)}
+                            </span>
+                            {canDeleteComments && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => handleDeleteInternalComment(item)}
+                                title="Hapus komentar"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <p className="mt-2 text-sm text-slate-700">
                           {item.comment}
