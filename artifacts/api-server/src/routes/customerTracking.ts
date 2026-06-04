@@ -412,34 +412,16 @@ router.get("/customer-tracking/:poId/comments", async (req, res) => {
     .from(customerTrackingCommentsTable)
     .where(eq(customerTrackingCommentsTable.poId, poId))
     .orderBy(desc(customerTrackingCommentsTable.createdAt));
-  const internalComments = await db
-    .select()
-    .from(poInternalCommentsTable)
-    .where(eq(poInternalCommentsTable.poId, poId))
-    .orderBy(desc(poInternalCommentsTable.createdAt));
 
-  const comments = [
-    ...customerComments.map((comment) => ({
-      id: comment.id,
-      poId: comment.poId,
-      displayName: comment.customerName,
-      comment: comment.comment,
-      createdAt: comment.createdAt.toISOString(),
-      isRead: comment.isRead,
-      source: "customer",
-    })),
-    ...internalComments.map((comment) => ({
-      id: comment.id,
-      poId: comment.poId,
-      displayName: comment.userName,
-      comment: comment.comment,
-      createdAt: comment.createdAt.toISOString(),
-      source: "internal",
-    })),
-  ].sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+  const comments = customerComments.map((comment) => ({
+    id: comment.id,
+    poId: comment.poId,
+    displayName: comment.customerName,
+    comment: comment.comment,
+    createdAt: comment.createdAt.toISOString(),
+    isRead: comment.isRead,
+    source: "customer",
+  }));
 
   res.json(comments);
 });
