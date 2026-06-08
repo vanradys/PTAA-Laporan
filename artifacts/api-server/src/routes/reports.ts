@@ -111,6 +111,14 @@ function getTodayString(): string {
   return getJakartaDateString();
 }
 
+function addDaysToDateString(dateString: string, amount: number): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + amount);
+
+  return date.toISOString().split("T")[0] ?? dateString;
+}
+
 function getRemainingActions(editCount: number): number {
   return Math.max(0, MAX_TASK_ACTIONS - editCount);
 }
@@ -493,17 +501,27 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = getJakartaDateString(yesterday);
+  const today = getTodayString();
+  const yesterdayStr = addDaysToDateString(today, -1);
 
   const reports = await db
     .select()
     .from(dailyReportsTable)
-    .where(and(eq(dailyReportsTable.userId, user.id), eq(dailyReportsTable.date, yesterdayStr)))
+    .where(and(eq(dailyReportsTable.userId, user.id), sql`${dailyReportsTable.date} < ${today}`))
+    .orderBy(desc(dailyReportsTable.date), desc(dailyReportsTable.createdAt))
     .limit(1);
 
-  if (!reports[0]) { res.json([]); return; }
+  if (!reports[0]) {
+    res.json({
+      tasks: [],
+      sourceReportId: null,
+      sourceReportDate: null,
+      requestedYesterdayDate: yesterdayStr,
+      missingYesterdayDate: yesterdayStr,
+      yesterdayReportMissing: true,
+    });
+    return;
+  }
 
   const tasks = await db.select().from(dailyTasksTable)
     .where(and(
@@ -515,7 +533,8 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
       )
     ));
 
-  res.json(tasks.map(t => {
+  res.json({
+    tasks: tasks.map(t => {
     const editCount = t.editCount ?? 0;
 
     return {
@@ -533,7 +552,13 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
       isDelay: isTaskDelay(t.deadline, t.status),
       createdAt: t.createdAt.toISOString(),
     };
-  }));
+  }),
+    sourceReportId: reports[0].id,
+    sourceReportDate: reports[0].date,
+    requestedYesterdayDate: yesterdayStr,
+    missingYesterdayDate: reports[0].date === yesterdayStr ? null : yesterdayStr,
+    yesterdayReportMissing: reports[0].date !== yesterdayStr,
+  });
 });
 
 router.get("/reports/:id", async (req, res) => {

@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
-import { formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
+import { formatIndonesianDate, formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
 
 const TASK_STATUSES = [
   { value: "belum_mulai", label: "Belum Mulai", color: "bg-gray-100 text-gray-700 border-gray-200" },
@@ -149,6 +149,15 @@ interface ReportData {
   tomorrowPlan?: string | null;
 }
 
+interface PreviousReportTasksData {
+  tasks: ExistingTask[];
+  sourceReportId: number | null;
+  sourceReportDate: string | null;
+  requestedYesterdayDate: string;
+  missingYesterdayDate: string | null;
+  yesterdayReportMissing: boolean;
+}
+
 export default function LaporanSaya() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -161,7 +170,7 @@ export default function LaporanSaya() {
     query: { queryKey: getGetTodayReportQueryKey(), retry: false }
   });
 
-  const { data: yesterdayTasks } = useGetYesterdayTasks();
+  const { data: previousReportTasks } = useGetYesterdayTasks();
   const createReport = useCreateReport();
   const updateReport = useUpdateReport();
   const submitReport = useSubmitReport();
@@ -179,6 +188,10 @@ export default function LaporanSaya() {
   const hasAutoCopiedYesterdayTasks = useRef(false);
 
   const report = (isError ? null : todayReport) as ReportData | null;
+  const previousTasksData = previousReportTasks as PreviousReportTasksData | undefined;
+  const yesterdayTasks = previousTasksData?.tasks ?? [];
+  const missingYesterdayDate = previousTasksData?.missingYesterdayDate ?? null;
+  const sourceReportDate = previousTasksData?.sourceReportDate ?? null;
   const existingTasks: ExistingTask[] = report?.tasks ?? [];
 const isSubmitted = report?.status === "dikirim";
 const isReviewed = report?.status === "direview";
@@ -254,9 +267,9 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
     setNewTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
 
   const copyYesterdayTasksToToday = (showToast = true) => {
-  if (!yesterdayTasks || !Array.isArray(yesterdayTasks)) return;
+  if (!Array.isArray(yesterdayTasks)) return;
 
-  const copies = (yesterdayTasks as ExistingTask[])
+  const copies = yesterdayTasks
     .filter((task) => task.status !== "selesai" && task.title.trim().length > 0)
     .map((t) => ({
       id: Date.now().toString() + Math.random(),
@@ -283,7 +296,9 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
 
   if (showToast) {
     toast({
-      title: "Tugas kemarin ditambahkan",
+      title: sourceReportDate && sourceReportDate !== previousTasksData?.requestedYesterdayDate
+        ? "Tugas laporan terakhir ditambahkan"
+        : "Tugas kemarin ditambahkan",
       description: `${copies.length} tugas yang belum selesai otomatis masuk ke laporan hari ini.`,
     });
   }
@@ -296,7 +311,7 @@ const handleCopyYesterday = () => {
 useEffect(() => {
   if (hasAutoCopiedYesterdayTasks.current) return;
   if (report) return;
-  if (!yesterdayTasks || !Array.isArray(yesterdayTasks) || yesterdayTasks.length === 0) return;
+  if (!Array.isArray(yesterdayTasks) || yesterdayTasks.length === 0) return;
 
   hasAutoCopiedYesterdayTasks.current = true;
   copyYesterdayTasksToToday(true);
@@ -732,6 +747,24 @@ useEffect(() => {
                 </Card>
               )}
 
+              {missingYesterdayDate && (
+                <Card className="border border-red-200 bg-red-50">
+                  <CardContent className="p-4 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-red-800">
+                        Anda tidak mengisi laporan harian kemarin tanggal {formatIndonesianDate(missingYesterdayDate)}
+                      </p>
+                      {sourceReportDate && (
+                        <p className="text-xs text-red-600 mt-0.5">
+                          Tugas otomatis diambil dari laporan terakhir tanggal {formatIndonesianDate(sourceReportDate)}.
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Tasks Section */}
                 <Card className="border border-border bg-white">
                   <CardHeader className="pb-3">
@@ -739,10 +772,12 @@ useEffect(() => {
                     <CardTitle className="text-base">
                       Daftar Tugas Hari Ini <span className="text-destructive">*</span>
                     </CardTitle>                    <div className="flex flex-wrap gap-2">
-                      {yesterdayTasks && Array.isArray(yesterdayTasks) && yesterdayTasks.length > 0 && (
+                      {yesterdayTasks.length > 0 && (
                         <Button type="button" variant="outline" size="sm" onClick={handleCopyYesterday}>
                           <Copy className="w-3.5 h-3.5 mr-1.5" />
-                          Ambil Tugas Kemarin
+                          {sourceReportDate && sourceReportDate !== previousTasksData?.requestedYesterdayDate
+                            ? "Ambil Tugas Terakhir"
+                            : "Ambil Tugas Kemarin"}
                         </Button>
                       )}
                       {canAddNewTasks && (

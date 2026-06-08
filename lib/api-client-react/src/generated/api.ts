@@ -39,6 +39,7 @@ import type {
   PoSummary,
   PoUpdate,
   PoYearlyTrendResponse,
+  PreviousReportTasks,
   Report,
   ReportComment,
   ReportInput,
@@ -601,9 +602,9 @@ export const getGetYesterdayTasksUrl = () => {
 /**
  * @summary Get unfinished/pending tasks from yesterday for copy
  */
-export const getYesterdayTasks = async ( options?: RequestInit): Promise<DailyTask[]> => {
+export const getYesterdayTasks = async ( options?: RequestInit): Promise<PreviousReportTasks> => {
 
-  return customFetch<DailyTask[]>(getGetYesterdayTasksUrl(),
+  return customFetch<PreviousReportTasks>(getGetYesterdayTasksUrl(),
   {
     ...options,
     method: 'GET'
@@ -2682,7 +2683,6 @@ export function useListEmployees<TData = Awaited<ReturnType<typeof listEmployees
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
-
 
 
 

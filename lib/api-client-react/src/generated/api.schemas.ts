@@ -153,6 +153,18 @@ export interface ReportInput {
   status?: string;
 }
 
+export interface PreviousReportTasks {
+  tasks: DailyTask[];
+  /** @nullable */
+  sourceReportId?: number | null;
+  /** @nullable */
+  sourceReportDate?: string | null;
+  requestedYesterdayDate: string;
+  /** @nullable */
+  missingYesterdayDate?: string | null;
+  yesterdayReportMissing: boolean;
+}
+
 export interface ReportUpdate {
   date?: string;
   obstacles?: string;

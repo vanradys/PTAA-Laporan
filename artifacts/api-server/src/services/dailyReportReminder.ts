@@ -93,6 +93,17 @@ export function formatJakartaTime(date: Date): string {
   }).format(date).replace(".", ":");
 }
 
+export function isWeekendReportDate(dateString: string): boolean {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return false;
+  }
+
+  const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return dayOfWeek === 0 || dayOfWeek === 6;
+}
+
 export function normalizeReportDate(value: unknown): string {
   const date = typeof value === "string" ? value.trim() : "";
 
@@ -158,6 +169,10 @@ export async function getMissingDailyReportUsers(
   scope: ReminderScope = {},
   reportDate = getJakartaDateString(),
 ): Promise<MissingDailyReportUser[]> {
+  if (isWeekendReportDate(reportDate)) {
+    return [];
+  }
+
   const userConditions: SQL[] = [reportingUserCondition()];
 
   if (scope.departmentId !== undefined) {
@@ -274,6 +289,22 @@ export async function sendDailyReportReminders(options: {
   reportDate?: string;
 }) {
   const reportDate = options.reportDate ?? getJakartaDateString();
+
+  if (isWeekendReportDate(reportDate)) {
+    return {
+      success: true,
+      reportDate,
+      sentCount: 0,
+      skippedCount: 0,
+      totalMissing: 0,
+      sentUsers: [],
+      pushSuccessCount: 0,
+      pushFailedCount: 0,
+      pushInvalidTokenRemovedCount: 0,
+      message: `Reminder laporan harian tidak dikirim pada Sabtu/Minggu (${formatIndonesianDate(reportDate)}).`,
+    };
+  }
+
   const missingUsers = await getMissingDailyReportUsers(options.scope ?? {}, reportDate);
   const targetUsers = missingUsers.filter((user) => !user.reminderSent);
   const sentUsers: MissingDailyReportUser[] = [];

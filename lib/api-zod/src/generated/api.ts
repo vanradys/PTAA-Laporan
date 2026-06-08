@@ -166,7 +166,14 @@ export const GetYesterdayTasksResponseItem = zod.object({
   "isDelay": zod.boolean(),
   "createdAt": zod.string()
 })
-export const GetYesterdayTasksResponse = zod.array(GetYesterdayTasksResponseItem)
+export const GetYesterdayTasksResponse = zod.object({
+  "tasks": zod.array(GetYesterdayTasksResponseItem),
+  "sourceReportId": zod.number().nullish(),
+  "sourceReportDate": zod.string().nullish(),
+  "requestedYesterdayDate": zod.string(),
+  "missingYesterdayDate": zod.string().nullish(),
+  "yesterdayReportMissing": zod.boolean()
+})
 
 
 /**
@@ -868,4 +875,3 @@ export const ListEmployeesResponseItem = zod.object({
   "avatarInitials": zod.string()
 })
 export const ListEmployeesResponse = zod.array(ListEmployeesResponseItem)
-
