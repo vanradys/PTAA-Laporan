@@ -175,17 +175,61 @@ interface AssignedTaskNotification {
   assignedByUserId?: number | null;
   assignedByName: string;
   assignedByRole: string;
+  assignedByDepartment?: string | null;
+  assignedToName?: string | null;
+  assignedToDepartment?: string | null;
   title: string;
   project?: string | null;
   notes?: string | null;
   status: string;
+  responseNote?: string | null;
   createdTaskId?: number | null;
   respondedAt?: string | null;
   createdAt: string;
 }
 
-function formatAssignmentDateTime(value: string) {
-  return new Intl.DateTimeFormat("id-ID", {
+interface AssignmentHistoryItem {
+  id: number;
+  direction: "received" | "given";
+  department: string;
+  assignedByUserId?: number | null;
+  assignedByName: string;
+  assignedByRole: string;
+  assignedByDepartment?: string | null;
+  assigneeUserId: number;
+  assignedToName?: string | null;
+  assignedToDepartment?: string | null;
+  title: string;
+  project?: string | null;
+  notes?: string | null;
+  status: "pending" | "accepted" | "rejected";
+  responseNote?: string | null;
+  createdTaskId?: number | null;
+  assignedAt: string;
+  respondedAt?: string | null;
+}
+
+interface AssignmentHistoryResponse {
+  received: AssignmentHistoryItem[];
+  given: AssignmentHistoryItem[];
+}
+
+const ASSIGNMENT_STATUS_FILTERS = [
+  { value: "all", label: "Semua" },
+  { value: "pending", label: "Pending" },
+  { value: "accepted", label: "Accepted" },
+  { value: "rejected", label: "Rejected" },
+];
+
+const ASSIGNMENT_STATUS_STYLES: Record<string, string> = {
+  pending: "border-amber-200 bg-amber-50 text-amber-700",
+  accepted: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  rejected: "border-red-200 bg-red-50 text-red-700",
+};
+
+function formatAssignmentDateTime(value?: string | null) {
+  if (!value) return "Belum direspons";
+  const parts = new Intl.DateTimeFormat("id-ID", {
     timeZone: "Asia/Jakarta",
     weekday: "long",
     day: "2-digit",
@@ -193,7 +237,180 @@ function formatAssignmentDateTime(value: string) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+    hour12: false,
+  }).formatToParts(new Date(value));
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const weekday = getPart("weekday");
+  const day = getPart("day");
+  const month = getPart("month");
+  const year = getPart("year");
+  const hour = getPart("hour");
+  const minute = getPart("minute");
+  return `${weekday}, ${day} ${month} ${year}, ${hour}:${minute} WIB`;
+}
+
+function matchesAssignmentFilter(
+  item: AssignmentHistoryItem,
+  statusFilter: string,
+  search: string,
+) {
+  if (statusFilter !== "all" && item.status !== statusFilter) return false;
+  const keyword = search.trim().toLowerCase();
+  if (!keyword) return true;
+  return [item.title, item.project, item.notes]
+    .map((value) => String(value ?? "").toLowerCase())
+    .some((value) => value.includes(keyword));
+}
+
+function AssignmentHistoryTable({
+  title,
+  items,
+  statusFilter,
+  search,
+  onStatusFilterChange,
+  onSearchChange,
+}: {
+  title: string;
+  items: AssignmentHistoryItem[];
+  statusFilter: string;
+  search: string;
+  onStatusFilterChange: (value: string) => void;
+  onSearchChange: (value: string) => void;
+}) {
+  const filteredItems = items.filter((item) =>
+    matchesAssignmentFilter(item, statusFilter, search),
+  );
+
+  return (
+    <Card className="border border-border">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <CardTitle className="text-base">{title}</CardTitle>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Cari tugas/project..."
+              className="h-8 w-full text-sm sm:w-52"
+            />
+            <Select value={statusFilter} onValueChange={onStatusFilterChange}>
+              <SelectTrigger className="h-8 w-full text-sm sm:w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ASSIGNMENT_STATUS_FILTERS.map((filter) => (
+                  <SelectItem key={filter.value} value={filter.value}>
+                    {filter.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {filteredItems.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+            Belum ada history tugas
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
+                    Departemen
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
+                    Nama Tugas
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
+                    Nama Project
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
+                    Catatan Tambahan
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
+                    Waktu Diberikan
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
+                    Waktu Penerimaan
+                  </th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-muted-foreground">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.map((item) => (
+                  <tr key={item.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {item.department}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-foreground">
+                      {item.title}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {item.project ?? "-"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {item.notes ?? "-"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {formatAssignmentDateTime(item.assignedAt)}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {formatAssignmentDateTime(item.respondedAt)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${ASSIGNMENT_STATUS_STYLES[item.status] ?? ASSIGNMENT_STATUS_STYLES.pending}`}
+                      >
+                        {item.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AssignmentHistorySection({
+  history,
+}: {
+  history?: AssignmentHistoryResponse;
+}) {
+  const [receivedStatusFilter, setReceivedStatusFilter] = useState("all");
+  const [givenStatusFilter, setGivenStatusFilter] = useState("all");
+  const [receivedSearch, setReceivedSearch] = useState("");
+  const [givenSearch, setGivenSearch] = useState("");
+
+  return (
+    <div className="space-y-5">
+      <AssignmentHistoryTable
+        title="Penerimaan Tugas"
+        items={history?.received ?? []}
+        statusFilter={receivedStatusFilter}
+        search={receivedSearch}
+        onStatusFilterChange={setReceivedStatusFilter}
+        onSearchChange={setReceivedSearch}
+      />
+      <AssignmentHistoryTable
+        title="Pemberian Tugas"
+        items={history?.given ?? []}
+        statusFilter={givenStatusFilter}
+        search={givenSearch}
+        onStatusFilterChange={setGivenStatusFilter}
+        onSearchChange={setGivenSearch}
+      />
+    </div>
+  );
 }
 
 export default function LaporanSaya() {
@@ -215,6 +432,12 @@ export default function LaporanSaya() {
     queryKey: ["assigned-tasks", "pending"],
     queryFn: () =>
       apiRequest<AssignedTaskNotification[]>("/api/assigned-tasks/pending"),
+    refetchInterval: 15000,
+  });
+  const { data: assignmentHistory } = useQuery({
+    queryKey: ["assigned-tasks", "history"],
+    queryFn: () =>
+      apiRequest<AssignmentHistoryResponse>("/api/assigned-tasks/history"),
     refetchInterval: 15000,
   });
   const createReport = useCreateReport();
@@ -403,6 +626,8 @@ const handleAssignTask = async () => {
 
     closeAssignModal();
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    queryClient.invalidateQueries({ queryKey: ["assigned-tasks", "history"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-summary", today] });
     toast({ title: "Tugas dikirim", description: "Tugas berhasil dikirim ke penerima." });
   } catch (error) {
     toast({
@@ -428,6 +653,7 @@ const handleRespondAssignedTask = async (
     });
 
     queryClient.invalidateQueries({ queryKey: ["assigned-tasks", "pending"] });
+    queryClient.invalidateQueries({ queryKey: ["assigned-tasks", "history"] });
     queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
     refreshDashboardAndMonitoring();
     toast({
@@ -926,7 +1152,7 @@ useEffect(() => {
                       <CardContent className="p-4 text-center">
                         <div className="mx-auto max-w-2xl space-y-2">
                           <p className="text-sm font-semibold text-slate-900">
-                            Anda menerima tugas dari {assignment.assignedByRole}
+                            Anda menerima tugas dari {assignment.assignedByName}
                           </p>
                           <p className="text-sm text-slate-800">
                             {assignment.title}
@@ -1280,6 +1506,9 @@ useEffect(() => {
               </div>
             </div>
           </form>
+        )}
+        {!isLoading && (
+          <AssignmentHistorySection history={assignmentHistory} />
         )}
       </div>
       {showAssignModal && (

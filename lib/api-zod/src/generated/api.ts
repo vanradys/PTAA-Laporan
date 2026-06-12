@@ -657,7 +657,7 @@ export const GetPoSummaryResponse = zod.object({
   "poBelumSelesai": zod.number(),
   "poDelay": zod.number(),
   "poHampirDeadline": zod.number(),
-  "persentasePencapaian": zod.number(),
+  "persentasePencapaian": zod.number().optional(),
   "month": zod.number(),
   "year": zod.number()
 })
@@ -830,8 +830,8 @@ export const GetDashboardSummaryResponse = zod.object({
   "submitRate": zod.number(),
   "completionRate": zod.number(),
   "pendingAssignedTasksCount": zod.number(),
-  "pendingAssignedTasksByRole": zod.array(zod.object({
-    "assignedByRole": zod.string(),
+  "pendingAssignedTasksByAssigner": zod.array(zod.object({
+    "assignedByName": zod.string(),
     "count": zod.number()
   }))
 })

@@ -16,8 +16,8 @@ export interface DashboardSummary {
   submitRate: number;
   completionRate: number;
   pendingAssignedTasksCount: number;
-  pendingAssignedTasksByRole: {
-    assignedByRole: string;
+  pendingAssignedTasksByAssigner: {
+    assignedByName: string;
     count: number;
   }[];
 }

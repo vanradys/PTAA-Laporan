@@ -53,7 +53,7 @@ router.get("/dashboard/summary", async (req, res) => {
       submitRate: 0,
       completionRate: 0,
       pendingAssignedTasksCount: 0,
-      pendingAssignedTasksByRole: [],
+      pendingAssignedTasksByAssigner: [],
     });
     return;
   }
@@ -97,7 +97,7 @@ router.get("/dashboard/summary", async (req, res) => {
   const completionRate = totalTasksToday > 0 ? Math.round((tasksCompleted / totalTasksToday) * 100) : 0;
   const pendingAssignedTaskStats = await db
     .select({
-      assignedByRole: assignedDailyTasksTable.assignedByRole,
+      assignedByName: assignedDailyTasksTable.assignedByName,
       count: sql<number>`count(*)::int`,
     })
     .from(assignedDailyTasksTable)
@@ -105,7 +105,7 @@ router.get("/dashboard/summary", async (req, res) => {
       eq(assignedDailyTasksTable.assigneeUserId, user.id),
       eq(assignedDailyTasksTable.status, "pending"),
     ))
-    .groupBy(assignedDailyTasksTable.assignedByRole);
+    .groupBy(assignedDailyTasksTable.assignedByName);
 
   const pendingAssignedTasksCount = pendingAssignedTaskStats.reduce(
     (total, item) => total + item.count,
@@ -122,8 +122,8 @@ router.get("/dashboard/summary", async (req, res) => {
     submitRate,
     completionRate,
     pendingAssignedTasksCount,
-    pendingAssignedTasksByRole: pendingAssignedTaskStats.map((item) => ({
-      assignedByRole: item.assignedByRole,
+    pendingAssignedTasksByAssigner: pendingAssignedTaskStats.map((item) => ({
+      assignedByName: item.assignedByName,
       count: item.count,
     })),
   });

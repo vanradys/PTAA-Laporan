@@ -91,6 +91,7 @@ function canViewPoAmount(user?: {
   departmentName?: string | null;
 }): boolean {
   const role = String(user?.role ?? "").toLowerCase();
+  if (role === "admin_marketing") return false;
   if (PO_AMOUNT_VISIBLE_ROLES.includes(role)) return true;
 
   const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
@@ -548,6 +549,7 @@ router.get("/po/summary", async (req, res) => {
     return s >= 0 && s <= 7 && !isProjectFinished(p.status);
   }).length;
   const monthlyTarget = MONTHLY_PO_TARGET;
+  const canSeeAmount = canViewPoAmount(user);
   const targetPos = await db
     .select()
     .from(projectsPoTable)
@@ -572,8 +574,7 @@ router.get("/po/summary", async (req, res) => {
     poBelumSelesai,
     poDelay,
     poHampirDeadline,
-    ...(canViewPoAmount(user) ? { totalNominal, monthlyTarget } : {}),
-    persentasePencapaian,
+    ...(canSeeAmount ? { totalNominal, monthlyTarget, persentasePencapaian } : {}),
     targetMonthName: MONTH_NAMES[month - 1] ?? String(month),
     targetStartDate,
     targetEndDate,

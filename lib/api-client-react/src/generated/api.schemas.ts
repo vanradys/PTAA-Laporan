@@ -200,8 +200,8 @@ export interface DashboardSummary {
   submitRate: number;
   completionRate: number;
   pendingAssignedTasksCount: number;
-  pendingAssignedTasksByRole: {
-    assignedByRole: string;
+  pendingAssignedTasksByAssigner: {
+    assignedByName: string;
     count: number;
   }[];
 }
@@ -291,7 +291,7 @@ export interface PoSummary {
   poBelumSelesai: number;
   poDelay: number;
   poHampirDeadline: number;
-  persentasePencapaian: number;
+  persentasePencapaian?: number;
   month: number;
   year: number;
 }

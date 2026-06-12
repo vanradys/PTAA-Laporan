@@ -6,8 +6,10 @@ import {
   dailyTasksTable,
   dailyReportsTable,
   departmentsTable,
+  desc,
   eq,
   notificationsTable,
+  or,
   sql,
   usersTable,
 } from "@workspace/db";
@@ -68,6 +70,11 @@ function formatAssignerRole(user: {
   return user.departmentName ?? "PTAA";
 }
 
+function getDepartmentLabel(value?: string | null) {
+  const text = String(value ?? "").trim();
+  return text || "PTAA";
+}
+
 function buildAssignmentResponse(
   assignment: typeof assignedDailyTasksTable.$inferSelect,
 ) {
@@ -77,13 +84,46 @@ function buildAssignmentResponse(
     assignedByUserId: assignment.assignedByUserId,
     assignedByName: assignment.assignedByName,
     assignedByRole: assignment.assignedByRole,
+    assignedByDepartment: assignment.assignedByDepartment ?? null,
+    assignedToName: assignment.assignedToName ?? null,
+    assignedToDepartment: assignment.assignedToDepartment ?? null,
     title: assignment.title,
     project: assignment.project ?? null,
     notes: assignment.notes ?? null,
     status: assignment.status,
+    responseNote: assignment.responseNote ?? null,
     createdTaskId: assignment.createdTaskId ?? null,
     respondedAt: assignment.respondedAt?.toISOString() ?? null,
     createdAt: assignment.createdAt.toISOString(),
+  };
+}
+
+function buildAssignmentHistoryItem(
+  assignment: typeof assignedDailyTasksTable.$inferSelect,
+  direction: "received" | "given",
+) {
+  return {
+    id: assignment.id,
+    direction,
+    department:
+      direction === "received"
+        ? getDepartmentLabel(assignment.assignedByDepartment ?? assignment.assignedByRole)
+        : getDepartmentLabel(assignment.assignedToDepartment),
+    assignedByUserId: assignment.assignedByUserId,
+    assignedByName: assignment.assignedByName,
+    assignedByRole: assignment.assignedByRole,
+    assignedByDepartment: assignment.assignedByDepartment ?? null,
+    assigneeUserId: assignment.assigneeUserId,
+    assignedToName: assignment.assignedToName ?? null,
+    assignedToDepartment: assignment.assignedToDepartment ?? null,
+    title: assignment.title,
+    project: assignment.project ?? null,
+    notes: assignment.notes ?? null,
+    status: assignment.status,
+    responseNote: assignment.responseNote ?? null,
+    createdTaskId: assignment.createdTaskId ?? null,
+    assignedAt: assignment.createdAt.toISOString(),
+    respondedAt: assignment.respondedAt?.toISOString() ?? null,
   };
 }
 
@@ -185,6 +225,34 @@ router.get("/assigned-tasks/pending", async (req, res) => {
   res.json(assignments.map(buildAssignmentResponse));
 });
 
+router.get("/assigned-tasks/history", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  const assignments = await db
+    .select()
+    .from(assignedDailyTasksTable)
+    .where(
+      or(
+        eq(assignedDailyTasksTable.assigneeUserId, user.id),
+        eq(assignedDailyTasksTable.assignedByUserId, user.id),
+      ),
+    )
+    .orderBy(desc(assignedDailyTasksTable.createdAt));
+
+  res.json({
+    received: assignments
+      .filter((assignment) => assignment.assigneeUserId === user.id)
+      .map((assignment) => buildAssignmentHistoryItem(assignment, "received")),
+    given: assignments
+      .filter((assignment) => assignment.assignedByUserId === user.id)
+      .map((assignment) => buildAssignmentHistoryItem(assignment, "given")),
+  });
+});
+
 router.post("/assigned-tasks", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
@@ -228,6 +296,7 @@ router.post("/assigned-tasks", async (req, res) => {
   }
 
   const assignedByRole = formatAssignerRole(user);
+  const assignedByDepartment = getDepartmentLabel(user.departmentName ?? assignedByRole);
   const [assignment] = await db
     .insert(assignedDailyTasksTable)
     .values({
@@ -235,6 +304,9 @@ router.post("/assigned-tasks", async (req, res) => {
       assignedByUserId: user.id,
       assignedByName: user.name ?? assignedByRole,
       assignedByRole,
+      assignedByDepartment,
+      assignedToName: assignee.name,
+      assignedToDepartment: assignee.departmentName ?? null,
       title,
       project: project || null,
       notes: notes || null,
@@ -261,6 +333,10 @@ router.post("/assigned-tasks/:assignmentId/respond", async (req, res) => {
 
   const assignmentId = Number(req.params.assignmentId);
   const accepted = req.body?.accepted === true || req.body?.action === "accept";
+  const responseNote =
+    req.body?.responseNote === undefined
+      ? undefined
+      : String(req.body.responseNote ?? "").trim();
 
   const [assignment] = await db
     .select()
@@ -283,13 +359,17 @@ router.post("/assigned-tasks/:assignmentId/respond", async (req, res) => {
   }
 
   if (!accepted) {
-    const [declined] = await db
+    const [rejected] = await db
       .update(assignedDailyTasksTable)
-      .set({ status: "declined", respondedAt: new Date() })
+      .set({
+        status: "rejected",
+        responseNote: responseNote || null,
+        respondedAt: new Date(),
+      })
       .where(eq(assignedDailyTasksTable.id, assignment.id))
       .returning();
 
-    res.json(buildAssignmentResponse(declined));
+    res.json(buildAssignmentResponse(rejected));
     return;
   }
 
@@ -317,6 +397,7 @@ router.post("/assigned-tasks/:assignmentId/respond", async (req, res) => {
     .set({
       status: "accepted",
       createdTaskId: task.id,
+      responseNote: responseNote || null,
       respondedAt: new Date(),
     })
     .where(eq(assignedDailyTasksTable.id, assignment.id))

@@ -24,6 +24,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { Link } from "wouter";
 import Layout from "@/components/Layout";
 import { formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
 
@@ -324,15 +325,16 @@ export default function Dashboard() {
                           </Badge>
                         </div>
                         <div className="space-y-1">
-                          {summary.pendingAssignedTasksByRole.map((item) => (
-                            <p
-                              key={item.assignedByRole}
-                              className="text-xs font-semibold text-red-700"
+                          {summary.pendingAssignedTasksByAssigner.map((item) => (
+                            <Link
+                              key={item.assignedByName}
+                              href="/laporan-saya"
+                              className="block rounded-md text-xs font-semibold text-red-700 underline-offset-2 hover:underline"
                             >
-                              {item.assignedByRole} telah memberimu{" "}
+                              {item.assignedByName} telah memberimu{" "}
                               {item.count} tugas baru pada Halaman
-                              &quot;Laporan Harian&quot;
-                            </p>
+                              Laporan Harian.
+                            </Link>
                           ))}
                         </div>
                       </div>
