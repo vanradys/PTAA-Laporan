@@ -34,7 +34,7 @@ const CUSTOMER_TRACKING_STAGE_KEYS = [
 ] as const;
 
 const PROJECT_PROGRESS_STAGES = [
-  { key: "po_received", label: "PO Received", progress: 0, legacyKeys: ["po_diterima", "belum_mulai", "proses", "hampir_deadline", "delay"] },
+  { key: "po_received", label: "PO Received", progress: 0, legacyKeys: ["po_diterima", "belum_mulai"] },
   { key: "engineering", label: "Engineering", progress: 20, legacyKeys: ["engineering"] },
   { key: "approval_drawing", label: "Approval Drawing", progress: 20, legacyKeys: ["approval_drawing"] },
   { key: "material_order", label: "Material Order", progress: 40, legacyKeys: ["procurement"] },
@@ -56,6 +56,14 @@ const LEGACY_PROJECT_PROGRESS_MAP = new Map<string, ProjectProgressKey>(
     stage.legacyKeys.map((legacyKey) => [legacyKey, stage.key] as const),
   ),
 );
+const GENERIC_LEGACY_STATUS_KEYS = new Set([
+  "",
+  "belum_mulai",
+  "po_diterima",
+  "proses",
+  "hampir_deadline",
+  "delay",
+]);
 
 const PO_AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "dir"];
 const MONTHLY_PO_TARGET = 10_000_000_000;
@@ -151,11 +159,13 @@ function projectProgressLabel(value: string): string {
 function normalizeProjectProgress(
   value: unknown,
   trackingStages?: unknown,
+  legacyProgress?: unknown,
+  hasPainting = false,
 ): ProjectProgressKey {
   const rawValue = String(value ?? "").trim().toLowerCase();
   if (PROJECT_PROGRESS_KEYS.has(rawValue)) return rawValue as ProjectProgressKey;
   const mappedValue = LEGACY_PROJECT_PROGRESS_MAP.get(rawValue);
-  if (mappedValue) return mappedValue;
+  if (mappedValue && !GENERIC_LEGACY_STATUS_KEYS.has(rawValue)) return mappedValue;
 
   const completedStages = normalizeTrackingStages(trackingStages);
   for (const stage of [...PROJECT_PROGRESS_STAGES].reverse()) {
@@ -167,11 +177,36 @@ function normalizeProjectProgress(
     }
   }
 
+  return inferProjectProgressFromPercent(legacyProgress, hasPainting);
+}
+
+function inferProjectProgressFromPercent(
+  progress: unknown,
+  hasPainting: boolean,
+): ProjectProgressKey {
+  const numericProgress = Number(progress);
+  if (!Number.isFinite(numericProgress)) return "po_received";
+  if (numericProgress >= 100) return "project_finished";
+  if (numericProgress >= 90) return "delivery";
+  if (numericProgress >= 80) return hasPainting ? "painting" : "finishing_trial";
+  if (numericProgress >= 60) return "production";
+  if (numericProgress >= 40) return "material_order";
+  if (numericProgress >= 20) return "engineering";
   return "po_received";
 }
 
-function getProjectProgressPercent(value: unknown, trackingStages?: unknown): number {
-  const normalized = normalizeProjectProgress(value, trackingStages);
+function getProjectProgressPercent(
+  value: unknown,
+  trackingStages?: unknown,
+  legacyProgress?: unknown,
+  hasPainting = false,
+): number {
+  const normalized = normalizeProjectProgress(
+    value,
+    trackingStages,
+    legacyProgress,
+    hasPainting,
+  );
   return (
     PROJECT_PROGRESS_STAGES.find((stage) => stage.key === normalized)
       ?.progress ?? 0
@@ -345,10 +380,17 @@ async function buildPoItem(
   options?: { includeAmount?: boolean },
 ) {
   const sisaHari = calcSisaHari(po.deadline);
-  const computedStatus = normalizeProjectProgress(po.status, po.trackingStages);
+  const computedStatus = normalizeProjectProgress(
+    po.status,
+    po.trackingStages,
+    po.progress,
+    po.hasPainting,
+  );
   const computedProgress = getProjectProgressPercent(
     computedStatus,
     po.trackingStages,
+    po.progress,
+    po.hasPainting,
   );
   let picName: string | null = null;
   let deptName: string | null = null;

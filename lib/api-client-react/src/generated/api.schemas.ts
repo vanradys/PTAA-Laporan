@@ -199,6 +199,11 @@ export interface DashboardSummary {
   tasksPending: number;
   submitRate: number;
   completionRate: number;
+  pendingAssignedTasksCount: number;
+  pendingAssignedTasksByRole: {
+    assignedByRole: string;
+    count: number;
+  }[];
 }
 
 export interface DepartmentProductivity {

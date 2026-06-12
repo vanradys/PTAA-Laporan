@@ -38,9 +38,6 @@ const PROJECT_PROGRESS_KEYS = new Set<string>(
 const LEGACY_STAGE_MAP: Record<string, ProjectProgressKey> = {
   po_diterima: "po_received",
   belum_mulai: "po_received",
-  proses: "po_received",
-  hampir_deadline: "po_received",
-  delay: "po_received",
   procurement: "material_order",
   produksi: "production",
   qc: "quality_control",
@@ -48,6 +45,14 @@ const LEGACY_STAGE_MAP: Record<string, ProjectProgressKey> = {
   selesai: "project_finished",
   close: "project_finished",
 };
+const GENERIC_LEGACY_STATUS_KEYS = new Set([
+  "",
+  "po_diterima",
+  "belum_mulai",
+  "proses",
+  "hampir_deadline",
+  "delay",
+]);
 
 type TrackingTimelineItem = { date: string; description: string };
 
@@ -151,13 +156,30 @@ function buildCompletedStages(stage: ProjectProgressKey, hasPainting: boolean) {
     .map((item) => item.key);
 }
 
+function inferProjectProgressFromPercent(
+  progress: unknown,
+  hasPainting: boolean,
+): ProjectProgressKey {
+  const numericProgress = Number(progress);
+  if (!Number.isFinite(numericProgress)) return "po_received";
+  if (numericProgress >= 100) return "project_finished";
+  if (numericProgress >= 90) return "delivery";
+  if (numericProgress >= 80) return hasPainting ? "painting" : "finishing_trial";
+  if (numericProgress >= 60) return "production";
+  if (numericProgress >= 40) return "material_order";
+  if (numericProgress >= 20) return "engineering";
+  return "po_received";
+}
+
 function inferProjectProgress(
   status: unknown,
   trackingStages: unknown,
   hasPainting: boolean,
+  progress?: unknown,
 ): ProjectProgressKey {
+  const rawStatus = String(status ?? "").trim().toLowerCase();
   const normalizedStatus = normalizeProjectProgress(status);
-  if (normalizedStatus !== "po_received" && String(status ?? "") !== "proses") {
+  if (!GENERIC_LEGACY_STATUS_KEYS.has(rawStatus) && normalizedStatus !== "po_received") {
     return normalizedStatus;
   }
 
@@ -174,7 +196,8 @@ function inferProjectProgress(
     }
   }
 
-  return latestStage;
+  if (latestStage !== "po_received") return latestStage;
+  return inferProjectProgressFromPercent(progress, hasPainting);
 }
 
 function statusLabel(status: string) {
@@ -254,6 +277,7 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
     po.status,
     po.trackingStages,
     po.hasPainting,
+    po.progress,
   );
   const completedStages = buildCompletedStages(currentStage, po.hasPainting);
   const manualTimeline = normalizeTrackingTimeline(po.trackingTimeline);
@@ -310,7 +334,17 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
       namaProject: item.namaProject,
       tanggalPoMasuk: item.tanggalPoMasuk,
       status: item.status,
-      statusLabel: customerStatusLabel(item.status),
+      statusLabel:
+        TRACKING_STAGES.find(
+          (stage) =>
+            stage.key ===
+            inferProjectProgress(
+              item.status,
+              item.trackingStages,
+              item.hasPainting,
+              item.progress,
+            ),
+        )?.label ?? customerStatusLabel(item.status),
     })),
   };
 }

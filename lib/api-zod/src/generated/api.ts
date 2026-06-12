@@ -828,7 +828,12 @@ export const GetDashboardSummaryResponse = zod.object({
   "tasksCompleted": zod.number(),
   "tasksPending": zod.number(),
   "submitRate": zod.number(),
-  "completionRate": zod.number()
+  "completionRate": zod.number(),
+  "pendingAssignedTasksCount": zod.number(),
+  "pendingAssignedTasksByRole": zod.array(zod.object({
+    "assignedByRole": zod.string(),
+    "count": zod.number()
+  }))
 })
 
 

@@ -306,6 +306,38 @@ export default function Dashboard() {
                       </Badge>
                     </div>
                   </div>
+
+                  {summary.pendingAssignedTasksCount > 0 && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">
+                              Tugas Baru
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Masuk di halaman Laporan Harian
+                            </p>
+                          </div>
+                          <Badge className="border-red-300 bg-white text-red-700">
+                            {summary.pendingAssignedTasksCount}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          {summary.pendingAssignedTasksByRole.map((item) => (
+                            <p
+                              key={item.assignedByRole}
+                              className="text-xs font-semibold text-red-700"
+                            >
+                              {item.assignedByRole} telah memberimu{" "}
+                              {item.count} tugas baru pada Halaman
+                              &quot;Laporan Harian&quot;
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </section>

@@ -1159,7 +1159,7 @@ export default function JadwalProject() {
                         <p className="text-sm font-semibold text-foreground">
                           {log.changedByName ?? "User"} {getActivityActionLabel(log.action)} {log.noPo}
                         </p>
-                        <span className="text-xs text-muted-foreground">{formatActivityTime(log.createdAt)}</span>
+                        <span className="text-xs text-muted-foreground">{formatActivityDateTime(log.createdAt)}</span>
                       </div>
                       {entries.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-2">
