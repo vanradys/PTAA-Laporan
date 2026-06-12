@@ -1,5 +1,16 @@
 import { Router } from "express";
-import { db, dailyTasksTable, dailyReportsTable, eq, sql } from "@workspace/db";
+import {
+  and,
+  assignedDailyTasksTable,
+  db,
+  dailyTasksTable,
+  dailyReportsTable,
+  departmentsTable,
+  eq,
+  notificationsTable,
+  sql,
+  usersTable,
+} from "@workspace/db";
 import { getUserFromToken } from "./auth";
 
 const router = Router();
@@ -34,6 +45,72 @@ function isTaskDelay(deadline: string | null, status: string): boolean {
   if (status === "selesai") return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
   return deadline < getTodayString();
+}
+
+function formatAssignerRole(user: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}) {
+  const role = String(user.role ?? "").toLowerCase();
+  if (role === "admin_marketing") return "Admin Marketing";
+  if (["direktur", "director", "dir"].includes(role)) return "Direktur";
+  if (role === "admin") return "Admin";
+  if (role === "hr") return "HR";
+
+  const code = String(user.departmentCode ?? "").toUpperCase();
+  if (code === "MKT") return "Marketing";
+  if (code === "ENG") return "Engineering";
+  if (code === "PUR") return "Purchasing";
+  if (code === "GA") return "General Affairs";
+  if (code === "AAF" || code === "FIN") return "Finance";
+
+  return user.departmentName ?? "PTAA";
+}
+
+function buildAssignmentResponse(
+  assignment: typeof assignedDailyTasksTable.$inferSelect,
+) {
+  return {
+    id: assignment.id,
+    assigneeUserId: assignment.assigneeUserId,
+    assignedByUserId: assignment.assignedByUserId,
+    assignedByName: assignment.assignedByName,
+    assignedByRole: assignment.assignedByRole,
+    title: assignment.title,
+    project: assignment.project ?? null,
+    notes: assignment.notes ?? null,
+    status: assignment.status,
+    createdTaskId: assignment.createdTaskId ?? null,
+    respondedAt: assignment.respondedAt?.toISOString() ?? null,
+    createdAt: assignment.createdAt.toISOString(),
+  };
+}
+
+async function getOrCreateTodayReport(user: {
+  id: number;
+  departmentId?: number | null;
+}) {
+  const today = getTodayString();
+  const existing = await db
+    .select()
+    .from(dailyReportsTable)
+    .where(and(eq(dailyReportsTable.userId, user.id), eq(dailyReportsTable.date, today)))
+    .limit(1);
+
+  if (existing[0]) return existing[0];
+
+  const [created] = await db
+    .insert(dailyReportsTable)
+    .values({
+      userId: user.id,
+      departmentId: user.departmentId ?? null,
+      date: today,
+      status: "draf",
+    })
+    .returning();
+
+  return created;
 }
 
 function buildTaskResponse(task: typeof dailyTasksTable.$inferSelect) {
@@ -86,6 +163,170 @@ function getModifyTaskError(
 
   return null;
 }
+
+router.get("/assigned-tasks/pending", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  const assignments = await db
+    .select()
+    .from(assignedDailyTasksTable)
+    .where(
+      and(
+        eq(assignedDailyTasksTable.assigneeUserId, user.id),
+        eq(assignedDailyTasksTable.status, "pending"),
+      ),
+    )
+    .orderBy(assignedDailyTasksTable.createdAt);
+
+  res.json(assignments.map(buildAssignmentResponse));
+});
+
+router.post("/assigned-tasks", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  const assigneeUserId = Number(req.body?.assigneeUserId);
+  const title = String(req.body?.title ?? "").trim();
+  const project = String(req.body?.project ?? "").trim();
+  const notes = String(req.body?.notes ?? "").trim();
+
+  if (!Number.isInteger(assigneeUserId)) {
+    res.status(400).json({ error: "Penerima tugas wajib dipilih" });
+    return;
+  }
+  if (assigneeUserId === user.id) {
+    res.status(400).json({ error: "Tugas hanya bisa diberikan ke orang lain" });
+    return;
+  }
+  if (!title) {
+    res.status(400).json({ error: "Isi tugas wajib diisi" });
+    return;
+  }
+
+  const [assignee] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      isActive: usersTable.isActive,
+      departmentName: departmentsTable.name,
+    })
+    .from(usersTable)
+    .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
+    .where(eq(usersTable.id, assigneeUserId))
+    .limit(1);
+
+  if (!assignee || assignee.isActive === false) {
+    res.status(404).json({ error: "Penerima tugas tidak ditemukan atau tidak aktif" });
+    return;
+  }
+
+  const assignedByRole = formatAssignerRole(user);
+  const [assignment] = await db
+    .insert(assignedDailyTasksTable)
+    .values({
+      assigneeUserId,
+      assignedByUserId: user.id,
+      assignedByName: user.name ?? assignedByRole,
+      assignedByRole,
+      title,
+      project: project || null,
+      notes: notes || null,
+    })
+    .returning();
+
+  await db.insert(notificationsTable).values({
+    userId: assigneeUserId,
+    type: "assigned_daily_task",
+    title: "Tugas harian baru",
+    message: `Anda menerima tugas dari ${assignedByRole}: ${title}${project ? ` (Project: ${project})` : ""}`,
+    isRead: false,
+  });
+
+  res.status(201).json(buildAssignmentResponse(assignment));
+});
+
+router.post("/assigned-tasks/:assignmentId/respond", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  const assignmentId = Number(req.params.assignmentId);
+  const accepted = req.body?.accepted === true || req.body?.action === "accept";
+
+  const [assignment] = await db
+    .select()
+    .from(assignedDailyTasksTable)
+    .where(
+      and(
+        eq(assignedDailyTasksTable.id, assignmentId),
+        eq(assignedDailyTasksTable.assigneeUserId, user.id),
+      ),
+    )
+    .limit(1);
+
+  if (!assignment) {
+    res.status(404).json({ error: "Notifikasi tugas tidak ditemukan" });
+    return;
+  }
+  if (assignment.status !== "pending") {
+    res.status(400).json({ error: "Notifikasi tugas ini sudah dijawab" });
+    return;
+  }
+
+  if (!accepted) {
+    const [declined] = await db
+      .update(assignedDailyTasksTable)
+      .set({ status: "declined", respondedAt: new Date() })
+      .where(eq(assignedDailyTasksTable.id, assignment.id))
+      .returning();
+
+    res.json(buildAssignmentResponse(declined));
+    return;
+  }
+
+  const report = await getOrCreateTodayReport(user);
+  const addTaskError = getAddTaskError(report);
+  if (addTaskError) {
+    res.status(400).json({ error: addTaskError });
+    return;
+  }
+
+  const [task] = await db
+    .insert(dailyTasksTable)
+    .values({
+      reportId: report.id,
+      title: assignment.title,
+      project: assignment.project ?? null,
+      progress: 0,
+      status: "belum_mulai",
+      notes: assignment.notes ?? null,
+    })
+    .returning();
+
+  const [acceptedAssignment] = await db
+    .update(assignedDailyTasksTable)
+    .set({
+      status: "accepted",
+      createdTaskId: task.id,
+      respondedAt: new Date(),
+    })
+    .where(eq(assignedDailyTasksTable.id, assignment.id))
+    .returning();
+
+  res.json({
+    ...buildAssignmentResponse(acceptedAssignment),
+    task: buildTaskResponse(task),
+  });
+});
 
 router.get("/reports/:id/tasks", async (req, res) => {
   const token = req.cookies?.session_token;

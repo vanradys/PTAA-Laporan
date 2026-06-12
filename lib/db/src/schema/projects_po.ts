@@ -16,8 +16,10 @@ export const projectsPoTable = pgTable("projects_po", {
   deadline: text("deadline").notNull(),
   picUserId: integer("pic_user_id").references(() => usersTable.id),
   departmentId: integer("department_id").references(() => departmentsTable.id),
+  picProject: text("pic_project"),
   status: text("status").notNull().default("belum_mulai"),
   progress: integer("progress").notNull().default(0),
+  hasPainting: boolean("has_painting").notNull().default(false),
   trackingStages: jsonb("tracking_stages").$type<string[]>(),
   trackingTimeline: jsonb("tracking_timeline").$type<
     { date: string; description: string }[]

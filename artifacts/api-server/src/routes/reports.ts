@@ -19,7 +19,12 @@ import {
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router } from "express";
-import { reportingUserCondition, isSubmittedReportStatus } from "../services/dailyReportReminder";
+import {
+  getPreviousRequiredReportDate,
+  isSubmittedReportStatus,
+  isWeekendReportDate,
+  reportingUserCondition,
+} from "../services/dailyReportReminder";
 import { sendPushNotificationToUser } from "../services/pushNotification";
 
 const router = Router();
@@ -109,14 +114,6 @@ const MAX_TASK_ACTIONS = 2;
 
 function getTodayString(): string {
   return getJakartaDateString();
-}
-
-function addDaysToDateString(dateString: string, amount: number): string {
-  const [year, month, day] = dateString.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() + amount);
-
-  return date.toISOString().split("T")[0] ?? dateString;
 }
 
 function getRemainingActions(editCount: number): number {
@@ -240,6 +237,11 @@ router.get("/reports", async (req, res) => {
   const { date, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
 
   if (date) {
+    if (isWeekendReportDate(date)) {
+      res.json([]);
+      return;
+    }
+
     const userConditions: SQL[] = [activeUserCondition()];
 
     if (departmentId) userConditions.push(eq(usersTable.departmentId, parseInt(departmentId)));
@@ -427,6 +429,10 @@ router.post("/reports", async (req, res) => {
 
   const { date, obstacles, additionalNotes, tomorrowPlan, status } = req.body;
   if (!date) { res.status(400).json({ error: "Tanggal diperlukan" }); return; }
+  if (isWeekendReportDate(date)) {
+    res.status(400).json({ error: "Sabtu/Minggu adalah hari libur, laporan harian tidak wajib diisi" });
+    return;
+  }
 
   if (isEmptyText(tomorrowPlan)) {
     res.status(400).json({ error: "Rencana Besok & Target wajib diisi" });
@@ -502,7 +508,7 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const today = getTodayString();
-  const yesterdayStr = addDaysToDateString(today, -1);
+  const requiredPreviousDate = getPreviousRequiredReportDate(today);
 
   const reports = await db
     .select()
@@ -516,8 +522,8 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
       tasks: [],
       sourceReportId: null,
       sourceReportDate: null,
-      requestedYesterdayDate: yesterdayStr,
-      missingYesterdayDate: yesterdayStr,
+      requestedYesterdayDate: requiredPreviousDate,
+      missingYesterdayDate: isWeekendReportDate(today) ? null : requiredPreviousDate,
       yesterdayReportMissing: true,
     });
     return;
@@ -555,9 +561,9 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
   }),
     sourceReportId: reports[0].id,
     sourceReportDate: reports[0].date,
-    requestedYesterdayDate: yesterdayStr,
-    missingYesterdayDate: reports[0].date === yesterdayStr ? null : yesterdayStr,
-    yesterdayReportMissing: reports[0].date !== yesterdayStr,
+    requestedYesterdayDate: requiredPreviousDate,
+    missingYesterdayDate: !isWeekendReportDate(today) && reports[0].date !== requiredPreviousDate ? requiredPreviousDate : null,
+    yesterdayReportMissing: reports[0].date !== requiredPreviousDate,
   });
 });
 

@@ -46,7 +46,6 @@ interface TrackingDetail {
   namaProject: string;
   customer?: string | null;
   tanggalPoMasuk: string;
-  deadline?: string | null;
   tanggalDelivery?: string | null;
   picName?: string | null;
   statusLabel: string;
@@ -80,6 +79,7 @@ function formatDate(value?: string | null) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("id-ID", {
+    weekday: "long",
     day: "2-digit",
     month: "long",
     year: "numeric",
@@ -354,7 +354,7 @@ export default function CustomerTracking() {
             <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
-                  <CardTitle>Status PO: {detail.noPo}</CardTitle>
+                  <CardTitle>PO: {detail.noPo}</CardTitle>
                   <p className="text-sm text-slate-500">{detail.namaProject}</p>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -364,25 +364,21 @@ export default function CustomerTracking() {
                       <span>{detail.progress}%</span>
                     </div>
                     <Progress value={detail.progress} />
-                    <p className="mt-2 text-sm text-slate-600">
-                      {detail.statusLabel}
-                    </p>
                   </div>
                 </CardContent>
               </Card>
 
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
-                  <CardTitle>Informasi Umum</CardTitle>
+                  <CardTitle>PO Information</CardTitle>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                   <Info label="Nomor PO" value={detail.noPo} />
                   <Info label="Nama Customer" value={detail.customer ?? "-"} />
                   <Info label="Nama Project" value={detail.namaProject} />
                   <Info label="Tanggal PO Masuk" value={formatDate(detail.tanggalPoMasuk)} />
-                  <Info label="Deadline Target Penyelesaian" value={formatDate(detail.deadline)} />
+                  <Info label="Tanggal Delivery" value={formatDate(detail.tanggalDelivery)} />
                   <Info label="PIC Project" value={detail.picName ?? "-"} />
-                  <Info label="Status Project" value={detail.statusLabel} />
                 </CardContent>
               </Card>
             </section>
@@ -390,7 +386,7 @@ export default function CustomerTracking() {
             <section className="grid gap-4 lg:grid-cols-3">
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
-                  <CardTitle>Status Tahapan</CardTitle>
+                  <CardTitle>Project Progress</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {detail.stages.map((stage) => (
@@ -408,7 +404,7 @@ export default function CustomerTracking() {
 
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
-                  <CardTitle>Kendala Project</CardTitle>
+                  <CardTitle>Project Issue & Action</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="whitespace-pre-line text-sm text-slate-700">
@@ -440,7 +436,7 @@ export default function CustomerTracking() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
-                  Komentar Customer
+                  Customer Notes
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -451,11 +447,16 @@ export default function CustomerTracking() {
                     comments.map((item) => (
                       <div key={item.id} className="rounded-lg border border-slate-200 p-3">
                         <div className="flex flex-wrap justify-between gap-2 text-sm">
-                          <span className="font-semibold">
-                            {item.displayName ?? item.customerName ?? "-"}
+                          <span>
+                            <span className="font-semibold">
+                              {item.displayName ?? item.customerName ?? "-"}
+                            </span>{" "}
+                            - {item.comment}{" "}
+                            <span className="text-xs text-slate-500">
+                              {formatDateTime(item.createdAt)}
+                            </span>
                           </span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-500">{formatDateTime(item.createdAt)}</span>
                             {canDeleteComments && (
                               <Button
                                 type="button"
@@ -470,7 +471,6 @@ export default function CustomerTracking() {
                             )}
                           </div>
                         </div>
-                        <p className="mt-2 text-sm text-slate-700">{item.comment}</p>
                       </div>
                     ))
                   )}

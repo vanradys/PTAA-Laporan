@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useListPo,
@@ -63,25 +62,44 @@ import Layout from "@/components/Layout";
 import { apiRequest } from "@/lib/apiRequest";
 
 const PO_STATUS_OPTS = [
-  { value: "semua", label: "Semua Status" },
-  { value: "belum_mulai", label: "Belum Mulai" },
-  { value: "proses", label: "Proses" },
-  { value: "hampir_deadline", label: "Hampir Tanggal Delivery" },
-  { value: "delay", label: "Delay" },
-  { value: "selesai", label: "Selesai" },
-  { value: "close", label: "Close" },
+  { value: "semua", label: "Semua Project Progress" },
+  { value: "po_received", label: "PO Received" },
+  { value: "engineering", label: "Engineering" },
+  { value: "approval_drawing", label: "Approval Drawing" },
+  { value: "material_order", label: "Material Order" },
+  { value: "production", label: "Production" },
+  { value: "quality_control", label: "Quality Control" },
+  { value: "finishing_trial", label: "Finishing & Trial" },
+  { value: "painting", label: "Painting" },
+  { value: "delivery", label: "Delivery" },
+  { value: "project_finished", label: "Project Finished" },
 ];
 
 const CUSTOMER_TRACKING_STAGES = [
-  { key: "po_diterima", label: "PO Diterima" },
+  { key: "po_received", label: "PO Received" },
   { key: "engineering", label: "Engineering" },
   { key: "approval_drawing", label: "Approval Drawing" },
-  { key: "procurement", label: "Procurement" },
-  { key: "produksi", label: "Produksi" },
-  { key: "qc", label: "QC" },
-  { key: "pengiriman", label: "Pengiriman" },
-  { key: "selesai", label: "Selesai" },
+  { key: "material_order", label: "Material Order" },
+  { key: "production", label: "Production" },
+  { key: "quality_control", label: "Quality Control" },
+  { key: "finishing_trial", label: "Finishing & Trial" },
+  { key: "painting", label: "Painting" },
+  { key: "delivery", label: "Delivery" },
+  { key: "project_finished", label: "Project Finished" },
 ] as const;
+
+const PROJECT_PROGRESS_PERCENT: Record<string, number> = {
+  po_received: 0,
+  engineering: 20,
+  approval_drawing: 20,
+  material_order: 40,
+  production: 60,
+  quality_control: 60,
+  finishing_trial: 80,
+  painting: 80,
+  delivery: 90,
+  project_finished: 100,
+};
 
 interface StatusStyle {
   label: string;
@@ -90,41 +108,76 @@ interface StatusStyle {
 }
 
 const STATUS_STYLES: Record<string, StatusStyle> = {
-  belum_mulai: {
-    label: "Belum Mulai",
+  po_received: {
+    label: "PO Received",
     badge: "bg-gray-100 text-gray-700 border-gray-200",
     dot: "bg-gray-400",
   },
-  proses: {
-    label: "Proses",
+  engineering: {
+    label: "Engineering",
     badge: "bg-blue-100 text-blue-700 border-blue-200",
     dot: "bg-blue-500",
   },
-  hampir_deadline: {
-    label: "Hampir Tanggal Delivery",
+  approval_drawing: {
+    label: "Approval Drawing",
+    badge: "bg-blue-100 text-blue-700 border-blue-200",
+    dot: "bg-blue-500",
+  },
+  material_order: {
+    label: "Material Order",
+    badge: "bg-amber-100 text-amber-700 border-amber-200",
+    dot: "bg-amber-500",
+  },
+  production: {
+    label: "Production",
+    badge: "bg-indigo-100 text-indigo-700 border-indigo-200",
+    dot: "bg-indigo-500",
+  },
+  quality_control: {
+    label: "Quality Control",
+    badge: "bg-cyan-100 text-cyan-700 border-cyan-200",
+    dot: "bg-cyan-500",
+  },
+  finishing_trial: {
+    label: "Finishing & Trial",
+    badge: "bg-teal-100 text-teal-700 border-teal-200",
+    dot: "bg-teal-500",
+  },
+  painting: {
+    label: "Painting",
+    badge: "bg-violet-100 text-violet-700 border-violet-200",
+    dot: "bg-violet-500",
+  },
+  delivery: {
+    label: "Delivery",
     badge: "bg-orange-100 text-orange-700 border-orange-200",
     dot: "bg-orange-500",
   },
-  delay: {
-    label: "Delay",
-    badge: "bg-red-100 text-red-700 border-red-200",
-    dot: "bg-red-500",
+  project_finished: {
+    label: "Project Finished",
+    badge: "bg-green-100 text-green-700 border-green-200",
+    dot: "bg-green-500",
+  },
+  belum_mulai: {
+    label: "PO Received",
+    badge: "bg-gray-100 text-gray-700 border-gray-200",
+    dot: "bg-gray-400",
   },
   selesai: {
-    label: "Selesai",
+    label: "Project Finished",
     badge: "bg-green-100 text-green-700 border-green-200",
     dot: "bg-green-500",
   },
   close: {
-    label: "Close",
-    badge: "bg-purple-100 text-purple-700 border-purple-200",
-    dot: "bg-purple-500",
+    label: "Project Finished",
+    badge: "bg-green-100 text-green-700 border-green-200",
+    dot: "bg-green-500",
   },
 };
 
 function getDeadlineStyle(sisaHari: number | null, status: string) {
   if (sisaHari === null) return "text-muted-foreground";
-  if (status === "selesai" || status === "close") {
+  if (isFinishedPo(status)) {
     return sisaHari < 0 ? "text-green-600 font-semibold" : "text-green-600";
   }
   if (sisaHari < 0) return "text-red-600 font-semibold";
@@ -135,7 +188,7 @@ function getDeadlineStyle(sisaHari: number | null, status: string) {
 
 function formatDeadlineLabel(sisaHari: number | null, status: string): string {
   if (sisaHari === null) return "-";
-  if (status === "selesai" || status === "close") return "Selesai";
+  if (isFinishedPo(status)) return "Selesai";
   if (sisaHari < 0) return `${Math.abs(sisaHari)} hari lewat`;
   if (sisaHari === 0) return "Hari ini!";
   return `${sisaHari} hari lagi`;
@@ -154,10 +207,13 @@ interface PoItem {
   sisaHari: number | null;
   picUserId?: number | null;
   picName?: string | null;
+  picProject?: string | null;
   departmentId?: number | null;
   departmentName?: string | null;
   status: string;
+  statusLabel?: string;
   progress: number;
+  hasPainting?: boolean;
   trackingStages?: string[];
   trackingTimeline?: TrackingTimelineItem[];
   catatan?: string | null;
@@ -176,9 +232,11 @@ interface PoFormState {
   targetPenyelesaian: string;
   deadline: string;
   picUserId: string;
+  picProject: string;
   departmentId: string;
   status: string;
   progress: string;
+  hasPainting: boolean;
   trackingStages: string[];
   trackingTimeline: TrackingTimelineItem[];
   catatan: string;
@@ -219,8 +277,12 @@ interface PoInternalComment {
   poId: number;
   userId?: number | null;
   userName: string;
+  userRole?: string | null;
+  userDepartment?: string | null;
   comment: string;
   createdAt: string;
+  noPo?: string | null;
+  namaProject?: string | null;
 }
 
 const PO_FIELD_LABELS: Record<string, string> = {
@@ -230,13 +292,15 @@ const PO_FIELD_LABELS: Record<string, string> = {
   qty: "Qty",
   poAmount: "Nominal PO",
   tanggalPoMasuk: "Tanggal PO Masuk",
-  targetPenyelesaian: "Target Penyelesaian",
+  targetPenyelesaian: "Target Pengiriman",
   deadline: "Tanggal Delivery",
   picUserId: "PIC",
-  departmentId: "Departemen",
-  status: "Status",
+  picProject: "PIC Project",
+  departmentId: "PIC Departemen",
+  status: "Project Progress",
   progress: "Progress",
-  trackingStages: "Tahapan Customer",
+  hasPainting: "Painting",
+  trackingStages: "Project Progress",
   trackingTimeline: "Timeline Customer",
   catatan: "Catatan",
   closedAt: "Tanggal Close",
@@ -253,9 +317,11 @@ const EMPTY_FORM: PoFormState = {
   poAmount: "",
   deadline: "",
   picUserId: "",
+  picProject: "",
   departmentId: "",
-  status: "belum_mulai",
+  status: "po_received",
   progress: "0",
+  hasPainting: false,
   trackingStages: [],
   trackingTimeline: [],
   catatan: "",
@@ -288,6 +354,18 @@ function formatActivityTime(value: string) {
 
 function formatActivityDateTime(value: string) {
   return new Date(value).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Jakarta",
+  });
+}
+
+function formatCommentDateTime(value: string) {
+  return new Date(value).toLocaleString("id-ID", {
+    weekday: "long",
     day: "2-digit",
     month: "long",
     year: "numeric",
@@ -360,7 +438,7 @@ function formatNominalAxisLabel(value: number) {
 }
 
 function isFinishedPo(status: string) {
-  return status === "selesai" || status === "close";
+  return status === "project_finished" || status === "selesai" || status === "close";
 }
 
 function isDateOnly(value: string) {
@@ -372,7 +450,18 @@ function clampProgress(progress: number) {
 }
 
 function getStatusLabel(po: PoItem, fallback: string) {
-  return fallback;
+  return po.statusLabel ?? fallback;
+}
+
+function getProgressPercent(status: string) {
+  return PROJECT_PROGRESS_PERCENT[status] ?? 0;
+}
+
+function getProgressOptions(hasPainting: boolean) {
+  return PO_STATUS_OPTS.filter(
+    (item) =>
+      item.value !== "semua" && (hasPainting || item.value !== "painting"),
+  );
 }
 
 function getFinishedPoNotice(po: PoItem) {
@@ -405,6 +494,11 @@ export default function JadwalProject() {
     departmentName.includes("finance") ||
     departmentName.includes("marketing") ||
     departmentName.includes("general affairs");
+  const canUpdateProjectProgress =
+    canManage ||
+    ["PUR", "ENG"].includes(departmentCode) ||
+    departmentName.includes("purchasing") ||
+    departmentName.includes("engineering");
 
   const canViewPoAmount =
     ["admin", "direktur", "director", "dir"].includes(role) ||
@@ -492,6 +586,13 @@ export default function JadwalProject() {
     refetchInterval: 15000,
   });
 
+  const { data: dashboardInternalComments } = useQuery({
+    queryKey: ["po-internal-comments"],
+    queryFn: () => apiRequest<PoInternalComment[]>("/api/po/internal-comments"),
+    enabled: Boolean(user),
+    refetchInterval: 15000,
+  });
+
   const { data: selectedCustomerComments } = useQuery({
     queryKey: ["customer-tracking-comments", viewingPo?.id],
     queryFn: () =>
@@ -524,6 +625,9 @@ export default function JadwalProject() {
   const activityLogs = Array.isArray(poActivityLogs) ? poActivityLogs : [];
   const trackingComments = Array.isArray(customerComments)
     ? customerComments
+    : [];
+  const latestInternalComments = Array.isArray(dashboardInternalComments)
+    ? dashboardInternalComments
     : [];
   const poCustomerComments = Array.isArray(selectedCustomerComments)
     ? selectedCustomerComments
@@ -563,7 +667,13 @@ export default function JadwalProject() {
   const depts = (Array.isArray(departments) ? departments : []) as {
     id: number;
     name: string;
+    code?: string | null;
   }[];
+  const picDepartments = depts.filter((department) => {
+    const name = department.name.toLowerCase();
+    const code = String(department.code ?? "").toUpperCase();
+    return code === "MKT" || code === "ENG" || name.includes("marketing") || name.includes("engineering");
+  });
   const emps = (Array.isArray(employees) ? employees : []) as {
     id: number;
     name: string;
@@ -608,9 +718,11 @@ export default function JadwalProject() {
       targetPenyelesaian: po.targetPenyelesaian ?? "",
       deadline: po.deadline,
       picUserId: po.picUserId ? String(po.picUserId) : "",
+      picProject: po.picProject ?? "",
       departmentId: po.departmentId ? String(po.departmentId) : "",
       status: po.status,
-      progress: String(po.progress),
+      progress: String(getProgressPercent(po.status)),
+      hasPainting: Boolean(po.hasPainting),
       trackingStages: Array.isArray(po.trackingStages)
         ? po.trackingStages
         : [],
@@ -686,6 +798,8 @@ export default function JadwalProject() {
       });
       setInternalCommentDraft("");
       await refetchInternalPoComments();
+      queryClient.invalidateQueries({ queryKey: ["po-internal-comments"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
       toast({ title: "Berhasil", description: "Komentar internal terkirim" });
     } catch (error) {
       toast({
@@ -727,27 +841,37 @@ export default function JadwalProject() {
   };
 
   const handleSave = async () => {
-    if (
+    if (canManage && (
       !form.noPo.trim() ||
       !form.namaProject.trim() ||
       !form.customer.trim() ||
       !form.tanggalPoMasuk ||
-      !form.deadline
-    ) {
+      !form.deadline ||
+      !form.departmentId
+    )) {
       toast({
         title: "Validasi Gagal",
         description:
-          "No PO, nama project, customer, tanggal masuk, dan Tanggal Delivery wajib diisi",
+          "No PO, nama project, customer, tanggal masuk, PIC Departemen, dan Tanggal Delivery wajib diisi",
         variant: "destructive",
       });
       return;
     }
 
     const normalizedDeadline = form.deadline.trim();
-    if (!normalizedDeadline) {
+    if (canManage && !normalizedDeadline) {
       toast({
         title: "Validasi Gagal",
         description: "Tanggal Delivery wajib diisi",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!form.hasPainting && form.status === "painting") {
+      toast({
+        title: "Validasi Gagal",
+        description: "Painting hanya bisa dipilih jika checkbox Painting dicentang",
         variant: "destructive",
       });
       return;
@@ -767,7 +891,10 @@ export default function JadwalProject() {
     }
     setFormLoading(true);
     try {
-      const payload = {
+      const currentEditingPo = editingId
+        ? allPosRaw.find((po) => po.id === editingId)
+        : null;
+      const payload = canManage ? {
         noPo: form.noPo,
         namaProject: form.namaProject,
         customer: form.customer || undefined,
@@ -777,13 +904,16 @@ export default function JadwalProject() {
           : {}),
         tanggalPoMasuk: form.tanggalPoMasuk,
         targetPenyelesaian: form.targetPenyelesaian || undefined,
-        deadline: normalizedDeadline,
+        ...(!editingId || !currentEditingPo?.deadline
+          ? { deadline: normalizedDeadline }
+          : {}),
         picUserId: form.picUserId ? parseInt(form.picUserId) : undefined,
+        picProject: form.picProject || undefined,
         departmentId: form.departmentId
           ? parseInt(form.departmentId)
           : undefined,
         status: form.status,
-        progress: parseInt(form.progress),
+        hasPainting: form.hasPainting,
         trackingStages: form.trackingStages,
         trackingTimeline: form.trackingTimeline
           .map((item) => ({
@@ -792,12 +922,16 @@ export default function JadwalProject() {
           }))
           .filter((item) => item.date || item.description),
         catatan: form.catatan || undefined,
+      } : {
+        status: form.status,
       };
       if (editingId) {
-        await updatePo.mutateAsync({ id: editingId, data: payload });
+        await updatePo.mutateAsync({ id: editingId, data: payload as any });
         toast({ title: "Berhasil", description: "PO berhasil diperbarui" });
       } else {
-        await createPo.mutateAsync({ data: payload });
+        await createPo.mutateAsync({
+          data: { ...payload, deadline: normalizedDeadline } as any,
+        });
         toast({ title: "Berhasil", description: "PO berhasil ditambahkan" });
       }
       closeForm();
@@ -819,11 +953,11 @@ export default function JadwalProject() {
   };
 
   const handleClose = async (po: PoItem) => {
-    if (!confirm(`Tandai PO "${po.noPo} - ${po.namaProject}" sebagai CLOSE?`))
+    if (!confirm(`Tandai PO "${po.noPo} - ${po.namaProject}" sebagai Project Finished?`))
       return;
     try {
       await closePo.mutateAsync({ id: po.id });
-      toast({ title: "Berhasil", description: "PO ditandai sebagai close" });
+      toast({ title: "Berhasil", description: "PO ditandai sebagai Project Finished" });
       invalidate();
     } catch (error) {
       const message =
@@ -926,31 +1060,10 @@ export default function JadwalProject() {
     : [];
 
   const statusChartData = [
-    {
-      status: "Belum Mulai",
-      count: pos.filter((item) => item.status === "belum_mulai").length,
-    },
-    {
-      status: "Proses",
-      count: pos.filter((item) => item.status === "proses").length,
-    },
-    {
-      status: "Hampir Tanggal Delivery",
-      count: pos.filter((item) => item.status === "hampir_deadline")
-        .length,
-    },
-    {
-      status: "Delay",
-      count: pos.filter((item) => item.status === "delay").length,
-    },
-    {
-      status: "Selesai",
-      count: pos.filter((item) => item.status === "selesai").length,
-    },
-    {
-      status: "Close",
-      count: pos.filter((item) => item.status === "close").length,
-    },
+    ...PO_STATUS_OPTS.filter((item) => item.value !== "semua").map((item) => ({
+      status: item.label,
+      count: pos.filter((po) => po.status === item.value).length,
+    })),
   ];
 
   const selectedPoActivity = viewingPo
@@ -958,7 +1071,7 @@ export default function JadwalProject() {
     : [];
   const selectedStatusStyle = viewingPo
     ? (STATUS_STYLES[viewingPo.status] ?? STATUS_STYLES.belum_mulai)
-    : STATUS_STYLES.belum_mulai;
+    : STATUS_STYLES.po_received;
   const selectedDeadlineStyle = viewingPo
     ? getDeadlineStyle(viewingPo.sisaHari, viewingPo.status)
     : "text-muted-foreground";
@@ -1074,7 +1187,7 @@ export default function JadwalProject() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              Komentar Customer
+              Customer Notes
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -1090,17 +1203,20 @@ export default function JadwalProject() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <p className="text-sm font-semibold text-foreground">
-                          {comment.displayName ?? comment.customerName ?? "-"}
+                        <p className="text-sm text-foreground">
+                          <span className="font-semibold">
+                            {comment.displayName ?? comment.customerName ?? "-"}
+                          </span>{" "}
+                          - {comment.comment}{" "}
+                          <span className="text-xs text-muted-foreground">
+                            {formatCommentDateTime(comment.createdAt)}
+                          </span>
                         </p>
                       <p className="text-xs text-muted-foreground">
                         {comment.noPo ?? "-"} · {comment.namaProject ?? "-"}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {formatActivityTime(comment.createdAt)}
-                      </span>
                       {canDeleteComments && (
                         <Button
                           type="button"
@@ -1115,8 +1231,40 @@ export default function JadwalProject() {
                       )}
                     </div>
                   </div>
-                  <p className="mt-2 text-sm text-slate-700">
-                    {comment.comment}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              Internal Comments
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {latestInternalComments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Belum ada komentar internal.
+              </p>
+            ) : (
+              latestInternalComments.slice(0, 8).map((comment) => (
+                <div
+                  key={comment.id}
+                  className="rounded-lg border border-border bg-white p-3"
+                >
+                  <p className="text-sm text-foreground">
+                    <span className="font-semibold">{comment.userName}</span>{" "}
+                    - {comment.comment}{" "}
+                    <span className="text-xs text-muted-foreground">
+                      {formatCommentDateTime(comment.createdAt)}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {comment.noPo ?? "-"} - {comment.namaProject ?? "-"}
+                    {comment.userDepartment ? ` - ${comment.userDepartment}` : ""}
                   </p>
                 </div>
               ))
@@ -1270,7 +1418,7 @@ export default function JadwalProject() {
                 </div>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Status</Label>
+                <Label className="text-xs">Project Progress</Label>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
                   <SelectTrigger className="h-8 w-40 text-sm">
                     <SelectValue />
@@ -1385,7 +1533,7 @@ export default function JadwalProject() {
                         Sisa Hari
                       </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
-                        Status
+                        Project Progress
                       </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
                         Progress
@@ -1441,7 +1589,7 @@ export default function JadwalProject() {
                             </td>
                           )}
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                            {po.picName ?? "—"}
+                            {po.picProject ?? po.picName ?? "—"}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className="text-sm text-foreground">
@@ -1472,7 +1620,7 @@ export default function JadwalProject() {
                             <div className="flex items-center gap-2 min-w-20">
                               <div className="flex-1 bg-muted rounded-full h-1.5">
                                 <div
-                                  className={`h-1.5 rounded-full transition-all ${po.status === "delay" ? "bg-red-500" : po.status === "selesai" || po.status === "close" ? "bg-green-500" : "bg-primary"}`}
+                                  className={`h-1.5 rounded-full transition-all ${isFinishedPo(po.status) ? "bg-green-500" : "bg-primary"}`}
                                   style={{ width: `${clampProgress(po.progress)}%` }}
                                 />
                               </div>
@@ -1493,7 +1641,7 @@ export default function JadwalProject() {
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </Button>
-                                {canManage && (
+                                {canUpdateProjectProgress && (
                                   <>
                                 <Button
                                   variant="ghost"
@@ -1510,8 +1658,7 @@ export default function JadwalProject() {
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
                                 </Button>
-                                {po.status !== "close" &&
-                                  po.status !== "selesai" && (
+                                {canManage && !isFinishedPo(po.status) && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -1588,7 +1735,7 @@ export default function JadwalProject() {
                         Tanggal Delivery
                       </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
-                        Status
+                        Project Progress
                       </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
                         Progress
@@ -1658,7 +1805,7 @@ export default function JadwalProject() {
                             <div className="flex items-center gap-2 min-w-20">
                               <div className="flex-1 bg-muted rounded-full h-1.5">
                                 <div
-                                  className={`h-1.5 rounded-full transition-all ${po.status === "delay" ? "bg-red-500" : po.status === "selesai" || po.status === "close" ? "bg-green-500" : "bg-primary"}`}
+                                  className={`h-1.5 rounded-full transition-all ${isFinishedPo(po.status) ? "bg-green-500" : "bg-primary"}`}
                                   style={{ width: `${clampProgress(po.progress)}%` }}
                                 />
                               </div>
@@ -1679,7 +1826,7 @@ export default function JadwalProject() {
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </Button>
-                                {canManage && (
+                                {canUpdateProjectProgress && (
                                   <>
                                 <Button
                                   variant="ghost"
@@ -1696,8 +1843,7 @@ export default function JadwalProject() {
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
                                 </Button>
-                                {po.status !== "close" &&
-                                  po.status !== "selesai" && (
+                                {canManage && !isFinishedPo(po.status) && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -1708,6 +1854,7 @@ export default function JadwalProject() {
                                       <CheckCircle2 className="w-3.5 h-3.5" />
                                     </Button>
                                   )}
+                                {canManage && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -1723,6 +1870,7 @@ export default function JadwalProject() {
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
+                                )}
                                   </>
                                 )}
                               </div>
@@ -1774,7 +1922,7 @@ export default function JadwalProject() {
                   <CardContent className="p-5">
                     <div className="text-center">
                       <p className="text-lg font-bold text-foreground">
-                        Status PO: {viewingPo.noPo}
+                        PO: {viewingPo.noPo}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {getStatusLabel(viewingPo, selectedStatusStyle.label)}
@@ -1805,7 +1953,7 @@ export default function JadwalProject() {
                 <Card className="border border-border">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base">
-                      Informasi Umum PO
+                      PO Information
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -1823,17 +1971,23 @@ export default function JadwalProject() {
                       value={isoDateToDisplay(viewingPo.tanggalPoMasuk)}
                     />
                     <DetailInfo
-                      label="Deadline"
-                      value={isoDateToDisplay(
-                        viewingPo.targetPenyelesaian || viewingPo.deadline,
-                      )}
+                      label="Tanggal Delivery"
+                      value={isoDateToDisplay(viewingPo.deadline)}
+                    />
+                    <DetailInfo
+                      label="Target Pengiriman"
+                      value={isoDateToDisplay(viewingPo.targetPenyelesaian || "-")}
+                    />
+                    <DetailInfo
+                      label="PIC Departemen"
+                      value={viewingPo.departmentName ?? "-"}
                     />
                     <DetailInfo
                       label="PIC Project"
-                      value={viewingPo.picName ?? "-"}
+                      value={viewingPo.picProject ?? viewingPo.picName ?? "-"}
                     />
                     <DetailInfo
-                      label="Status Project"
+                      label="Project Progress"
                       value={getStatusLabel(viewingPo, selectedStatusStyle.label)}
                     />
                   </CardContent>
@@ -1876,7 +2030,7 @@ export default function JadwalProject() {
 
                 <Card className="border border-border">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Kendala Project</CardTitle>
+                    <CardTitle className="text-base">Project Issue & Action</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-slate-700">
@@ -1923,7 +2077,7 @@ export default function JadwalProject() {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <MessageSquare className="h-4 w-4" />
-                    Komentar Customer ({poCustomerComments.length})
+                    Customer Notes ({poCustomerComments.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1938,13 +2092,16 @@ export default function JadwalProject() {
                         className="rounded-lg border border-border p-3"
                       >
                         <div className="flex flex-wrap justify-between gap-2 text-sm">
-                          <span className="font-semibold">
-                            {item.displayName ?? item.customerName ?? "-"}
+                          <span>
+                            <span className="font-semibold">
+                              {item.displayName ?? item.customerName ?? "-"}
+                            </span>{" "}
+                            - {item.comment}{" "}
+                            <span className="text-xs text-muted-foreground">
+                              {formatCommentDateTime(item.createdAt)}
+                            </span>
                           </span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">
-                              {formatActivityDateTime(item.createdAt)}
-                            </span>
                             {canDeleteComments && (
                               <Button
                                 type="button"
@@ -1959,9 +2116,6 @@ export default function JadwalProject() {
                             )}
                           </div>
                         </div>
-                        <p className="mt-2 text-sm text-slate-700">
-                          {item.comment}
-                        </p>
                       </div>
                     ))
                   )}
@@ -1991,13 +2145,16 @@ export default function JadwalProject() {
                         className="rounded-lg border border-border bg-slate-50 p-3"
                       >
                         <div className="flex flex-wrap justify-between gap-2 text-sm">
-                          <span className="font-semibold">
-                            {item.userName}
+                          <span>
+                            <span className="font-semibold">
+                              {item.userName}
+                            </span>{" "}
+                            - {item.comment}{" "}
+                            <span className="text-xs text-muted-foreground">
+                              {formatCommentDateTime(item.createdAt)}
+                            </span>
                           </span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">
-                              {formatActivityDateTime(item.createdAt)}
-                            </span>
                             {canDeleteComments && (
                               <Button
                                 type="button"
@@ -2012,9 +2169,6 @@ export default function JadwalProject() {
                             )}
                           </div>
                         </div>
-                        <p className="mt-2 text-sm text-slate-700">
-                          {item.comment}
-                        </p>
                       </div>
                     ))
                   )}
@@ -2078,6 +2232,7 @@ export default function JadwalProject() {
                   </Label>
                   <Input
                     value={form.noPo}
+                    disabled={!canManage}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, noPo: e.target.value }))
                     }
@@ -2091,6 +2246,7 @@ export default function JadwalProject() {
                   </Label>
                   <Input
                     value={form.namaProject}
+                    disabled={!canManage}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, namaProject: e.target.value }))
                     }
@@ -2108,6 +2264,7 @@ export default function JadwalProject() {
                   </Label>
                   <Input
                     value={form.customer}
+                    disabled={!canManage}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, customer: e.target.value }))
                     }
@@ -2119,6 +2276,7 @@ export default function JadwalProject() {
                   <Label className="text-xs font-semibold">Qty</Label>
                   <Input
                     value={form.qty}
+                    disabled={!canManage}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, qty: e.target.value }))
                     }
@@ -2134,6 +2292,7 @@ export default function JadwalProject() {
                       min="0"
                       max="10000000000"
                       value={form.poAmount}
+                      disabled={!canManage}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, poAmount: e.target.value }))
                       }
@@ -2146,41 +2305,45 @@ export default function JadwalProject() {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
-                    PIC (Person In Charge)
+                    PIC Departemen <span className="text-red-500">*</span>
                   </Label>
                   <Select
-                    value={form.picUserId || NONE_VALUE}
-                    onValueChange={(v) => {
-                      const selectedEmployee = emps.find(
-                        (employee) => String(employee.id) === v,
-                      );
+                    value={form.departmentId || NONE_VALUE}
+                    disabled={!canManage}
+                    onValueChange={(v) =>
                       setForm((f) => ({
                         ...f,
-                        picUserId: v === NONE_VALUE ? "" : v,
-                        departmentId:
-                          v === NONE_VALUE
-                            ? ""
-                            : selectedEmployee?.departmentId
-                              ? String(selectedEmployee.departmentId)
-                              : f.departmentId,
-                      }));
-                    }}
+                        departmentId: v === NONE_VALUE ? "" : v,
+                      }))
+                    }
                   >
                     <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Pilih PIC..." />
+                      <SelectValue placeholder="Pilih departemen..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE_VALUE}>Tidak ada</SelectItem>
-                      {emps.map((e) => (
-                        <SelectItem key={e.id} value={String(e.id)}>
-                          {e.name}
+                      <SelectItem value={NONE_VALUE}>Pilih Departemen</SelectItem>
+                      {picDepartments.map((department) => (
+                        <SelectItem key={department.id} value={String(department.id)}>
+                          {department.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">PIC Project</Label>
+                  <Input
+                    value={form.picProject}
+                    disabled={!canManage}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, picProject: e.target.value }))
+                    }
+                    placeholder="Contoh: Budi / Ibu Yessi"
+                    className="h-9 text-sm"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
@@ -2189,6 +2352,7 @@ export default function JadwalProject() {
                   <Input
                     type="date"
                     value={form.tanggalPoMasuk}
+                    disabled={!canManage}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, tanggalPoMasuk: e.target.value }))
                     }
@@ -2199,11 +2363,12 @@ export default function JadwalProject() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
-                    Target Penyelesaian
+                    Target Pengiriman
                   </Label>
                   <Input
                     type="date"
                     value={form.targetPenyelesaian}
+                    disabled={!canManage}
                     onChange={(e) =>
                       setForm((f) => ({
                         ...f,
@@ -2220,6 +2385,7 @@ export default function JadwalProject() {
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-[150px_1fr]">
                     <Select
                       value={deliveryInputMode}
+                      disabled={!canManage || Boolean(editingId && form.deadline)}
                       onValueChange={(value) => {
                         const mode = value as DeliveryInputMode;
                         setDeliveryInputMode(mode);
@@ -2240,6 +2406,8 @@ export default function JadwalProject() {
                     <Input
                       type={deliveryInputMode === "date" ? "date" : "text"}
                       value={form.deadline}
+                      readOnly={Boolean(editingId && form.deadline)}
+                      disabled={!canManage}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, deadline: e.target.value }))
                       }
@@ -2255,74 +2423,62 @@ export default function JadwalProject() {
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Status</Label>
+                  <Label className="text-xs font-semibold">Project Progress</Label>
                   <Select
                     value={form.status}
-                    onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}
+                    onValueChange={(v) =>
+                      setForm((f) => ({
+                        ...f,
+                        status: v,
+                        progress: String(getProgressPercent(v)),
+                      }))
+                    }
                   >
                     <SelectTrigger className="h-9 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {PO_STATUS_OPTS.filter((s) => s.value !== "semua").map(
-                        (s) => (
-                          <SelectItem key={s.value} value={s.value}>
-                            {s.label}
-                          </SelectItem>
-                        ),
-                      )}
+                      {getProgressOptions(form.hasPainting).map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">
-                    Progress ({form.progress}%)
-                  </Label>
-                  <Input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={form.progress}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, progress: e.target.value }))
-                    }
-                    className="po-progress-range h-9 w-full"
-                    style={
-                      {
-                        "--progress-value": `${clampProgress(parseInt(form.progress))}%`,
-                      } as CSSProperties
-                    }
-                  />
+                  <Label className="text-xs font-semibold">Progress Otomatis</Label>
+                  <div className="flex h-9 items-center rounded-md border border-border bg-muted px-3 text-sm font-semibold">
+                    {form.progress}%
+                  </div>
                 </div>
               </div>
-              <div className="space-y-3 rounded-lg border border-border bg-slate-50 p-3">
-                <div>
-                  <Label className="text-xs font-semibold">
-                    Status Tahapan Customer
-                  </Label>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Centang tahapan yang sudah selesai. Tahapan pertama yang
-                    belum dicentang akan tampil kuning sebagai tahapan aktif.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {CUSTOMER_TRACKING_STAGES.map((stage) => (
-                    <label
-                      key={stage.key}
-                      className="flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={form.trackingStages.includes(stage.key)}
-                        onChange={() => toggleTrackingStage(stage.key)}
-                        className="h-4 w-4"
-                      />
-                      <span>{stage.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <label className="flex items-center gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.hasPainting}
+                  disabled={!canManage}
+                  onChange={(event) =>
+                    setForm((f) => ({
+                      ...f,
+                      hasPainting: event.target.checked,
+                      status:
+                        !event.target.checked && f.status === "painting"
+                          ? "finishing_trial"
+                          : f.status,
+                      progress: String(
+                        getProgressPercent(
+                          !event.target.checked && f.status === "painting"
+                            ? "finishing_trial"
+                            : f.status,
+                        ),
+                      ),
+                    }))
+                  }
+                  className="h-4 w-4"
+                />
+                <span className="font-medium">Painting / Pengecatan</span>
+              </label>
               <div className="space-y-3 rounded-lg border border-border bg-slate-50 p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -2338,6 +2494,7 @@ export default function JadwalProject() {
                     variant="outline"
                     size="sm"
                     onClick={addTrackingTimelineItem}
+                    disabled={!canManage}
                   >
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
                     Tambah Timeline
@@ -2365,6 +2522,7 @@ export default function JadwalProject() {
                             )
                           }
                           className="h-8 text-sm"
+                          disabled={!canManage}
                         />
                         <Input
                           value={item.description}
@@ -2377,6 +2535,7 @@ export default function JadwalProject() {
                           }
                           placeholder="Contoh: Engineering 1 - Proses instalasi"
                           className="h-8 text-sm"
+                          disabled={!canManage}
                         />
                         <Button
                           type="button"
@@ -2384,6 +2543,7 @@ export default function JadwalProject() {
                           size="icon"
                           className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
                           onClick={() => removeTrackingTimelineItem(index)}
+                          disabled={!canManage}
                           title="Hapus timeline"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -2397,6 +2557,7 @@ export default function JadwalProject() {
                 <Label className="text-xs font-semibold">Catatan</Label>
                 <Textarea
                   value={form.catatan}
+                  disabled={!canManage}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, catatan: e.target.value }))
                   }

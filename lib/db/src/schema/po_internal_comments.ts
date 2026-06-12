@@ -11,6 +11,8 @@ export const poInternalCommentsTable = pgTable("po_internal_comments", {
     onDelete: "set null",
   }),
   userName: text("user_name").notNull(),
+  userRole: text("user_role"),
+  userDepartment: text("user_department"),
   comment: text("comment").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

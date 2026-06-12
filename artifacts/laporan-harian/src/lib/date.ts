@@ -56,3 +56,14 @@ export function formatIndonesianDate(dateString: string): string {
     timeZone: "Asia/Jakarta",
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
+
+export function isWeekendDate(dateString: string): boolean {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return false;
+  }
+
+  const dayOfWeek = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return dayOfWeek === 0 || dayOfWeek === 6;
+}

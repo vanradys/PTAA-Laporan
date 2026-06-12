@@ -10,6 +10,7 @@ import {
   notificationsTable,
   or,
   poChangeLogsTable,
+  poInternalCommentsTable,
   projectsPoTable,
   sql,
   usersTable,
@@ -19,14 +20,6 @@ import { Router } from "express";
 
 const router = Router();
 
-const PO_STATUSES = [
-  "belum_mulai",
-  "proses",
-  "hampir_deadline",
-  "delay",
-  "selesai",
-  "close",
-] as const;
 const CUSTOMER_TRACKING_STAGE_KEYS = [
   "po_diterima",
   "engineering",
@@ -34,9 +27,35 @@ const CUSTOMER_TRACKING_STAGE_KEYS = [
   "procurement",
   "produksi",
   "qc",
+  "finishing_trial",
+  "painting",
   "pengiriman",
   "selesai",
 ] as const;
+
+const PROJECT_PROGRESS_STAGES = [
+  { key: "po_received", label: "PO Received", progress: 0, legacyKeys: ["po_diterima", "belum_mulai", "proses", "hampir_deadline", "delay"] },
+  { key: "engineering", label: "Engineering", progress: 20, legacyKeys: ["engineering"] },
+  { key: "approval_drawing", label: "Approval Drawing", progress: 20, legacyKeys: ["approval_drawing"] },
+  { key: "material_order", label: "Material Order", progress: 40, legacyKeys: ["procurement"] },
+  { key: "production", label: "Production", progress: 60, legacyKeys: ["produksi"] },
+  { key: "quality_control", label: "Quality Control", progress: 60, legacyKeys: ["qc"] },
+  { key: "finishing_trial", label: "Finishing & Trial", progress: 80, legacyKeys: ["finishing_trial"] },
+  { key: "painting", label: "Painting", progress: 80, legacyKeys: ["painting"] },
+  { key: "delivery", label: "Delivery", progress: 90, legacyKeys: ["pengiriman"] },
+  { key: "project_finished", label: "Project Finished", progress: 100, legacyKeys: ["selesai", "close"] },
+] as const;
+
+type ProjectProgressKey = (typeof PROJECT_PROGRESS_STAGES)[number]["key"];
+
+const PROJECT_PROGRESS_KEYS = new Set<string>(
+  PROJECT_PROGRESS_STAGES.map((stage) => stage.key),
+);
+const LEGACY_PROJECT_PROGRESS_MAP = new Map<string, ProjectProgressKey>(
+  PROJECT_PROGRESS_STAGES.flatMap((stage) =>
+    stage.legacyKeys.map((legacyKey) => [legacyKey, stage.key] as const),
+  ),
+);
 
 const PO_AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "dir"];
 const MONTHLY_PO_TARGET = 10_000_000_000;
@@ -99,6 +118,102 @@ function canManagePo(user?: {
   );
 }
 
+function isPurchasingOrEngineering(user?: {
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}): boolean {
+  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  if (departmentCode === "PUR" || departmentCode === "ENG") return true;
+
+  const departmentName = String(user?.departmentName ?? "").toLowerCase();
+  return (
+    departmentName.includes("purchasing") ||
+    departmentName.includes("engineering")
+  );
+}
+
+function canUpdateProjectProgress(user?: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}): boolean {
+  return canManagePo(user) || isPurchasingOrEngineering(user);
+}
+
+function projectProgressLabel(value: string): string {
+  const normalized = normalizeProjectProgress(value);
+  return (
+    PROJECT_PROGRESS_STAGES.find((stage) => stage.key === normalized)?.label ??
+    value
+  );
+}
+
+function normalizeProjectProgress(
+  value: unknown,
+  trackingStages?: unknown,
+): ProjectProgressKey {
+  const rawValue = String(value ?? "").trim().toLowerCase();
+  if (PROJECT_PROGRESS_KEYS.has(rawValue)) return rawValue as ProjectProgressKey;
+  const mappedValue = LEGACY_PROJECT_PROGRESS_MAP.get(rawValue);
+  if (mappedValue) return mappedValue;
+
+  const completedStages = normalizeTrackingStages(trackingStages);
+  for (const stage of [...PROJECT_PROGRESS_STAGES].reverse()) {
+    if (
+      completedStages.includes(stage.key) ||
+      stage.legacyKeys.some((legacyKey) => completedStages.includes(legacyKey))
+    ) {
+      return stage.key;
+    }
+  }
+
+  return "po_received";
+}
+
+function getProjectProgressPercent(value: unknown, trackingStages?: unknown): number {
+  const normalized = normalizeProjectProgress(value, trackingStages);
+  return (
+    PROJECT_PROGRESS_STAGES.find((stage) => stage.key === normalized)
+      ?.progress ?? 0
+  );
+}
+
+function isProjectFinished(value: unknown): boolean {
+  return normalizeProjectProgress(value) === "project_finished";
+}
+
+function stageAllowedForPainting(
+  stage: ProjectProgressKey,
+  hasPainting: boolean,
+): boolean {
+  return stage !== "painting" || hasPainting;
+}
+
+async function getPicDepartment(id: unknown) {
+  const departmentId = Number(id);
+  if (!Number.isInteger(departmentId)) return null;
+
+  const [department] = await db
+    .select({ id: departmentsTable.id, code: departmentsTable.code, name: departmentsTable.name })
+    .from(departmentsTable)
+    .where(eq(departmentsTable.id, departmentId))
+    .limit(1);
+
+  return department ?? null;
+}
+
+async function validatePicDepartment(id: unknown): Promise<string | null> {
+  const department = await getPicDepartment(id);
+  if (!department) return "PIC Departemen wajib dipilih";
+
+  const code = String(department.code ?? "").toUpperCase();
+  const name = String(department.name ?? "").toLowerCase();
+  if (code === "MKT" || code === "ENG") return null;
+  if (name.includes("marketing") || name.includes("engineering")) return null;
+
+  return "PIC Departemen hanya boleh Marketing atau Engineering";
+}
+
 function isDateOnly(value: string | null | undefined): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
@@ -145,8 +260,7 @@ function calcDaysAfterClosed(closedAt?: Date | string | null): number | null {
 }
 
 function isPoEditLocked(po: typeof projectsPoTable.$inferSelect): boolean {
-  const isFinished = po.status === "selesai" || po.status === "close";
-  if (!isFinished) return false;
+  if (!isProjectFinished(po.status)) return false;
 
   const daysAfterClosed = calcDaysAfterClosed(po.closedAt);
   return daysAfterClosed !== null && daysAfterClosed >= 30;
@@ -226,28 +340,16 @@ async function recordPoChange(options: {
   });
 }
 
-function autoStatus(
-  current: string,
-  deadline: string,
-  sisaHari: number | null,
-  progress = 0,
-): string {
-  if (current === "close") return current;
-  if (progress >= 100 || current === "selesai") return "selesai";
-  if (sisaHari === null) return current;
-  if (sisaHari < 0) return "delay";
-  if (sisaHari <= 7) return "hampir_deadline";
-  return current === "delay" || current === "hampir_deadline"
-    ? "proses"
-    : current;
-}
-
 async function buildPoItem(
   po: typeof projectsPoTable.$inferSelect,
   options?: { includeAmount?: boolean },
 ) {
   const sisaHari = calcSisaHari(po.deadline);
-  const computedStatus = autoStatus(po.status, po.deadline, sisaHari, po.progress);
+  const computedStatus = normalizeProjectProgress(po.status, po.trackingStages);
+  const computedProgress = getProjectProgressPercent(
+    computedStatus,
+    po.trackingStages,
+  );
   let picName: string | null = null;
   let deptName: string | null = null;
   if (po.picUserId) {
@@ -281,10 +383,13 @@ async function buildPoItem(
     sisaHari,
     picUserId: po.picUserId,
     picName,
+    picProject: po.picProject,
     departmentId: po.departmentId,
     departmentName: deptName,
     status: computedStatus,
-    progress: po.progress,
+    statusLabel: projectProgressLabel(computedStatus),
+    progress: computedProgress,
+    hasPainting: po.hasPainting,
     trackingStages: normalizeTrackingStages(po.trackingStages),
     trackingTimeline: normalizeTrackingTimeline(po.trackingTimeline),
     catatan: po.catatan,
@@ -302,7 +407,7 @@ async function sendDeadlineNotifications(
 ) {
   const sisaHari = calcSisaHari(po.deadline);
   if (sisaHari === null) return;
-  if (po.status === "selesai" || po.status === "close") return;
+  if (isProjectFinished(po.status)) return;
 
   const recipients: number[] = [];
   if (po.picUserId) recipients.push(po.picUserId);
@@ -388,21 +493,17 @@ router.get("/po/summary", async (req, res) => {
   const pos = await db.select().from(projectsPoTable);
 
   const totalPo = pos.length;
-  const poSelesai = pos.filter(
-    (p) => p.status === "selesai" || p.status === "close",
-  ).length;
+  const poSelesai = pos.filter((p) => isProjectFinished(p.status)).length;
   const poBelumSelesai = totalPo - poSelesai;
   const poDelay = pos.filter(
     (p) =>
-      p.status === "delay" ||
       ((calcSisaHari(p.deadline) ?? Number.POSITIVE_INFINITY) < 0 &&
-        p.status !== "selesai" &&
-        p.status !== "close"),
+        !isProjectFinished(p.status)),
   ).length;
   const poHampirDeadline = pos.filter((p) => {
     const s = calcSisaHari(p.deadline);
     if (s === null) return false;
-    return s >= 0 && s <= 7 && p.status !== "selesai" && p.status !== "close";
+    return s >= 0 && s <= 7 && !isProjectFinished(p.status);
   }).length;
   const monthlyTarget = MONTHLY_PO_TARGET;
   const targetPos = await db
@@ -476,6 +577,44 @@ router.get("/po/activity", async (req, res) => {
   );
 });
 
+router.get("/po/internal-comments", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) {
+    res.status(401).json({ error: "Tidak terautentikasi" });
+    return;
+  }
+  const user = await getUserFromToken(token);
+  if (!user) {
+    res.status(401).json({ error: "Sesi tidak valid" });
+    return;
+  }
+
+  const comments = await db
+    .select({
+      id: poInternalCommentsTable.id,
+      poId: poInternalCommentsTable.poId,
+      userId: poInternalCommentsTable.userId,
+      userName: poInternalCommentsTable.userName,
+      userRole: poInternalCommentsTable.userRole,
+      userDepartment: poInternalCommentsTable.userDepartment,
+      comment: poInternalCommentsTable.comment,
+      createdAt: poInternalCommentsTable.createdAt,
+      noPo: projectsPoTable.noPo,
+      namaProject: projectsPoTable.namaProject,
+    })
+    .from(poInternalCommentsTable)
+    .leftJoin(projectsPoTable, eq(poInternalCommentsTable.poId, projectsPoTable.id))
+    .orderBy(desc(poInternalCommentsTable.createdAt))
+    .limit(50);
+
+  res.json(
+    comments.map((comment) => ({
+      ...comment,
+      createdAt: comment.createdAt.toISOString(),
+    })),
+  );
+});
+
 router.get("/po", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) {
@@ -535,7 +674,10 @@ router.get("/po", async (req, res) => {
 
   const filteredItems =
     status && status !== "semua"
-      ? items.filter((item) => item.status === status)
+      ? items.filter(
+          (item) =>
+            item.status === normalizeProjectProgress(String(status)),
+        )
       : items;
 
   res.json(filteredItems);
@@ -572,23 +714,43 @@ router.post("/po", async (req, res) => {
     deadline,
     tanggal_Delivery,
     picUserId,
+    picProject,
     departmentId,
     status,
     progress,
+    hasPainting,
     trackingStages,
     trackingTimeline,
     catatan,
   } = req.body;
   const deliveryValue = deadline ?? tanggal_Delivery;
-  const parsedProgress = progress !== undefined ? parseInt(progress) : 0;
-  const parsedStatus =
-    parsedProgress >= 100 && status !== "close"
-      ? "selesai"
-      : (status ?? "belum_mulai");
+  const usesPainting = Boolean(hasPainting);
+  const parsedStatus = normalizeProjectProgress(status ?? "po_received");
+  const parsedProgress = getProjectProgressPercent(parsedStatus);
+
+  if (progress !== undefined) {
+    res.status(400).json({
+      error: "Progress persen tidak bisa diinput manual",
+    });
+    return;
+  }
 
   if (!noPo || !namaProject || !tanggalPoMasuk || !deliveryValue) {
     res.status(400).json({
       error: "noPo, namaProject, tanggalPoMasuk, dan Tanggal Delivery diperlukan",
+    });
+    return;
+  }
+
+  const picDepartmentError = await validatePicDepartment(departmentId);
+  if (picDepartmentError) {
+    res.status(400).json({ error: picDepartmentError });
+    return;
+  }
+
+  if (!stageAllowedForPainting(parsedStatus, usesPainting)) {
+    res.status(400).json({
+      error: "Project Progress Painting hanya boleh dipilih jika Painting dicentang",
     });
     return;
   }
@@ -608,12 +770,14 @@ router.post("/po", async (req, res) => {
       targetPenyelesaian: targetPenyelesaian ?? null,
       deadline: deliveryValue,
       picUserId: picUserId ? parseInt(picUserId) : null,
+      picProject: picProject ? String(picProject).trim() : null,
       departmentId: departmentId ? parseInt(departmentId) : null,
       status: parsedStatus,
       progress: parsedProgress,
+      hasPainting: usesPainting,
       trackingStages: normalizeTrackingStages(trackingStages),
       trackingTimeline: normalizeTrackingTimeline(trackingTimeline),
-      ...(parsedStatus === "selesai"
+      ...(parsedStatus === "project_finished"
         ? { closedAt: new Date(), closedByUserId: user.id }
         : {}),
       catatan: catatan ?? null,
@@ -637,9 +801,11 @@ router.post("/po", async (req, res) => {
       "targetPenyelesaian",
       "deadline",
       "picUserId",
+      "picProject",
       "departmentId",
       "status",
       "progress",
+      "hasPainting",
       "trackingStages",
       "trackingTimeline",
       "catatan",
@@ -763,7 +929,10 @@ router.patch("/po/:id", async (req, res) => {
     return;
   }
 
-  if (!canManagePo(user)) {
+  const hasFullManagePermission = canManagePo(user);
+  const hasProgressPermission = canUpdateProjectProgress(user);
+
+  if (!hasProgressPermission) {
     res.status(403).json({
       error:
         "Hanya Admin/Direktur atau departemen terkait yang dapat mengubah PO",
@@ -802,61 +971,143 @@ router.patch("/po/:id", async (req, res) => {
     deadline,
     tanggal_Delivery,
     picUserId,
+    picProject,
     departmentId,
     status,
     progress,
+    hasPainting,
     trackingStages,
     trackingTimeline,
     catatan,
   } = req.body;
-  if (noPo !== undefined) updates.noPo = noPo;
-  if (namaProject !== undefined) updates.namaProject = namaProject;
-  if (customer !== undefined) updates.customer = customer;
-  if (qty !== undefined) updates.qty = qty;
-  if (poAmount !== undefined && canViewPoAmount(user)) {
-    updates.poAmount =
-      poAmount === "" || poAmount === null ? null : String(poAmount);
-  }
-  if (tanggalPoMasuk !== undefined) updates.tanggalPoMasuk = tanggalPoMasuk;
-  if (targetPenyelesaian !== undefined)
-    updates.targetPenyelesaian = targetPenyelesaian;
-  const deliveryValue = deadline ?? tanggal_Delivery;
-  if (deliveryValue !== undefined)
-    updates.deadline = deliveryValue;
-  if (picUserId !== undefined)
-    updates.picUserId = picUserId ? parseInt(picUserId) : null;
-  if (departmentId !== undefined)
-    updates.departmentId = departmentId ? parseInt(departmentId) : null;
-  if (status !== undefined) {
-    updates.status = status;
 
-    if ((status === "selesai" || status === "close") && !existing.closedAt) {
-      updates.closedAt = new Date();
-      updates.closedByUserId = user.id;
-      updates.progress = 100;
+  if (!hasFullManagePermission) {
+    const fullEditFields = [
+      noPo,
+      namaProject,
+      customer,
+      qty,
+      poAmount,
+      tanggalPoMasuk,
+      targetPenyelesaian,
+      deadline,
+      tanggal_Delivery,
+      picUserId,
+      picProject,
+      departmentId,
+      progress,
+      hasPainting,
+      trackingStages,
+      trackingTimeline,
+      catatan,
+    ];
+    if (fullEditFields.some((value) => value !== undefined)) {
+      res.status(403).json({
+        error: "Purchasing dan Engineering hanya boleh mengubah Project Progress",
+      });
+      return;
+    }
+  }
+
+  if (progress !== undefined) {
+    res.status(400).json({
+      error: "Progress persen tidak bisa diinput manual",
+    });
+    return;
+  }
+
+  if (hasFullManagePermission) {
+    if (noPo !== undefined) updates.noPo = noPo;
+    if (namaProject !== undefined) updates.namaProject = namaProject;
+    if (customer !== undefined) updates.customer = customer;
+    if (qty !== undefined) updates.qty = qty;
+    if (poAmount !== undefined && canViewPoAmount(user)) {
+      updates.poAmount =
+        poAmount === "" || poAmount === null ? null : String(poAmount);
+    }
+    if (tanggalPoMasuk !== undefined) updates.tanggalPoMasuk = tanggalPoMasuk;
+    if (targetPenyelesaian !== undefined)
+      updates.targetPenyelesaian = targetPenyelesaian || null;
+    const deliveryValue = deadline ?? tanggal_Delivery;
+    if (deliveryValue !== undefined) {
+      const normalizedDeliveryValue = String(deliveryValue).trim();
+      if (!normalizedDeliveryValue) {
+        res.status(400).json({ error: "Tanggal Delivery wajib diisi" });
+        return;
+      }
+      if (
+        String(existing.deadline ?? "").trim() &&
+        normalizedDeliveryValue !== String(existing.deadline).trim()
+      ) {
+        res.status(400).json({
+          error: "Tanggal Delivery tidak boleh diubah setelah PO dibuat",
+        });
+        return;
+      }
+      updates.deadline = normalizedDeliveryValue;
+    }
+    if (picProject !== undefined)
+      updates.picProject = picProject ? String(picProject).trim() : null;
+    if (departmentId !== undefined) {
+      const picDepartmentError = await validatePicDepartment(departmentId);
+      if (picDepartmentError) {
+        res.status(400).json({ error: picDepartmentError });
+        return;
+      }
+      updates.departmentId = departmentId ? parseInt(departmentId) : null;
+    }
+    if (hasPainting !== undefined) updates.hasPainting = Boolean(hasPainting);
+    if (trackingStages !== undefined)
+      updates.trackingStages = normalizeTrackingStages(trackingStages);
+    if (trackingTimeline !== undefined)
+      updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
+    if (catatan !== undefined) updates.catatan = catatan;
+  }
+
+  if (hasFullManagePermission && picUserId !== undefined)
+    updates.picUserId = picUserId ? parseInt(picUserId) : null;
+
+  if (status !== undefined) {
+    const nextStatus = normalizeProjectProgress(status);
+    const nextHasPainting =
+      updates.hasPainting !== undefined
+        ? Boolean(updates.hasPainting)
+        : Boolean(existing.hasPainting);
+
+    if (!stageAllowedForPainting(nextStatus, nextHasPainting)) {
+      res.status(400).json({
+        error:
+          "Project Progress Painting hanya boleh dipilih jika Painting dicentang",
+      });
+      return;
     }
 
-    if (status !== "selesai" && status !== "close") {
+    updates.status = nextStatus;
+    updates.progress = getProjectProgressPercent(nextStatus);
+
+    if (nextStatus === "project_finished" && !existing.closedAt) {
+      updates.closedAt = new Date();
+      updates.closedByUserId = user.id;
+    }
+
+    if (nextStatus !== "project_finished") {
       updates.closedAt = null;
       updates.closedByUserId = null;
     }
   }
-  if (progress !== undefined) {
-    const parsedProgress = parseInt(progress);
-    updates.progress = parsedProgress;
-    if (parsedProgress >= 100 && status !== "close") {
-      updates.status = "selesai";
-      if (!existing.closedAt) {
-        updates.closedAt = new Date();
-        updates.closedByUserId = user.id;
-      }
+
+  if (updates.hasPainting === false) {
+    const effectiveStatus = normalizeProjectProgress(
+      updates.status ?? existing.status,
+      updates.trackingStages ?? existing.trackingStages,
+    );
+    if (effectiveStatus === "painting") {
+      res.status(400).json({
+        error: "Status Painting tidak boleh dipilih jika Painting tidak aktif",
+      });
+      return;
     }
   }
-  if (trackingStages !== undefined)
-    updates.trackingStages = normalizeTrackingStages(trackingStages);
-  if (trackingTimeline !== undefined)
-    updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
-  if (catatan !== undefined) updates.catatan = catatan;
 
   const [updated] = await db
     .update(projectsPoTable)
@@ -874,9 +1125,11 @@ router.patch("/po/:id", async (req, res) => {
     "targetPenyelesaian",
     "deadline",
     "picUserId",
+    "picProject",
     "departmentId",
     "status",
     "progress",
+    "hasPainting",
     "trackingStages",
     "trackingTimeline",
     "catatan",
@@ -938,7 +1191,7 @@ router.post("/po/:id/close", async (req, res) => {
   const [updated] = await db
     .update(projectsPoTable)
     .set({
-      status: "close",
+      status: "project_finished",
       closedAt: new Date(),
       closedByUserId: user.id,
       progress: 100,
@@ -1013,9 +1266,11 @@ router.delete("/po/:id", async (req, res) => {
       "targetPenyelesaian",
       "deadline",
       "picUserId",
+      "picProject",
       "departmentId",
       "status",
       "progress",
+      "hasPainting",
       "catatan",
     ]),
   });

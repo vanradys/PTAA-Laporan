@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetTodayReport, useCreateReport, useUpdateReport, useSubmitReport,
   useCreateTask, useUpdateTask, useDeleteTask, useGetYesterdayTasks,
+  useListEmployees,
   getGetTodayReportQueryKey
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Plus, Trash2, Copy, Send, Save, Loader2, FileText,
-  ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock
+  ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, CalendarDays, UserPlus, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
-import { formatIndonesianDate, formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
+import { formatIndonesianDate, formatJakartaDateLong, getJakartaDateString, isWeekendDate } from "@/lib/date";
+import { apiRequest } from "@/lib/apiRequest";
 
 const TASK_STATUSES = [
   { value: "belum_mulai", label: "Belum Mulai", color: "bg-gray-100 text-gray-700 border-gray-200" },
@@ -158,6 +160,42 @@ interface PreviousReportTasksData {
   yesterdayReportMissing: boolean;
 }
 
+interface EmployeeOption {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  departmentId?: number | null;
+  departmentName?: string | null;
+}
+
+interface AssignedTaskNotification {
+  id: number;
+  assigneeUserId: number;
+  assignedByUserId?: number | null;
+  assignedByName: string;
+  assignedByRole: string;
+  title: string;
+  project?: string | null;
+  notes?: string | null;
+  status: string;
+  createdTaskId?: number | null;
+  respondedAt?: string | null;
+  createdAt: string;
+}
+
+function formatAssignmentDateTime(value: string) {
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export default function LaporanSaya() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -165,12 +203,20 @@ export default function LaporanSaya() {
 
   const today = getJakartaDateString();
   const todayFormatted = formatJakartaDateLong();
+  const isWeekendToday = isWeekendDate(today);
 
   const { data: todayReport, isLoading, isError } = useGetTodayReport({
     query: { queryKey: getGetTodayReportQueryKey(), retry: false }
   });
 
   const { data: previousReportTasks } = useGetYesterdayTasks();
+  const { data: employees } = useListEmployees();
+  const { data: assignedTaskNotifications } = useQuery({
+    queryKey: ["assigned-tasks", "pending"],
+    queryFn: () =>
+      apiRequest<AssignedTaskNotification[]>("/api/assigned-tasks/pending"),
+    refetchInterval: 15000,
+  });
   const createReport = useCreateReport();
   const updateReport = useUpdateReport();
   const submitReport = useSubmitReport();
@@ -185,11 +231,25 @@ export default function LaporanSaya() {
   const [isEditingSubmitted, setIsEditingSubmitted] = useState(false);
   const [editableTasks, setEditableTasks] = useState<ExistingTask[]>([]);
   const [deletedTaskIds, setDeletedTaskIds] = useState<number[]>([]);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignForm, setAssignForm] = useState({
+    assigneeUserId: "",
+    title: "",
+    project: "",
+    notes: "",
+  });
+  const [isAssigningTask, setIsAssigningTask] = useState(false);
+  const [respondingAssignmentId, setRespondingAssignmentId] = useState<number | null>(null);
   const hasAutoCopiedYesterdayTasks = useRef(false);
 
   const report = (isError ? null : todayReport) as ReportData | null;
   const previousTasksData = previousReportTasks as PreviousReportTasksData | undefined;
   const yesterdayTasks = previousTasksData?.tasks ?? [];
+  const pendingAssignedTasks = Array.isArray(assignedTaskNotifications)
+    ? assignedTaskNotifications
+    : [];
+  const employeeOptions = (Array.isArray(employees) ? employees : []) as EmployeeOption[];
+  const assignableEmployees = employeeOptions.filter((employee) => employee.id !== user?.id);
   const missingYesterdayDate = previousTasksData?.missingYesterdayDate ?? null;
   const sourceReportDate = previousTasksData?.sourceReportDate ?? null;
   const existingTasks: ExistingTask[] = report?.tasks ?? [];
@@ -202,13 +262,13 @@ const showSubmittedReadOnly = isSubmitted && !isEditingSubmitted;
 const displayedExistingTasks = isEditingSubmitted ? editableTasks : existingTasks;
 
 const canEditReportFields =
-  !report || report.status === "draf" || report.status === "perlu_revisi" || isEditingSubmitted;
+  !isWeekendToday && (!report || report.status === "draf" || report.status === "perlu_revisi" || isEditingSubmitted);
 
 const canModifyExistingTasks =
   !!report && !isReviewed && !isPastReport;
 
 const canAddNewTasks = canEditReportFields;
-const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitted;
+const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitted && !isWeekendToday;
    const { register, handleSubmit, setValue, getValues, watch } = useForm({
     defaultValues: {
       obstacles: "",
@@ -306,6 +366,85 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
 
 const handleCopyYesterday = () => {
   copyYesterdayTasksToToday(true);
+};
+
+const closeAssignModal = () => {
+  setShowAssignModal(false);
+  setAssignForm({
+    assigneeUserId: "",
+    title: "",
+    project: "",
+    notes: "",
+  });
+};
+
+const handleAssignTask = async () => {
+  if (!assignForm.assigneeUserId || !assignForm.title.trim()) {
+    toast({
+      title: "Data belum lengkap",
+      description: "Pilih penerima dan isi tugas terlebih dahulu.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  setIsAssigningTask(true);
+  try {
+    await apiRequest("/api/assigned-tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assigneeUserId: Number(assignForm.assigneeUserId),
+        title: assignForm.title,
+        project: assignForm.project,
+        notes: assignForm.notes,
+      }),
+    });
+
+    closeAssignModal();
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    toast({ title: "Tugas dikirim", description: "Tugas berhasil dikirim ke penerima." });
+  } catch (error) {
+    toast({
+      title: "Gagal mengirim tugas",
+      description: error instanceof Error ? error.message : "Tugas gagal dikirim",
+      variant: "destructive",
+    });
+  } finally {
+    setIsAssigningTask(false);
+  }
+};
+
+const handleRespondAssignedTask = async (
+  assignment: AssignedTaskNotification,
+  accepted: boolean,
+) => {
+  setRespondingAssignmentId(assignment.id);
+  try {
+    await apiRequest(`/api/assigned-tasks/${assignment.id}/respond`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accepted }),
+    });
+
+    queryClient.invalidateQueries({ queryKey: ["assigned-tasks", "pending"] });
+    queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
+    refreshDashboardAndMonitoring();
+    toast({
+      title: accepted ? "Tugas diterima" : "Tugas ditolak",
+      description: accepted
+        ? "Tugas sudah masuk ke laporan harian hari ini."
+        : "Tugas tidak dimasukkan ke laporan harian.",
+    });
+  } catch (error) {
+    toast({
+      title: "Gagal memproses tugas",
+      description: error instanceof Error ? error.message : "Gagal memproses pilihan",
+      variant: "destructive",
+    });
+  } finally {
+    setRespondingAssignmentId(null);
+  }
 };
 
 useEffect(() => {
@@ -634,6 +773,18 @@ useEffect(() => {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
+        ) : isWeekendToday && !report ? (
+          <Card className="border border-blue-200 bg-blue-50">
+            <CardContent className="p-5 flex items-start gap-3">
+              <CalendarDays className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-blue-800">Hari libur</p>
+                <p className="text-xs text-blue-600 mt-0.5">
+                  Sabtu/Minggu tidak wajib mengisi laporan harian.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         ) : isLocked || showSubmittedReadOnly ? (
           /* Locked/submitted view */
           <div className="space-y-5">
@@ -765,6 +916,62 @@ useEffect(() => {
                 </Card>
               )}
 
+              {pendingAssignedTasks.length > 0 && (
+                <div className="space-y-3">
+                  {pendingAssignedTasks.map((assignment) => (
+                    <Card
+                      key={assignment.id}
+                      className="border border-blue-200 bg-blue-50/80"
+                    >
+                      <CardContent className="p-4 text-center">
+                        <div className="mx-auto max-w-2xl space-y-2">
+                          <p className="text-sm font-semibold text-slate-900">
+                            Anda menerima tugas dari {assignment.assignedByRole}
+                          </p>
+                          <p className="text-sm text-slate-800">
+                            {assignment.title}
+                          </p>
+                          <p className="text-sm text-slate-700">
+                            Catatan :{" "}
+                            {assignment.project
+                              ? `ini buat project ${assignment.project}`
+                              : assignment.notes?.trim() || "-"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {formatAssignmentDateTime(assignment.createdAt)}
+                          </p>
+                          <p className="pt-1 text-sm font-semibold text-slate-900">
+                            Apakah anda ingin menerima tugas ini?
+                          </p>
+                          <div className="flex justify-center gap-3 pt-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={respondingAssignmentId === assignment.id}
+                              onClick={() => handleRespondAssignedTask(assignment, true)}
+                            >
+                              {respondingAssignmentId === assignment.id ? (
+                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              ) : null}
+                              Ya
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={respondingAssignmentId === assignment.id}
+                              onClick={() => handleRespondAssignedTask(assignment, false)}
+                            >
+                              Tidak
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
               {/* Tasks Section */}
                 <Card className="border border-border bg-white">
                   <CardHeader className="pb-3">
@@ -772,6 +979,10 @@ useEffect(() => {
                     <CardTitle className="text-base">
                       Daftar Tugas Hari Ini <span className="text-destructive">*</span>
                     </CardTitle>                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignModal(true)}>
+                        <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                        Beri Tugas
+                      </Button>
                       {yesterdayTasks.length > 0 && (
                         <Button type="button" variant="outline" size="sm" onClick={handleCopyYesterday}>
                           <Copy className="w-3.5 h-3.5 mr-1.5" />
@@ -1071,6 +1282,134 @@ useEffect(() => {
           </form>
         )}
       </div>
+      {showAssignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={closeAssignModal}
+          />
+          <div className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-background shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h2 className="text-base font-bold text-foreground">
+                  Beri Tugas Harian
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Tugas akan muncul sebagai notifikasi di halaman Laporan Harian penerima.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={closeAssignModal}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  Penerima <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={assignForm.assigneeUserId}
+                  onValueChange={(value) =>
+                    setAssignForm((current) => ({
+                      ...current,
+                      assigneeUserId: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Pilih penerima tugas..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assignableEmployees.map((employee) => (
+                      <SelectItem key={employee.id} value={String(employee.id)}>
+                        {employee.name}
+                        {employee.departmentName ? ` - ${employee.departmentName}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  Isi Tugas <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  value={assignForm.title}
+                  onChange={(event) =>
+                    setAssignForm((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                  placeholder="Contoh: Follow up approval drawing customer"
+                  rows={3}
+                  className="resize-none text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Project</Label>
+                <Input
+                  value={assignForm.project}
+                  onChange={(event) =>
+                    setAssignForm((current) => ({
+                      ...current,
+                      project: event.target.value,
+                    }))
+                  }
+                  placeholder="Contoh: Project X"
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Catatan Tambahan</Label>
+                <Input
+                  value={assignForm.notes}
+                  onChange={(event) =>
+                    setAssignForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  placeholder="Opsional"
+                  className="h-9 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-border px-5 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeAssignModal}
+                disabled={isAssigningTask}
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                onClick={handleAssignTask}
+                disabled={
+                  isAssigningTask ||
+                  !assignForm.assigneeUserId ||
+                  !assignForm.title.trim()
+                }
+              >
+                {isAssigningTask ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Kirim Tugas
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

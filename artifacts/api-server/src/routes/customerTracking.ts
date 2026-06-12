@@ -7,6 +7,7 @@ import {
   poInternalCommentsTable,
   poChangeLogsTable,
   projectsPoTable,
+  notificationsTable,
   sql,
   usersTable,
   departmentsTable,
@@ -17,15 +18,36 @@ import { getUserFromToken } from "./auth";
 const router = Router();
 
 const TRACKING_STAGES = [
-  { key: "po_diterima", label: "PO Diterima", minProgress: 1 },
-  { key: "engineering", label: "Engineering", minProgress: 15 },
-  { key: "approval_drawing", label: "Approval Drawing", minProgress: 30 },
-  { key: "procurement", label: "Procurement", minProgress: 45 },
-  { key: "produksi", label: "Produksi", minProgress: 60 },
-  { key: "qc", label: "QC", minProgress: 80 },
-  { key: "pengiriman", label: "Pengiriman", minProgress: 95 },
-  { key: "selesai", label: "Selesai", minProgress: 100 },
+  { key: "po_received", label: "PO Received", progress: 0 },
+  { key: "engineering", label: "Engineering", progress: 20 },
+  { key: "approval_drawing", label: "Approval Drawing", progress: 20 },
+  { key: "material_order", label: "Material Order", progress: 40 },
+  { key: "production", label: "Production", progress: 60 },
+  { key: "quality_control", label: "Quality Control", progress: 60 },
+  { key: "finishing_trial", label: "Finishing & Trial", progress: 80 },
+  { key: "painting", label: "Painting", progress: 80 },
+  { key: "delivery", label: "Delivery", progress: 90 },
+  { key: "project_finished", label: "Project Finished", progress: 100 },
 ] as const;
+
+type ProjectProgressKey = (typeof TRACKING_STAGES)[number]["key"];
+
+const PROJECT_PROGRESS_KEYS = new Set<string>(
+  TRACKING_STAGES.map((stage) => stage.key),
+);
+const LEGACY_STAGE_MAP: Record<string, ProjectProgressKey> = {
+  po_diterima: "po_received",
+  belum_mulai: "po_received",
+  proses: "po_received",
+  hampir_deadline: "po_received",
+  delay: "po_received",
+  procurement: "material_order",
+  produksi: "production",
+  qc: "quality_control",
+  pengiriman: "delivery",
+  selesai: "project_finished",
+  close: "project_finished",
+};
 
 type TrackingTimelineItem = { date: string; description: string };
 
@@ -35,11 +57,13 @@ function isAdminOrDirector(user?: { role?: string | null }) {
 }
 
 function getInternalCommentDisplayName(user: {
+  name?: string | null;
   role?: string | null;
   departmentCode?: string | null;
   departmentName?: string | null;
 }) {
   const role = String(user.role ?? "").toLowerCase();
+  if (role === "admin_marketing") return user.name ?? "Admin Marketing";
   if (["direktur", "director", "dir"].includes(role)) return "Director";
   if (role === "admin") return "Admin";
 
@@ -60,6 +84,32 @@ function getInternalCommentDisplayName(user: {
   return "PTAA";
 }
 
+function summarizeComment(comment: string) {
+  const compact = comment.replace(/\s+/g, " ").trim();
+  return compact.length > 90 ? `${compact.slice(0, 87)}...` : compact;
+}
+
+async function notifyInternalCommentRecipients(options: {
+  po: Pick<typeof projectsPoTable.$inferSelect, "noPo" | "namaProject">;
+  fromName: string;
+  comment: string;
+}) {
+  const recipients = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.isActive, true));
+
+  for (const recipient of recipients) {
+    await db.insert(notificationsTable).values({
+      userId: recipient.id,
+      type: "po_internal_comment",
+      title: `Komentar internal baru pada PO ${options.po.noPo}`,
+      message: `Komentar internal baru pada PO ${options.po.noPo}/${options.po.namaProject} dari ${options.fromName}: ${summarizeComment(options.comment)}.`,
+      isRead: false,
+    });
+  }
+}
+
 function stageState(stageKey: string, completedStages: string[]) {
   if (completedStages.includes(stageKey)) return "done";
 
@@ -69,6 +119,62 @@ function stageState(stageKey: string, completedStages: string[]) {
   if (firstPending?.key === stageKey) return "active";
 
   return "pending";
+}
+
+function normalizeProjectProgress(value: unknown): ProjectProgressKey {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (PROJECT_PROGRESS_KEYS.has(raw)) return raw as ProjectProgressKey;
+  return LEGACY_STAGE_MAP[raw] ?? "po_received";
+}
+
+function getVisibleStages(hasPainting: boolean) {
+  return TRACKING_STAGES.filter(
+    (stage) => hasPainting || stage.key !== "painting",
+  );
+}
+
+function getStageIndex(stage: ProjectProgressKey, hasPainting: boolean) {
+  const visibleStages = getVisibleStages(hasPainting);
+  const index = visibleStages.findIndex((item) => item.key === stage);
+  return index >= 0 ? index : 0;
+}
+
+function getProjectProgressPercent(stage: ProjectProgressKey) {
+  return TRACKING_STAGES.find((item) => item.key === stage)?.progress ?? 0;
+}
+
+function buildCompletedStages(stage: ProjectProgressKey, hasPainting: boolean) {
+  const visibleStages = getVisibleStages(hasPainting);
+  const currentIndex = getStageIndex(stage, hasPainting);
+  return visibleStages
+    .slice(0, currentIndex + 1)
+    .map((item) => item.key);
+}
+
+function inferProjectProgress(
+  status: unknown,
+  trackingStages: unknown,
+  hasPainting: boolean,
+): ProjectProgressKey {
+  const normalizedStatus = normalizeProjectProgress(status);
+  if (normalizedStatus !== "po_received" && String(status ?? "") !== "proses") {
+    return normalizedStatus;
+  }
+
+  const completedStages = normalizeTrackingStages(trackingStages);
+  let latestStage = normalizedStatus;
+  let latestIndex = getStageIndex(latestStage, hasPainting);
+
+  for (const rawStage of completedStages) {
+    const normalizedStage = normalizeProjectProgress(rawStage);
+    const index = getStageIndex(normalizedStage, hasPainting);
+    if (index >= latestIndex) {
+      latestStage = normalizedStage;
+      latestIndex = index;
+    }
+  }
+
+  return latestStage;
 }
 
 function statusLabel(status: string) {
@@ -92,7 +198,10 @@ function customerStatusLabel(status: string) {
 function normalizeTrackingStages(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
 
-  const validKeys = new Set<string>(TRACKING_STAGES.map((stage) => stage.key));
+  const validKeys = new Set<string>([
+    ...TRACKING_STAGES.map((stage) => stage.key),
+    ...Object.keys(LEGACY_STAGE_MAP),
+  ]);
   return value
     .map((item) => String(item))
     .filter((item) => validKeys.has(item));
@@ -141,7 +250,12 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
         .orderBy(desc(projectsPoTable.tanggalPoMasuk))
     : [];
 
-  const completedStages = normalizeTrackingStages(po.trackingStages);
+  const currentStage = inferProjectProgress(
+    po.status,
+    po.trackingStages,
+    po.hasPainting,
+  );
+  const completedStages = buildCompletedStages(currentStage, po.hasPainting);
   const manualTimeline = normalizeTrackingTimeline(po.trackingTimeline);
   const catatanLogs = await db
     .select()
@@ -168,19 +282,19 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
     namaProject: po.namaProject,
     customer: po.customer,
     tanggalPoMasuk: po.tanggalPoMasuk,
-    targetPenyelesaian: po.targetPenyelesaian,
-    deadline: po.targetPenyelesaian,
     tanggalDelivery: po.deadline,
-    picName: pic?.name ?? null,
+    picName: po.picProject ?? pic?.name ?? null,
     departmentName: department?.name ?? null,
     status: po.status,
-    statusLabel: customerStatusLabel(po.status),
-    progress: Math.min(100, Math.max(0, po.progress)),
+    statusLabel:
+      TRACKING_STAGES.find((stage) => stage.key === currentStage)?.label ??
+      customerStatusLabel(po.status),
+    progress: getProjectProgressPercent(currentStage),
     catatan:
       uniqueCatatanHistory.length > 0
         ? uniqueCatatanHistory.join("\n")
         : po.catatan,
-    stages: TRACKING_STAGES.map((stage) => ({
+    stages: getVisibleStages(po.hasPainting).map((stage) => ({
       key: stage.key,
       label: stage.label,
       state: stageState(stage.key, completedStages),
@@ -299,6 +413,8 @@ router.get("/po/:poId/internal-comments", async (req, res) => {
       poId: comment.poId,
       userId: comment.userId,
       userName: comment.userName,
+      userRole: comment.userRole,
+      userDepartment: comment.userDepartment,
       comment: comment.comment,
       createdAt: comment.createdAt.toISOString(),
     })),
@@ -327,7 +443,11 @@ router.post("/po/:poId/internal-comments", async (req, res) => {
   }
 
   const [po] = await db
-    .select({ id: projectsPoTable.id })
+    .select({
+      id: projectsPoTable.id,
+      noPo: projectsPoTable.noPo,
+      namaProject: projectsPoTable.namaProject,
+    })
     .from(projectsPoTable)
     .where(eq(projectsPoTable.id, poId))
     .limit(1);
@@ -343,15 +463,25 @@ router.post("/po/:poId/internal-comments", async (req, res) => {
       poId,
       userId: user.id,
       userName: getInternalCommentDisplayName(user),
+      userRole: user.role ?? null,
+      userDepartment: user.departmentName ?? user.departmentCode ?? null,
       comment,
     })
     .returning();
+
+  await notifyInternalCommentRecipients({
+    po,
+    fromName: saved.userName,
+    comment,
+  });
 
   res.status(201).json({
     id: saved.id,
     poId: saved.poId,
     userId: saved.userId,
     userName: saved.userName,
+    userRole: saved.userRole,
+    userDepartment: saved.userDepartment,
     comment: saved.comment,
     createdAt: saved.createdAt.toISOString(),
   });

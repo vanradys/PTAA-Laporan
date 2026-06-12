@@ -13,6 +13,7 @@ import { getUserFromToken } from "./auth";
 import { Router } from "express";
 import {
   getJakartaDateString,
+  isWeekendReportDate,
   reportingUserCondition,
   submittedReportCondition,
 } from "../services/dailyReportReminder";
@@ -39,6 +40,20 @@ router.get("/dashboard/summary", async (req, res) => {
 
   const reportingUserIds = reportingUsers.map((item) => item.id);
   const totalEmployees = reportingUserIds.length;
+
+  if (isWeekendReportDate(date)) {
+    res.json({
+      totalEmployees,
+      submittedToday: 0,
+      notSubmittedToday: 0,
+      totalTasksToday: 0,
+      tasksCompleted: 0,
+      tasksPending: 0,
+      submitRate: 0,
+      completionRate: 0,
+    });
+    return;
+  }
 
   const submittedReports = totalEmployees > 0
     ? await db
@@ -97,6 +112,12 @@ router.get("/dashboard/department-productivity", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const date = normalizeDashboardDate(req.query.date);
+
+  if (isWeekendReportDate(date)) {
+    res.json([]);
+    return;
+  }
+
   const departments = await db.select().from(departmentsTable).orderBy(departmentsTable.name);
 
   const result = await Promise.all(departments.map(async (dept) => {

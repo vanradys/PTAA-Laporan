@@ -104,6 +104,29 @@ export function isWeekendReportDate(dateString: string): boolean {
   return dayOfWeek === 0 || dayOfWeek === 6;
 }
 
+export function addDaysToReportDate(dateString: string, amount: number): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return dateString;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + amount);
+
+  return date.toISOString().split("T")[0] ?? dateString;
+}
+
+export function getPreviousRequiredReportDate(dateString: string): string {
+  let previousDate = addDaysToReportDate(dateString, -1);
+
+  while (isWeekendReportDate(previousDate)) {
+    previousDate = addDaysToReportDate(previousDate, -1);
+  }
+
+  return previousDate;
+}
+
 export function normalizeReportDate(value: unknown): string {
   const date = typeof value === "string" ? value.trim() : "";
 

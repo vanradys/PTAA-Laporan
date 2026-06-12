@@ -28,6 +28,7 @@ export default defineConfig({
     "./src/schema/users.ts",
     "./src/schema/daily_reports.ts",
     "./src/schema/daily_tasks.ts",
+    "./src/schema/assigned_daily_tasks.ts",
     "./src/schema/report_comments.ts",
     "./src/schema/notifications.ts",
     "./src/schema/projects_po.ts",
