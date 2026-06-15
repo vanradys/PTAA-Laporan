@@ -8,10 +8,10 @@
   "theme_color": "#001E8A",
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/adiyasa-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+       "purpose": "any"
     }
   ]
 }
