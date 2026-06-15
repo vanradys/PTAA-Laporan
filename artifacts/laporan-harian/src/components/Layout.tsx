@@ -126,8 +126,17 @@ export default function Layout({ children }: LayoutProps) {
                     : "text-blue-100 hover:bg-white/10 hover:text-white",
                 )}
               >
+                {item.href === "/laporan-saya" ? (
+                <img
+                  src={logoSrc}
+                  alt="Logo Adiyasa"
+                  className="h-5 w-5 shrink-0 object-contain"
+                />
+              ) : (
                 <Icon className="h-5 w-5 shrink-0" />
-                <span className="flex-1">{item.label}</span>
+              )}
+
+              <span className="flex-1">{item.label}</span>
 
                 {item.href === "/notifikasi" && unreadCount > 0 && (
                   <Badge className="border-none bg-white px-1.5 text-xs font-bold text-[#ef0012]">
