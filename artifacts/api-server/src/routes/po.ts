@@ -65,8 +65,19 @@ const GENERIC_LEGACY_STATUS_KEYS = new Set([
   "delay",
 ]);
 
-const PO_AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "director", "dir"];
-const PO_AMOUNT_HIDDEN_ROLES = ["admin_marketing", "monitoring_dummy"];
+const PO_AMOUNT_VISIBLE_ROLES = [
+  "admin",
+  "direktur",
+  "director",
+  "dir",
+  "monitoring_dummy",
+  "monitoring",
+  "monitor",
+  "finance",
+];
+const PO_AMOUNT_VISIBLE_DEPARTMENT_CODES = ["AAF", "FIN"];
+const PO_AMOUNT_VISIBLE_DEPARTMENT_NAMES = ["finance"];
+const PO_AMOUNT_HIDDEN_ROLES = ["admin_marketing"];
 const MONTHLY_PO_TARGET = 10_000_000_000;
 const MONTH_NAMES = [
   "Januari",
@@ -85,10 +96,20 @@ const MONTH_NAMES = [
 
 function canViewPoAmount(user?: {
   role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
 }): boolean {
   const role = String(user?.role ?? "").toLowerCase();
   if (PO_AMOUNT_HIDDEN_ROLES.includes(role)) return false;
-  return PO_AMOUNT_VISIBLE_ROLES.includes(role);
+  if (PO_AMOUNT_VISIBLE_ROLES.includes(role)) return true;
+
+  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  if (PO_AMOUNT_VISIBLE_DEPARTMENT_CODES.includes(departmentCode)) return true;
+
+  const departmentName = String(user?.departmentName ?? "").toLowerCase();
+  return PO_AMOUNT_VISIBLE_DEPARTMENT_NAMES.some((name) =>
+    departmentName.includes(name),
+  );
 }
 
 const PO_MANAGE_ROLES = ["admin", "direktur", "director", "dir", "hr"];

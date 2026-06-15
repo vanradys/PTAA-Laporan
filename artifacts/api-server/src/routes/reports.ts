@@ -25,7 +25,6 @@ import {
   isWeekendReportDate,
   reportingUserCondition,
 } from "../services/dailyReportReminder";
-import { sendPushNotificationToUser } from "../services/pushNotification";
 
 const router = Router();
 
@@ -68,46 +67,6 @@ function isReportLocked(status: string): boolean {
 
 function isEmptyText(value: string | null | undefined): boolean {
   return !value || value.trim().length === 0;
-}
-
-const LEADERSHIP_ROLES = ["admin", "hr", "direktur", "director"];
-
-function isLeadershipRole(role: string): boolean {
-  return LEADERSHIP_ROLES.includes(String(role).toLowerCase());
-}
-
-async function notifyLeadershipAboutReport(reportId: number, reportDate: string, creatorName: string, creatorRole: string) {
-  const recipients = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(sql`lower(${usersTable.role}) in ('admin', 'hr', 'direktur', 'director')`);
-
-  if (recipients.length === 0) {
-    return;
-  }
-
-  const title = "Laporan Harian Baru";
-  const message = `${creatorName} (${creatorRole}) membuat laporan harian untuk tanggal ${reportDate}`;
-
-  await db.insert(notificationsTable).values(
-    recipients.map((recipient) => ({
-      userId: recipient.id,
-      title,
-      message,
-      type: "report_created",
-      relatedReportId: reportId,
-    })),
-  );
-
-  for (const recipient of recipients) {
-    await sendPushNotificationToUser({
-      userId: recipient.id,
-      title,
-      message,
-      type: "report_created",
-      url: `/laporan/${reportId}`,
-    });
-  }
 }
 
 const MAX_TASK_ACTIONS = 2;
@@ -234,7 +193,7 @@ router.get("/reports", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const { date, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
+  const { date, startDate, endDate, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
 
   if (date) {
     if (isWeekendReportDate(date)) {
@@ -344,7 +303,10 @@ router.get("/reports", async (req, res) => {
 
   const conditions: SQL[] = [activeUserCondition()];
 
-  if (month && year) {
+  if (startDate && endDate) {
+    conditions.push(gte(dailyReportsTable.date, startDate));
+    conditions.push(lte(dailyReportsTable.date, endDate));
+  } else if (month && year) {
     const m = month.padStart(2, "0");
     conditions.push(gte(dailyReportsTable.date, `${year}-${m}-01`));
     const nextMonth = parseInt(month) === 12 ? 1 : parseInt(month) + 1;
@@ -445,7 +407,6 @@ router.post("/reports", async (req, res) => {
     .limit(1);
 
   let reportId: number;
-  let isNewReport = false;
 
   if (existing[0]) {
     // Update existing instead of inserting duplicate
@@ -468,11 +429,6 @@ router.post("/reports", async (req, res) => {
       status: status ?? "draf",
     }).returning();
     reportId = report.id;
-    isNewReport = true;
-  }
-
-  if (isNewReport && !isLeadershipRole(user.role)) {
-    await notifyLeadershipAboutReport(reportId, date, user.name, user.role);
   }
 
   const detail = await buildReportDetail(reportId);

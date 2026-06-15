@@ -161,15 +161,31 @@ function buildRowsFromEmployeesAndReports(
   });
 }
 
+function addDays(dateString: string, amount: number): string {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekStartDateString(dateString: string): string {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  const day = date.getUTCDay();
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
+  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  return date.toISOString().slice(0, 10);
+}
+
 export default function Monitoring() {
   const todayString = getJakartaDateString();
   const today = new Date();
+  const currentWeekStart = getWeekStartDateString(todayString);
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({
-    date: todayString,
-    month: "",
-    year: "",
+    period: "weekly",
+    weekStart: currentWeekStart,
+    month: String(today.getMonth() + 1),
+    year: String(today.getFullYear()),
     departmentId: "",
     userId: "",
     status: "",
@@ -183,7 +199,7 @@ export default function Monitoring() {
   const isAfterReminderTime = jakartaHour >= 16;
   const showReminderNotice = true;
   const showReminderSection = canManageReminder;
-  const reminderDate = filters.date || todayString;
+  const reminderDate = todayString;
 
   const { data: departments } = useListDepartments();
   const { data: employees, isLoading: isLoadingEmployees } = useListEmployees();
@@ -193,12 +209,11 @@ export default function Monitoring() {
   } = useMissingDailyReportsToday(canManageReminder, reminderDate);
 
   const params: Record<string, string> = {};
-  if (filters.date) {
-    params.date = filters.date;
+  if (filters.period === "weekly") {
+    params.startDate = filters.weekStart;
+    params.endDate = addDays(filters.weekStart, 6);
   } else if (filters.month && filters.year) {
     params.month = filters.month;
-    params.year = filters.year;
-  } else if (filters.year) {
     params.year = filters.year;
   }
   if (filters.departmentId) params.departmentId = filters.departmentId;
@@ -217,12 +232,6 @@ export default function Monitoring() {
   const reportList: ReportSummaryLike[] = Array.isArray(reports) ? (reports as ReportSummaryLike[]) : [];
 
   const reportRows = useMemo(() => {
-    const hasSpecificDate = !!filters.date;
-
-    if (hasSpecificDate && employeeList.length > 0) {
-      return buildRowsFromEmployeesAndReports(employeeList, reportList, filters.date);
-    }
-
     return reportList.map((report) => ({
       id: report.id,
       reportId: report.id,
@@ -240,7 +249,7 @@ export default function Monitoring() {
       hasReport: true,
       isSubmitted: isSubmittedStatus(report.status),
     }));
-  }, [employeeList, filters.date, reportList]);
+  }, [reportList]);
 
   const filteredRows = useMemo(() => {
     return reportRows.filter((row) => {
@@ -291,9 +300,10 @@ export default function Monitoring() {
   const years = Array.from({ length: 5 }, (_, index) => String(today.getFullYear() - index));
   const isLoading = isLoadingReports || isLoadingEmployees;
   const hasActiveFilters =
-    filters.date !== todayString ||
-    !!filters.month ||
-    !!filters.year ||
+    filters.period !== "weekly" ||
+    filters.weekStart !== currentWeekStart ||
+    filters.month !== String(today.getMonth() + 1) ||
+    filters.year !== String(today.getFullYear()) ||
     !!filters.departmentId ||
     !!filters.userId ||
     !!filters.status ||
@@ -301,16 +311,12 @@ export default function Monitoring() {
 
   const setFilter = (key: string, value: string) => {
     setFilters((prev) => {
-      if (key === "date") {
-        return { ...prev, date: value, month: value ? "" : prev.month, year: value ? "" : prev.year };
-      }
-
-      if (key === "month") {
-        return { ...prev, date: "", month: value, year: prev.year || String(today.getFullYear()) };
+      if (key === "period") {
+        return { ...prev, period: value };
       }
 
       if (key === "year") {
-        return { ...prev, date: "", year: value };
+        return { ...prev, year: value };
       }
 
       return { ...prev, [key]: value };
@@ -319,9 +325,10 @@ export default function Monitoring() {
 
   const resetFilters = () => {
     setFilters({
-      date: todayString,
-      month: "",
-      year: "",
+      period: "weekly",
+      weekStart: currentWeekStart,
+      month: String(today.getMonth() + 1),
+      year: String(today.getFullYear()),
       departmentId: "",
       userId: "",
       status: "",
@@ -452,40 +459,60 @@ export default function Monitoring() {
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Tanggal Spesifik</Label>
-                  <Input
-                    type="date"
-                    value={filters.date}
-                    onChange={(event) => setFilter("date", event.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Bulan</Label>
-                  <Select value={filters.month || "none"} onValueChange={(value) => setFilter("month", value === "none" ? "" : value)}>
+                  <Label className="text-xs">Periode</Label>
+                  <Select value={filters.period} onValueChange={(value) => setFilter("period", value)}>
                     <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Pilih bulan" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Pilih bulan</SelectItem>
-                      {MONTHS.map((month, index) => (
-                        <SelectItem key={month} value={String(index + 1)}>{month}</SelectItem>
-                      ))}
+                      <SelectItem value="weekly">Mingguan</SelectItem>
+                      <SelectItem value="monthly">Bulanan</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Tahun</Label>
-                  <Select value={filters.year || "none"} onValueChange={(value) => setFilter("year", value === "none" ? "" : value)}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Pilih tahun" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Pilih tahun</SelectItem>
-                      {years.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {filters.period === "weekly" ? (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Minggu Mulai</Label>
+                    <Input
+                      type="date"
+                      value={filters.weekStart}
+                      onChange={(event) =>
+                        setFilter(
+                          "weekStart",
+                          getWeekStartDateString(event.target.value),
+                        )
+                      }
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Bulan</Label>
+                      <Select value={filters.month} onValueChange={(value) => setFilter("month", value)}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Pilih bulan" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MONTHS.map((month, index) => (
+                            <SelectItem key={month} value={String(index + 1)}>{month}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Tahun</Label>
+                      <Select value={filters.year} onValueChange={(value) => setFilter("year", value)}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Pilih tahun" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {years.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
                 <div className="space-y-1">
                   <Label className="text-xs">Departemen</Label>
                   <Select value={filters.departmentId || "all"} onValueChange={(value) => setFilter("departmentId", value === "all" ? "" : value)}>

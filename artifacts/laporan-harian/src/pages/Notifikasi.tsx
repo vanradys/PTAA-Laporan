@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/apiRequest";
 
 interface NotifItem {
   id: number;
@@ -66,9 +68,12 @@ export default function Notifikasi() {
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
   const deleteNotification = useDeleteNotification();
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   const notifs: NotifItem[] = Array.isArray(notifications) ? (notifications as NotifItem[]) : [];
   const unreadCount = notifs.filter(n => !n.isRead).length;
+  const allSelected = notifs.length > 0 && selectedIds.length === notifs.length;
 
   const handleMarkRead = async (id: number) => {
     await markRead.mutateAsync({ notifId: id });
@@ -87,7 +92,43 @@ export default function Notifikasi() {
     toast({ title: "Notifikasi dihapus" });
   };
 
+  const toggleSelect = (id: number) => {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((selectedId) => selectedId !== id)
+        : [...current, id],
+    );
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? [] : notifs.map((notif) => notif.id));
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+
+    await apiRequest("/api/notifications/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: selectedIds }),
+    });
+    setSelectedIds([]);
+    setSelectMode(false);
+    queryClient.invalidateQueries();
+    toast({ title: `${selectedIds.length} notifikasi dihapus` });
+  };
+
+  const handleToggleSelectMode = () => {
+    setSelectMode((current) => !current);
+    setSelectedIds([]);
+  };
+
   const handleOpenNotification = async (notif: NotifItem) => {
+    if (selectMode) {
+      toggleSelect(notif.id);
+      return;
+    }
+
     const target = getNotificationTarget(notif);
 
     if (!notif.isRead) {
@@ -111,13 +152,41 @@ export default function Notifikasi() {
               {unreadCount > 0 ? `${unreadCount} belum dibaca` : "Semua sudah dibaca"}
             </p>
           </div>
-          {unreadCount > 0 && (
-            <Button variant="outline" size="sm" onClick={handleMarkAllRead} disabled={markAllRead.isPending}>
-              {markAllRead.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCheck className="w-4 h-4 mr-2" />}
-              Tandai Semua Dibaca
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {notifs.length > 0 && (
+              <Button variant="outline" size="sm" onClick={handleToggleSelectMode}>
+                {selectMode ? "Batal Pilih" : "Pilih"}
+              </Button>
+            )}
+            {unreadCount > 0 && !selectMode && (
+              <Button variant="outline" size="sm" onClick={handleMarkAllRead} disabled={markAllRead.isPending}>
+                {markAllRead.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCheck className="w-4 h-4 mr-2" />}
+                Tandai Semua Dibaca
+              </Button>
+            )}
+          </div>
         </div>
+
+        {selectMode && notifs.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-white px-3 py-2">
+            <button
+              type="button"
+              className="text-sm font-semibold text-primary"
+              onClick={toggleSelectAll}
+            >
+              {allSelected ? "Batal Pilih Semua" : "Pilih Semua"}
+            </button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={selectedIds.length === 0}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Hapus Terpilih ({selectedIds.length})
+            </Button>
+          </div>
+        )}
 
         {/* List */}
         {isLoading ? (
@@ -132,7 +201,7 @@ export default function Notifikasi() {
         ) : (
           <div className="space-y-2">
             {notifs.map((notif) => {
-              const target = getNotificationTarget(notif);
+              const isSelected = selectedIds.includes(notif.id);
 
               return (
               <Card
@@ -149,11 +218,25 @@ export default function Notifikasi() {
                 className={cn(
                   "border border-border transition-colors",
                   "cursor-pointer hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  !notif.isRead && "bg-primary/5 border-primary/20"
+                  !notif.isRead && "bg-primary/5 border-primary/20",
+                  isSelected && "border-red-300 bg-red-50"
                 )}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
+                    {selectMode && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          toggleSelect(notif.id);
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                        className="mt-1 h-4 w-4 shrink-0"
+                        aria-label={`Pilih notifikasi ${notif.title}`}
+                      />
+                    )}
                     {!notif.isRead && (
                       <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />
                     )}
@@ -170,6 +253,7 @@ export default function Notifikasi() {
                             })}
                           </p>
                         </div>
+                        {!selectMode && (
                         <div className="flex items-center gap-2 shrink-0">
                           <Button
                             variant="ghost"
@@ -200,6 +284,7 @@ export default function Notifikasi() {
                             </Button>
                           )}
                         </div>
+                        )}
                       </div>
                     </div>
                   </div>

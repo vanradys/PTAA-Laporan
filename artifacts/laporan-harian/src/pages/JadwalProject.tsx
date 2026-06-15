@@ -546,7 +546,18 @@ export default function JadwalProject() {
     departmentName.includes("engineering");
 
   const canViewPoAmount =
-    ["admin", "direktur", "director", "dir"].includes(role);
+    [
+      "admin",
+      "direktur",
+      "director",
+      "dir",
+      "monitoring_dummy",
+      "monitoring",
+      "monitor",
+      "finance",
+    ].includes(role) ||
+    ["AAF", "FIN"].includes(departmentCode) ||
+    departmentName.includes("finance");
 
   const canViewPoActivity =
     ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||

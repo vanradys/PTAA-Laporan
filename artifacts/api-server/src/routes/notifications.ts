@@ -1,5 +1,5 @@
 import express from "express";
-import { and, db, deviceTokensTable, eq, notificationsTable } from "@workspace/db";
+import { and, db, deviceTokensTable, eq, inArray, notificationsTable, sql } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 
 const router = (express as any).Router();
@@ -38,7 +38,12 @@ router.get("/notifications", async (req: any, res: any) => {
   const notifications = await db
     .select()
     .from(notificationsTable)
-    .where(eq(notificationsTable.userId, user.id))
+    .where(
+      and(
+        eq(notificationsTable.userId, user.id),
+        sql`${notificationsTable.type} <> 'report_created'`,
+      ),
+    )
     .orderBy(notificationsTable.createdAt);
 
   res.json(notifications.map(mapNotification).reverse());
@@ -100,6 +105,35 @@ async function deleteNotification(req: any, res: any) {
   res.json({ success: true, message: "Notifikasi berhasil dihapus" });
 }
 
+async function deleteNotificationsBulk(req: any, res: any) {
+  const user = await getAuthenticatedUser(req);
+
+  if (!user) {
+    res.status(401).json({ error: "Tidak terautentikasi" });
+    return;
+  }
+
+  const ids = Array.isArray(req.body?.ids)
+    ? req.body.ids.map((id: unknown) => Number(id)).filter(Number.isInteger)
+    : [];
+
+  if (ids.length === 0) {
+    res.status(400).json({ error: "Pilih minimal 1 notifikasi" });
+    return;
+  }
+
+  await db
+    .delete(notificationsTable)
+    .where(
+      and(
+        eq(notificationsTable.userId, user.id),
+        inArray(notificationsTable.id, ids),
+      ),
+    );
+
+  res.json({ success: true, message: "Notifikasi terpilih berhasil dihapus" });
+}
+
 async function markAllNotificationsRead(req: any, res: any) {
   const user = await getAuthenticatedUser(req);
 
@@ -119,6 +153,8 @@ async function markAllNotificationsRead(req: any, res: any) {
 router.patch("/notifications/:notifId/read", markNotificationRead);
 router.post("/notifications/:notifId/read", markNotificationRead);
 router.delete("/notifications/:notifId", deleteNotification);
+router.post("/notifications/bulk-delete", deleteNotificationsBulk);
+router.delete("/notifications", deleteNotificationsBulk);
 
 router.patch("/notifications/read-all", markAllNotificationsRead);
 router.post("/notifications/read-all", markAllNotificationsRead);

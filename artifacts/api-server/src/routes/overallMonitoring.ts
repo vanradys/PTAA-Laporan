@@ -14,7 +14,18 @@ import { getUserFromToken } from "./auth";
 
 const router = Router();
 
-const AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "director", "dir"];
+const AMOUNT_VISIBLE_ROLES = [
+  "admin",
+  "direktur",
+  "director",
+  "dir",
+  "monitoring_dummy",
+  "monitoring",
+  "monitor",
+  "finance",
+];
+const AMOUNT_VISIBLE_DEPARTMENT_CODES = ["AAF", "FIN"];
+const AMOUNT_VISIBLE_DEPARTMENT_NAMES = ["finance"];
 const OVERALL_MONITORING_ROLES = ["admin", "monitoring_dummy"];
 
 function canAccessOverallMonitoring(user?: { role?: string | null }) {
@@ -22,9 +33,21 @@ function canAccessOverallMonitoring(user?: { role?: string | null }) {
   return OVERALL_MONITORING_ROLES.includes(role);
 }
 
-function canViewAmount(user?: { role?: string | null }) {
+function canViewAmount(user?: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}) {
   const role = String(user?.role ?? "").toLowerCase();
-  return AMOUNT_VISIBLE_ROLES.includes(role);
+  if (AMOUNT_VISIBLE_ROLES.includes(role)) return true;
+
+  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  if (AMOUNT_VISIBLE_DEPARTMENT_CODES.includes(departmentCode)) return true;
+
+  const departmentName = String(user?.departmentName ?? "").toLowerCase();
+  return AMOUNT_VISIBLE_DEPARTMENT_NAMES.some((name) =>
+    departmentName.includes(name),
+  );
 }
 
 function sanitizePoChanges(
