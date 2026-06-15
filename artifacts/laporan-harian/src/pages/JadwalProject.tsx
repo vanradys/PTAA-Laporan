@@ -1051,7 +1051,13 @@ export default function JadwalProject() {
   );
 
   const summaryCards = summary
-    ? [
+    ? (() => {
+      const targetPercentage = Number(
+        (summary as { persentasePencapaian?: number | string })
+          .persentasePencapaian ?? 0,
+      );
+
+      return [
         {
           label: "Total PO",
           value: (summary as { totalPo: number }).totalPo,
@@ -1089,7 +1095,7 @@ export default function JadwalProject() {
         },
         {
           label: "Pencapaian Target",
-          value: `${(summary as { persentasePencapaian: number }).persentasePencapaian}%`,
+          value: `${Number.isFinite(targetPercentage) ? targetPercentage : 0}%`,
           ...(canViewPoAmount
             ? {
                 description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
@@ -1100,7 +1106,8 @@ export default function JadwalProject() {
           color: "text-purple-600",
           bg: "bg-purple-50",
         },
-      ]
+      ];
+    })()
     : [];
 
   const statusChartData = [

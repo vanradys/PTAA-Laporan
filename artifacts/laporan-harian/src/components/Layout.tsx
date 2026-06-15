@@ -126,7 +126,8 @@ export default function Layout({ children }: LayoutProps) {
             const Icon = item.icon;
             const isActive =
               location === item.href ||
-              (item.href !== "/dashboard" && location.startsWith(item.href));
+              (item.href !== "/dashboard" &&
+                location.startsWith(`${item.href}/`));
 
             return (
               <Link
