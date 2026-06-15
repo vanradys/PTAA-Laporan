@@ -193,7 +193,7 @@ router.get("/reports", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const { date, startDate, endDate, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
+  const { date, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
 
   if (date) {
     if (isWeekendReportDate(date)) {
@@ -303,10 +303,7 @@ router.get("/reports", async (req, res) => {
 
   const conditions: SQL[] = [activeUserCondition()];
 
-  if (startDate && endDate) {
-    conditions.push(gte(dailyReportsTable.date, startDate));
-    conditions.push(lte(dailyReportsTable.date, endDate));
-  } else if (month && year) {
+  if (month && year) {
     const m = month.padStart(2, "0");
     conditions.push(gte(dailyReportsTable.date, `${year}-${m}-01`));
     const nextMonth = parseInt(month) === 12 ? 1 : parseInt(month) + 1;

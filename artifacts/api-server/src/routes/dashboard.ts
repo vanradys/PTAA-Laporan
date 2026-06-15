@@ -25,6 +25,10 @@ function normalizeDashboardDate(value: unknown): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getJakartaDateString();
 }
 
+function normalizeDashboardPeriod(value: unknown): "weekly" | "monthly" {
+  return value === "monthly" ? "monthly" : "weekly";
+}
+
 function addDateDays(dateString: string, amount: number): string {
   const date = new Date(`${dateString}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + amount);
@@ -52,6 +56,38 @@ function getActiveWeekDates(dateString: string): string[] {
   return dates;
 }
 
+function getActiveMonthDates(dateString: string): string[] {
+  const [year, month] = dateString.split("-");
+  const monthStartDate = `${year}-${month}-01`;
+  const dates: string[] = [];
+  let current = monthStartDate;
+
+  while (current <= dateString) {
+    if (!isWeekendReportDate(current)) dates.push(current);
+    current = addDateDays(current, 1);
+  }
+
+  return dates;
+}
+
+function getDashboardPeriodDates(dateString: string, period: "weekly" | "monthly") {
+  if (period === "monthly") {
+    const dates = getActiveMonthDates(dateString);
+    return {
+      dates,
+      periodStartDate: dates[0] ?? dateString,
+      periodEndDate: dateString,
+    };
+  }
+
+  const dates = getActiveWeekDates(dateString);
+  return {
+    dates,
+    periodStartDate: getWeekStartDate(dateString),
+    periodEndDate: dateString,
+  };
+}
+
 router.get("/dashboard/summary", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
@@ -59,9 +95,10 @@ router.get("/dashboard/summary", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const date = normalizeDashboardDate(req.query.date);
-  const weekStartDate = getWeekStartDate(date);
-  const activeWeekDates = getActiveWeekDates(date);
-  const expectedReportCount = activeWeekDates.length;
+  const period = normalizeDashboardPeriod(req.query.period);
+  const { dates: activePeriodDates, periodStartDate, periodEndDate } =
+    getDashboardPeriodDates(date, period);
+  const expectedReportCount = activePeriodDates.length;
 
   const reportingUsers = await db
     .select({ id: usersTable.id })
@@ -83,8 +120,11 @@ router.get("/dashboard/summary", async (req, res) => {
       completionRate: 0,
       pendingAssignedTasksCount: 0,
       pendingAssignedTasksByAssigner: [],
-      weekStartDate,
-      weekEndDate: date,
+      period,
+      periodStartDate,
+      periodEndDate,
+      weekStartDate: periodStartDate,
+      weekEndDate: periodEndDate,
     });
     return;
   }
@@ -94,7 +134,7 @@ router.get("/dashboard/summary", async (req, res) => {
       .select({ id: dailyReportsTable.id, userId: dailyReportsTable.userId, date: dailyReportsTable.date })
       .from(dailyReportsTable)
       .where(and(
-        inArray(dailyReportsTable.date, activeWeekDates),
+        inArray(dailyReportsTable.date, activePeriodDates),
         sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
         inArray(dailyReportsTable.userId, reportingUserIds),
       ))
@@ -161,8 +201,11 @@ router.get("/dashboard/summary", async (req, res) => {
       assignedByName: item.assignedByName,
       count: item.count,
     })),
-    weekStartDate,
-    weekEndDate: date,
+    period,
+    periodStartDate,
+    periodEndDate,
+    weekStartDate: periodStartDate,
+    weekEndDate: periodEndDate,
   });
 });
 
@@ -173,9 +216,10 @@ router.get("/dashboard/department-productivity", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const date = normalizeDashboardDate(req.query.date);
-  const weekStartDate = getWeekStartDate(date);
-  const activeWeekDates = getActiveWeekDates(date);
-  const expectedReportCount = activeWeekDates.length;
+  const period = normalizeDashboardPeriod(req.query.period);
+  const { dates: activePeriodDates, periodStartDate, periodEndDate } =
+    getDashboardPeriodDates(date, period);
+  const expectedReportCount = activePeriodDates.length;
 
   if (expectedReportCount === 0) {
     res.json([]);
@@ -202,7 +246,7 @@ router.get("/dashboard/department-productivity", async (req, res) => {
       .leftJoin(usersTable, eq(dailyReportsTable.userId, usersTable.id))
       .where(and(
         eq(dailyReportsTable.departmentId, dept.id),
-        inArray(dailyReportsTable.date, activeWeekDates),
+        inArray(dailyReportsTable.date, activePeriodDates),
         sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
         reportingUserCondition(),
       ));
@@ -228,8 +272,11 @@ router.get("/dashboard/department-productivity", async (req, res) => {
       avgProgress,
       expectedSubmissions,
       submitRate: expectedSubmissions > 0 ? Math.round((submittedCount / expectedSubmissions) * 100) : 0,
-      weekStartDate,
-      weekEndDate: date,
+      period,
+      periodStartDate,
+      periodEndDate,
+      weekStartDate: periodStartDate,
+      weekEndDate: periodEndDate,
     };
   }));
 

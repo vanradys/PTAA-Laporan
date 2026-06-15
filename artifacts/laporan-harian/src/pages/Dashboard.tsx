@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   useGetDashboardSummary,
   useGetDepartmentProductivity,
@@ -12,6 +13,7 @@ import {
   Loader2,
   FileCheck2,
   CalendarDays,
+  Filter,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +29,13 @@ import {
 import { Link } from "wouter";
 import Layout from "@/components/Layout";
 import { formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type StatCardProps = {
   title: string;
@@ -95,16 +104,20 @@ function DepartmentAxisTick(props: any) {
 export default function Dashboard() {
   const { user } = useAuth();
   const today = getJakartaDateString();
+  const [period, setPeriod] = useState<"weekly" | "monthly">("weekly");
+  const periodLabel = period === "monthly" ? "Bulanan" : "Mingguan";
+  const periodSummaryLabel = period === "monthly" ? "Bulan Ini" : "Minggu Ini";
+  const dashboardParams = { date: today, period } as any;
 
   const { data: summary, isLoading: summaryLoading } = useGetDashboardSummary(
-    { date: today },
-    { query: { queryKey: ["dashboard-summary", today] } },
+    dashboardParams,
+    { query: { queryKey: ["dashboard-summary", today, period] } },
   );
 
   const { data: deptData, isLoading: deptLoading } =
     useGetDepartmentProductivity(
-      { date: today },
-      { query: { queryKey: ["dept-productivity", today] } },
+      dashboardParams,
+      { query: { queryKey: ["dept-productivity", today, period] } },
     );
 
   const todayFormatted = formatJakartaDateLong();
@@ -188,10 +201,22 @@ export default function Dashboard() {
 
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_470px]">
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                <CardHeader className="pb-2">
+                <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
                   <CardTitle className="text-base font-bold text-slate-800">
-                    Rekap Laporan Departemen Mingguan
+                    Rekap Laporan Departemen {periodLabel}
                   </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-slate-500" />
+                    <Select value={period} onValueChange={(value) => setPeriod(value as "weekly" | "monthly")}>
+                      <SelectTrigger className="h-9 w-36 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weekly">Mingguan</SelectItem>
+                        <SelectItem value="monthly">Bulanan</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
                   {deptLoading ? (
@@ -247,7 +272,7 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <div className="flex h-[285px] items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
-                      Belum ada data laporan minggu ini
+                      Belum ada data laporan {period === "monthly" ? "bulan ini" : "minggu ini"}
                     </div>
                   )}
                 </CardContent>
@@ -256,7 +281,7 @@ export default function Dashboard() {
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base font-bold text-slate-800">
-                    Ringkasan Minggu Ini
+                    Ringkasan {periodSummaryLabel}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -267,7 +292,7 @@ export default function Dashboard() {
                           Belum Submit Laporan
                         </p>
                         <p className="text-xs text-slate-500">
-                          Karyawan yang belum mengirim laporan minggu ini
+                          Karyawan yang belum mengirim laporan {period === "monthly" ? "bulan ini" : "minggu ini"}
                         </p>
                       </div>
                       <Badge className="border-amber-300 bg-white text-amber-700">

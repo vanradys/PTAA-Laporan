@@ -530,6 +530,7 @@ export default function JadwalProject() {
   const { toast } = useToast();
 
   const role = user?.role?.toLowerCase() ?? "";
+  const email = user?.email?.toLowerCase() ?? "";
   const departmentName = user?.departmentName?.toLowerCase() ?? "";
   const departmentCode = user?.departmentCode?.toUpperCase() ?? "";
   const canManage =
@@ -546,6 +547,13 @@ export default function JadwalProject() {
     departmentName.includes("engineering");
 
   const canViewPoAmount =
+    [
+      "admin@adiyasa.com",
+      "director@adiyasa.com",
+      "marketing@adiyasa.com",
+      "monitoring.progress@adiyasa.com",
+      "finance@adiyasa.com",
+    ].includes(email) ||
     [
       "admin",
       "direktur",

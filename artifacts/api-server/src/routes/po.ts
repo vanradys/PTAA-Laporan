@@ -77,6 +77,13 @@ const PO_AMOUNT_VISIBLE_ROLES = [
 ];
 const PO_AMOUNT_VISIBLE_DEPARTMENT_CODES = ["AAF", "FIN"];
 const PO_AMOUNT_VISIBLE_DEPARTMENT_NAMES = ["finance"];
+const PO_AMOUNT_VISIBLE_EMAILS = [
+  "admin@adiyasa.com",
+  "director@adiyasa.com",
+  "marketing@adiyasa.com",
+  "monitoring.progress@adiyasa.com",
+  "finance@adiyasa.com",
+];
 const PO_AMOUNT_HIDDEN_ROLES = ["admin_marketing"];
 const MONTHLY_PO_TARGET = 10_000_000_000;
 const MONTH_NAMES = [
@@ -95,10 +102,14 @@ const MONTH_NAMES = [
 ];
 
 function canViewPoAmount(user?: {
+  email?: string | null;
   role?: string | null;
   departmentCode?: string | null;
   departmentName?: string | null;
 }): boolean {
+  const email = String(user?.email ?? "").toLowerCase();
+  if (PO_AMOUNT_VISIBLE_EMAILS.includes(email)) return true;
+
   const role = String(user?.role ?? "").toLowerCase();
   if (PO_AMOUNT_HIDDEN_ROLES.includes(role)) return false;
   if (PO_AMOUNT_VISIBLE_ROLES.includes(role)) return true;
