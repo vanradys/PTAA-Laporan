@@ -163,7 +163,7 @@ export function activeUserCondition(): SQL {
 export function reportingUserCondition(): SQL {
   return sql`
     ${usersTable.isActive} is distinct from false
-    and lower(${usersTable.role}) not in ('admin', 'hr', 'direktur', 'director')
+    and lower(${usersTable.role}) not in ('admin', 'hr', 'direktur', 'director', 'monitoring_dummy')
     and lower(${usersTable.email}) not in (
       'admin@ptaa.com',
       'ahmad@perusahaan.com',

@@ -194,6 +194,41 @@ function formatDeadlineLabel(sisaHari: number | null, status: string): string {
   return `${sisaHari} hari lagi`;
 }
 
+function getDeliveryStatus(po: PoItem) {
+  if (!po.targetPenyelesaian) {
+    return {
+      label: "Target Pengiriman Kosong",
+      className: "border-gray-200 bg-gray-100 text-gray-700",
+    };
+  }
+
+  if (
+    isDateOnly(po.targetPenyelesaian) &&
+    isDateOnly(po.deadline) &&
+    po.deadline > po.targetPenyelesaian
+  ) {
+    const targetDate = new Date(`${po.targetPenyelesaian}T00:00:00.000Z`);
+    const deliveryDate = new Date(`${po.deadline}T00:00:00.000Z`);
+    const delayDays = Math.max(
+      1,
+      Math.round(
+        (deliveryDate.getTime() - targetDate.getTime()) /
+          (1000 * 60 * 60 * 24),
+      ),
+    );
+
+    return {
+      label: `Delay ${delayDays} hari`,
+      className: "border-red-200 bg-red-100 text-red-700",
+    };
+  }
+
+  return {
+    label: "On Time",
+    className: "border-green-200 bg-green-100 text-green-700",
+  };
+}
+
 interface PoItem {
   id: number;
   noPo: string;
@@ -503,21 +538,18 @@ export default function JadwalProject() {
     departmentName.includes("finance") ||
     departmentName.includes("marketing") ||
     departmentName.includes("general affairs");
+  const canEditPoData = canManage || role === "monitoring_dummy";
   const canUpdateProjectProgress =
-    canManage ||
+    canEditPoData ||
     ["PUR", "ENG"].includes(departmentCode) ||
     departmentName.includes("purchasing") ||
     departmentName.includes("engineering");
 
   const canViewPoAmount =
-    role !== "admin_marketing" &&
-    (["admin", "direktur", "director", "dir"].includes(role) ||
-    (!["PUR", "ENG"].includes(departmentCode) &&
-      !departmentName.includes("purchasing") &&
-      !departmentName.includes("engineering")));
+    ["admin", "direktur", "director", "dir"].includes(role);
 
   const canViewPoActivity =
-    ["admin", "direktur", "director", "dir"].includes(role) ||
+    ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||
     departmentCode === "GA" ||
     departmentName.includes("general affairs");
   const canViewPoDetail = Boolean(user);
@@ -851,7 +883,7 @@ export default function JadwalProject() {
   };
 
   const handleSave = async () => {
-    if (canManage && (
+    if (canEditPoData && (
       !form.noPo.trim() ||
       !form.namaProject.trim() ||
       !form.customer.trim() ||
@@ -869,7 +901,7 @@ export default function JadwalProject() {
     }
 
     const normalizedDeadline = form.deadline.trim();
-    if (canManage && !normalizedDeadline) {
+    if (canEditPoData && !normalizedDeadline) {
       toast({
         title: "Validasi Gagal",
         description: "Tanggal Delivery wajib diisi",
@@ -904,7 +936,7 @@ export default function JadwalProject() {
       const currentEditingPo = editingId
         ? allPosRaw.find((po) => po.id === editingId)
         : null;
-      const payload = canManage ? {
+      const payload = canEditPoData ? {
         noPo: form.noPo,
         namaProject: form.namaProject,
         customer: form.customer || undefined,
@@ -1055,19 +1087,19 @@ export default function JadwalProject() {
           color: "text-orange-600",
           bg: "bg-orange-50",
         },
-        ...(canViewPoAmount
-          ? [
         {
           label: "Pencapaian Target",
           value: `${(summary as { persentasePencapaian: number }).persentasePencapaian}%`,
-          description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
+          ...(canViewPoAmount
+            ? {
+                description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
+              }
+            : {}),
           targetLabel: `Target Bulan ${(summary as { targetMonthName?: string }).targetMonthName ?? months.find((item) => item.v === filterMonth)?.l ?? ""}`,
           icon: TrendingUp,
           color: "text-purple-600",
           bg: "bg-purple-50",
         },
-            ]
-          : []),
       ]
     : [];
 
@@ -1542,6 +1574,9 @@ export default function JadwalProject() {
                         Tanggal Delivery
                       </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Status
+                      </th>
+                      <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
                         Sisa Hari
                       </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
@@ -1566,6 +1601,7 @@ export default function JadwalProject() {
                         po.sisaHari,
                         po.status,
                       );
+                      const deliveryStatus = getDeliveryStatus(po);
                       return (
                         <tr
                           key={po.id}
@@ -1611,6 +1647,11 @@ export default function JadwalProject() {
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className="text-sm text-foreground">
                               {isoDateToDisplay(po.deadline)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${deliveryStatus.className}`}>
+                              {deliveryStatus.label}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -1746,6 +1787,9 @@ export default function JadwalProject() {
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
                         Tanggal Delivery
                       </th>
+                      <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Status
+                      </th>
                       <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">
                         Project Progress
                       </th>
@@ -1763,6 +1807,7 @@ export default function JadwalProject() {
                     {allPos.map((po) => {
                       const ss =
                         STATUS_STYLES[po.status] ?? STATUS_STYLES.belum_mulai;
+                      const deliveryStatus = getDeliveryStatus(po);
                       return (
                         <tr
                           key={po.id}
@@ -1802,6 +1847,11 @@ export default function JadwalProject() {
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {isoDateToDisplay(po.deadline)}
+                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${deliveryStatus.className}`}>
+                              {deliveryStatus.label}
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-center">
                             <span
@@ -2244,7 +2294,7 @@ export default function JadwalProject() {
                   </Label>
                   <Input
                     value={form.noPo}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, noPo: e.target.value }))
                     }
@@ -2258,7 +2308,7 @@ export default function JadwalProject() {
                   </Label>
                   <Input
                     value={form.namaProject}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, namaProject: e.target.value }))
                     }
@@ -2276,7 +2326,7 @@ export default function JadwalProject() {
                   </Label>
                   <Input
                     value={form.customer}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, customer: e.target.value }))
                     }
@@ -2288,7 +2338,7 @@ export default function JadwalProject() {
                   <Label className="text-xs font-semibold">Qty</Label>
                   <Input
                     value={form.qty}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, qty: e.target.value }))
                     }
@@ -2304,7 +2354,7 @@ export default function JadwalProject() {
                       min="0"
                       max="10000000000"
                       value={form.poAmount}
-                      disabled={!canManage}
+                      disabled={!canEditPoData}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, poAmount: e.target.value }))
                       }
@@ -2324,7 +2374,7 @@ export default function JadwalProject() {
                   </Label>
                   <Select
                     value={form.departmentId || NONE_VALUE}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                     onValueChange={(v) =>
                       setForm((f) => ({
                         ...f,
@@ -2349,7 +2399,7 @@ export default function JadwalProject() {
                   <Label className="text-xs font-semibold">PIC Project</Label>
                   <Input
                     value={form.picProject}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, picProject: e.target.value }))
                     }
@@ -2364,7 +2414,7 @@ export default function JadwalProject() {
                   <Input
                     type="date"
                     value={form.tanggalPoMasuk}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, tanggalPoMasuk: e.target.value }))
                     }
@@ -2380,7 +2430,7 @@ export default function JadwalProject() {
                   <Input
                     type="date"
                     value={form.targetPenyelesaian}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                     onChange={(e) =>
                       setForm((f) => ({
                         ...f,
@@ -2397,7 +2447,7 @@ export default function JadwalProject() {
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-[150px_1fr]">
                     <Select
                       value={deliveryInputMode}
-                      disabled={!canManage || Boolean(editingId && form.deadline)}
+                      disabled={!canEditPoData || Boolean(editingId && form.deadline)}
                       onValueChange={(value) => {
                         const mode = value as DeliveryInputMode;
                         setDeliveryInputMode(mode);
@@ -2419,7 +2469,7 @@ export default function JadwalProject() {
                       type={deliveryInputMode === "date" ? "date" : "text"}
                       value={form.deadline}
                       readOnly={Boolean(editingId && form.deadline)}
-                      disabled={!canManage}
+                      disabled={!canEditPoData}
                       onChange={(e) =>
                         setForm((f) => ({ ...f, deadline: e.target.value }))
                       }
@@ -2469,7 +2519,7 @@ export default function JadwalProject() {
                 <input
                   type="checkbox"
                   checked={form.hasPainting}
-                  disabled={!canManage}
+                  disabled={!canEditPoData}
                   onChange={(event) =>
                     setForm((f) => ({
                       ...f,
@@ -2506,7 +2556,7 @@ export default function JadwalProject() {
                     variant="outline"
                     size="sm"
                     onClick={addTrackingTimelineItem}
-                    disabled={!canManage}
+                    disabled={!canEditPoData}
                   >
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
                     Tambah Timeline
@@ -2534,7 +2584,7 @@ export default function JadwalProject() {
                             )
                           }
                           className="h-8 text-sm"
-                          disabled={!canManage}
+                          disabled={!canEditPoData}
                         />
                         <Input
                           value={item.description}
@@ -2547,7 +2597,7 @@ export default function JadwalProject() {
                           }
                           placeholder="Contoh: Engineering 1 - Proses instalasi"
                           className="h-8 text-sm"
-                          disabled={!canManage}
+                          disabled={!canEditPoData}
                         />
                         <Button
                           type="button"
@@ -2555,7 +2605,7 @@ export default function JadwalProject() {
                           size="icon"
                           className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
                           onClick={() => removeTrackingTimelineItem(index)}
-                          disabled={!canManage}
+                          disabled={!canEditPoData}
                           title="Hapus timeline"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -2569,7 +2619,7 @@ export default function JadwalProject() {
                 <Label className="text-xs font-semibold">Catatan</Label>
                 <Textarea
                   value={form.catatan}
-                  disabled={!canManage}
+                  disabled={!canEditPoData}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, catatan: e.target.value }))
                   }

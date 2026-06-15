@@ -88,6 +88,13 @@ const ptaaUsers = [
     departmentCode: "MKT",
   },
   {
+    name: "Monitoring Progress PTAA",
+    email: "monitoring.progress@adiyasa.com",
+    password: "MONPTAA",
+    role: "monitoring_dummy",
+    departmentCode: "ADM",
+  },
+  {
     name: "Finance & Accounting PTAA",
     email: "finance@adiyasa.com",
     password: "ACCPTAA",

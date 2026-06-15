@@ -190,7 +190,7 @@ export default function Dashboard() {
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base font-bold text-slate-800">
-                    Rekap Laporan Departemen Hari Ini
+                    Rekap Laporan Departemen Mingguan
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
@@ -247,7 +247,7 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <div className="flex h-[285px] items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
-                      Belum ada data laporan hari ini
+                      Belum ada data laporan minggu ini
                     </div>
                   )}
                 </CardContent>
@@ -256,7 +256,7 @@ export default function Dashboard() {
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base font-bold text-slate-800">
-                    Ringkasan Hari Ini
+                    Ringkasan Minggu Ini
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -267,7 +267,7 @@ export default function Dashboard() {
                           Belum Submit Laporan
                         </p>
                         <p className="text-xs text-slate-500">
-                          Karyawan yang belum mengirim laporan hari ini
+                          Karyawan yang belum mengirim laporan minggu ini
                         </p>
                       </div>
                       <Badge className="border-amber-300 bg-white text-amber-700">

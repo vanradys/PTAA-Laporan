@@ -10,6 +10,7 @@ import dashboardRouter from "./dashboard";
 import poRouter from "./po";
 import customerTrackingRouter from "./customerTracking";
 import dailyReportsReminderRouter from "./dailyReportsReminder";
+import overallMonitoringRouter from "./overallMonitoring";
 
 const router = Router();
 
@@ -24,5 +25,6 @@ router.use(dashboardRouter);
 router.use(poRouter);
 router.use(customerTrackingRouter);
 router.use(dailyReportsReminderRouter);
+router.use(overallMonitoringRouter);
 
 export default router;

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   CalendarClock,
   ClipboardList,
+  Activity,
   Menu,
   X,
 } from "lucide-react";
@@ -62,7 +63,20 @@ export default function Layout({ children }: LayoutProps) {
     karyawan: "Karyawan",
     admin: "Admin",
     direktur: "Direktur",
+    monitoring_dummy: "Monitoring",
   };
+  const visibleNavItems =
+    user?.role === "admin"
+      ? [
+          ...navItems.slice(0, 4),
+          {
+            href: "/monitoring-keseluruhan",
+            label: "Monitoring Keseluruhan",
+            icon: Activity,
+          },
+          ...navItems.slice(4),
+        ]
+      : navItems;
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-slate-50 text-slate-950">
@@ -108,7 +122,7 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         <nav className="flex-1 space-y-1 px-3">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               location === item.href ||

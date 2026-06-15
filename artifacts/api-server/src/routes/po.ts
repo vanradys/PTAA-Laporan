@@ -65,7 +65,8 @@ const GENERIC_LEGACY_STATUS_KEYS = new Set([
   "delay",
 ]);
 
-const PO_AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "dir"];
+const PO_AMOUNT_VISIBLE_ROLES = ["admin", "direktur", "director", "dir"];
+const PO_AMOUNT_HIDDEN_ROLES = ["admin_marketing", "monitoring_dummy"];
 const MONTHLY_PO_TARGET = 10_000_000_000;
 const MONTH_NAMES = [
   "Januari",
@@ -82,31 +83,19 @@ const MONTH_NAMES = [
   "Desember",
 ];
 
-const PO_AMOUNT_HIDDEN_DEPARTMENT_CODES = ["PUR", "ENG"];
-const PO_AMOUNT_HIDDEN_DEPARTMENT_NAMES = ["purchasing", "engineering"];
-
 function canViewPoAmount(user?: {
   role?: string | null;
-  departmentCode?: string | null;
-  departmentName?: string | null;
 }): boolean {
   const role = String(user?.role ?? "").toLowerCase();
-  if (role === "admin_marketing") return false;
-  if (PO_AMOUNT_VISIBLE_ROLES.includes(role)) return true;
-
-  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
-  if (PO_AMOUNT_HIDDEN_DEPARTMENT_CODES.includes(departmentCode)) return false;
-
-  const departmentName = String(user?.departmentName ?? "").toLowerCase();
-  return !PO_AMOUNT_HIDDEN_DEPARTMENT_NAMES.some((name) =>
-    departmentName.includes(name),
-  );
+  if (PO_AMOUNT_HIDDEN_ROLES.includes(role)) return false;
+  return PO_AMOUNT_VISIBLE_ROLES.includes(role);
 }
 
 const PO_MANAGE_ROLES = ["admin", "direktur", "director", "dir", "hr"];
+const PO_EDIT_ROLES = [...PO_MANAGE_ROLES, "monitoring_dummy"];
 const PO_MANAGE_DEPARTMENT_CODES = ["AAF", "FIN", "MKT", "GA"];
 const PO_MANAGE_DEPARTMENT_NAMES = ["finance", "marketing", "general affairs"];
-const PO_ACTIVITY_VISIBLE_ROLES = ["admin", "direktur", "director", "dir"];
+const PO_ACTIVITY_VISIBLE_ROLES = ["admin", "direktur", "director", "dir", "monitoring_dummy"];
 const PO_ACTIVITY_VISIBLE_DEPARTMENT_CODES = ["GA"];
 const PO_ACTIVITY_VISIBLE_DEPARTMENT_NAMES = ["general affairs"];
 
@@ -125,6 +114,16 @@ function canManagePo(user?: {
   return PO_MANAGE_DEPARTMENT_NAMES.some((name) =>
     departmentName.includes(name),
   );
+}
+
+function canEditPoData(user?: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}): boolean {
+  const role = String(user?.role ?? "").toLowerCase();
+  if (PO_EDIT_ROLES.includes(role)) return true;
+  return canManagePo(user);
 }
 
 function isPurchasingOrEngineering(user?: {
@@ -146,7 +145,7 @@ function canUpdateProjectProgress(user?: {
   departmentCode?: string | null;
   departmentName?: string | null;
 }): boolean {
-  return canManagePo(user) || isPurchasingOrEngineering(user);
+  return canEditPoData(user) || isPurchasingOrEngineering(user);
 }
 
 function projectProgressLabel(value: string): string {
@@ -314,6 +313,16 @@ function normalizeLogValue(value: unknown) {
   if (value instanceof Date) return value.toISOString();
   if (value === undefined) return null;
   return value;
+}
+
+function sanitizePoChanges(
+  changes: Record<string, { before: unknown; after: unknown }>,
+  includeAmount: boolean,
+) {
+  if (includeAmount) return changes;
+
+  const { poAmount: _poAmount, ...safeChanges } = changes ?? {};
+  return safeChanges;
 }
 
 function normalizeTrackingStages(value: unknown): string[] {
@@ -574,7 +583,8 @@ router.get("/po/summary", async (req, res) => {
     poBelumSelesai,
     poDelay,
     poHampirDeadline,
-    ...(canSeeAmount ? { totalNominal, monthlyTarget, persentasePencapaian } : {}),
+    ...(canSeeAmount ? { totalNominal, monthlyTarget } : {}),
+    persentasePencapaian,
     targetMonthName: MONTH_NAMES[month - 1] ?? String(month),
     targetStartDate,
     targetEndDate,
@@ -600,6 +610,7 @@ router.get("/po/activity", async (req, res) => {
     return;
   }
 
+  const canSeeAmount = canViewPoAmount(user);
   const logs = await db
     .select()
     .from(poChangeLogsTable)
@@ -612,7 +623,7 @@ router.get("/po/activity", async (req, res) => {
       poId: log.poId,
       noPo: log.noPo,
       action: log.action,
-      changes: log.changes,
+      changes: sanitizePoChanges(log.changes, canSeeAmount),
       changedByUserId: log.changedByUserId,
       changedByName: log.changedByName,
       createdAt: log.createdAt.toISOString(),
@@ -972,7 +983,7 @@ router.patch("/po/:id", async (req, res) => {
     return;
   }
 
-  const hasFullManagePermission = canManagePo(user);
+  const hasFullManagePermission = canEditPoData(user);
   const hasProgressPermission = canUpdateProjectProgress(user);
 
   if (!hasProgressPermission) {

@@ -1,4 +1,4 @@
-import { db, departmentsTable, usersTable, eq, inArray } from "@workspace/db";
+import { db, departmentsTable, usersTable, eq, inArray, sql } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { activeDepartmentCodes } from "./auth";
 import { Router } from "express";
@@ -37,7 +37,7 @@ router.get("/employees", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(departmentsTable, eq(usersTable.departmentId, departmentsTable.id))
-    .where(activeUserCondition())
+    .where(sql`${activeUserCondition()} and lower(${usersTable.role}) <> 'monitoring_dummy'`)
     .orderBy(usersTable.name);
 
   res.json(employees.map((employee) => ({
