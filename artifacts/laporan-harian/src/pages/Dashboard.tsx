@@ -121,6 +121,10 @@ export default function Dashboard() {
     );
 
   const todayFormatted = formatJakartaDateLong();
+  const periodRangeText =
+    summary && "periodStartDate" in summary && "periodEndDate" in summary
+      ? `${String((summary as any).periodStartDate)} s/d ${String((summary as any).periodEndDate)}`
+      : today;
 
   const chartData = Array.isArray(deptData)
     ? deptData.map((dept: any) => ({
@@ -219,6 +223,17 @@ export default function Dashboard() {
                   </div>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
+                  <div className="mb-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold">
+                      Periode: {periodRangeText}
+                    </span>
+                    <span className="rounded-md bg-blue-50 px-2 py-1 font-semibold text-blue-700">
+                      Submit: {summary.submittedToday}
+                    </span>
+                    <span className="rounded-md bg-violet-50 px-2 py-1 font-semibold text-violet-700">
+                      Total Tugas: {summary.totalTasksToday}
+                    </span>
+                  </div>
                   {deptLoading ? (
                     <div className="flex h-[285px] items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-[#06258d]" />
