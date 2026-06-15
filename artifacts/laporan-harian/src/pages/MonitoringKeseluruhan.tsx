@@ -348,30 +348,32 @@ export default function MonitoringKeseluruhan() {
                     Riwayat Aktivitas Perubahan Data PO
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent>
                   {filtered.poActivities.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Tidak ada data.</p>
                   ) : (
-                    filtered.poActivities.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-border bg-white p-3">
-                        <div className="flex flex-wrap justify-between gap-2">
-                          <p className="text-sm font-semibold">
-                            {item.changedByName ?? "User"} - {item.action} - {item.noPo}
+                    <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                      {filtered.poActivities.map((item) => (
+                        <div key={item.id} className="rounded-lg border border-border bg-white p-3">
+                          <div className="flex flex-wrap justify-between gap-2">
+                            <p className="text-sm font-semibold">
+                              {item.changedByName ?? "User"} - {item.action} - {item.noPo}
+                            </p>
+                            <span className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</span>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {[item.namaProject, item.departmentName].filter(Boolean).join(" - ") || "-"}
                           </p>
-                          <span className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</span>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {Object.entries(item.changes ?? {}).map(([field, change]) => (
+                              <span key={field} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                                {PO_FIELD_LABELS[field] ?? field}: {formatValue(change.before)} {"->"} {formatValue(change.after)}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {[item.namaProject, item.departmentName].filter(Boolean).join(" - ") || "-"}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {Object.entries(item.changes ?? {}).map(([field, change]) => (
-                            <span key={field} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-                              {PO_FIELD_LABELS[field] ?? field}: {formatValue(change.before)} {"->"} {formatValue(change.after)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))
+                      ))}
+                    </div>
                   )}
                 </CardContent>
               </Card>

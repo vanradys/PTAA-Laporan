@@ -1197,38 +1197,40 @@ export default function JadwalProject() {
                 <span className="text-xs font-normal text-muted-foreground">Live setiap 5 detik</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent>
               {activityLogs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Belum ada perubahan PO yang tercatat.</p>
               ) : (
-                activityLogs.slice(0, 8).map((log) => {
-                  const entries = Object.entries(log.changes ?? {}).slice(0, 4);
+                <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                  {activityLogs.slice(0, 8).map((log) => {
+                    const entries = Object.entries(log.changes ?? {}).slice(0, 4);
 
-                  return (
-                    <div key={log.id} className="rounded-lg border border-border bg-white p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-foreground">
-                          {log.changedByName ?? "User"} {getActivityActionLabel(log.action)} {log.noPo}
-                        </p>
-                        <span className="text-xs text-muted-foreground">{formatActivityDateTime(log.createdAt)}</span>
-                      </div>
-                      {entries.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {entries.map(([field, change]) => (
-                            <span key={field} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-                              {PO_FIELD_LABELS[field] ?? field}: {formatActivityValue(change.before)} {"->"} {formatActivityValue(change.after)}
-                            </span>
-                          ))}
-                          {Object.keys(log.changes ?? {}).length > entries.length && (
-                            <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-                              +{Object.keys(log.changes ?? {}).length - entries.length} field lain
-                            </span>
-                          )}
+                    return (
+                      <div key={log.id} className="rounded-lg border border-border bg-white p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-foreground">
+                            {log.changedByName ?? "User"} {getActivityActionLabel(log.action)} {log.noPo}
+                          </p>
+                          <span className="text-xs text-muted-foreground">{formatActivityDateTime(log.createdAt)}</span>
                         </div>
-                      )}
-                    </div>
-                  );
-                })
+                        {entries.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {entries.map(([field, change]) => (
+                              <span key={field} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                                {PO_FIELD_LABELS[field] ?? field}: {formatActivityValue(change.before)} {"->"} {formatActivityValue(change.after)}
+                              </span>
+                            ))}
+                            {Object.keys(log.changes ?? {}).length > entries.length && (
+                              <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                                +{Object.keys(log.changes ?? {}).length - entries.length} field lain
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </CardContent>
           </Card>
