@@ -1,5 +1,6 @@
 import {
   db,
+  assignedDailyTasksTable,
   dailyReportsTable,
   dailyTasksTable,
   usersTable,
@@ -51,6 +52,8 @@ router.get("/dashboard/summary", async (req, res) => {
       tasksPending: 0,
       submitRate: 0,
       completionRate: 0,
+      pendingAssignedTasksCount: 0,
+      pendingAssignedTasksByAssigner: [],
     });
     return;
   }
@@ -92,6 +95,22 @@ router.get("/dashboard/summary", async (req, res) => {
 
   const submitRate = totalEmployees > 0 ? Math.round((submittedToday / totalEmployees) * 100) : 0;
   const completionRate = totalTasksToday > 0 ? Math.round((tasksCompleted / totalTasksToday) * 100) : 0;
+  const pendingAssignedTaskStats = await db
+    .select({
+      assignedByName: assignedDailyTasksTable.assignedByName,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(assignedDailyTasksTable)
+    .where(and(
+      eq(assignedDailyTasksTable.assigneeUserId, user.id),
+      eq(assignedDailyTasksTable.status, "pending"),
+    ))
+    .groupBy(assignedDailyTasksTable.assignedByName);
+
+  const pendingAssignedTasksCount = pendingAssignedTaskStats.reduce(
+    (total, item) => total + item.count,
+    0,
+  );
 
   res.json({
     totalEmployees,
@@ -102,6 +121,11 @@ router.get("/dashboard/summary", async (req, res) => {
     tasksPending,
     submitRate,
     completionRate,
+    pendingAssignedTasksCount,
+    pendingAssignedTasksByAssigner: pendingAssignedTaskStats.map((item) => ({
+      assignedByName: item.assignedByName,
+      count: item.count,
+    })),
   });
 });
 

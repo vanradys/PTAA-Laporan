@@ -15,4 +15,9 @@ export interface DashboardSummary {
   tasksPending: number;
   submitRate: number;
   completionRate: number;
+  pendingAssignedTasksCount: number;
+  pendingAssignedTasksByAssigner: {
+    assignedByName: string;
+    count: number;
+  }[];
 }

@@ -199,6 +199,11 @@ export interface DashboardSummary {
   tasksPending: number;
   submitRate: number;
   completionRate: number;
+  pendingAssignedTasksCount: number;
+  pendingAssignedTasksByAssigner: {
+    assignedByName: string;
+    count: number;
+  }[];
 }
 
 export interface DepartmentProductivity {
@@ -286,7 +291,7 @@ export interface PoSummary {
   poBelumSelesai: number;
   poDelay: number;
   poHampirDeadline: number;
-  persentasePencapaian: number;
+  persentasePencapaian?: number;
   month: number;
   year: number;
 }

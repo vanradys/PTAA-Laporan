@@ -12,7 +12,7 @@ export interface PoSummary {
   poBelumSelesai: number;
   poDelay: number;
   poHampirDeadline: number;
-  persentasePencapaian: number;
+  persentasePencapaian?: number;
   month: number;
   year: number;
 }

@@ -353,26 +353,35 @@ function formatActivityTime(value: string) {
 }
 
 function formatActivityDateTime(value: string) {
-  return new Date(value).toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+  const parts = new Intl.DateTimeFormat("id-ID", {
     timeZone: "Asia/Jakarta",
-  });
-}
-
-function formatCommentDateTime(value: string) {
-  return new Date(value).toLocaleString("id-ID", {
     weekday: "long",
     day: "2-digit",
     month: "long",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(value));
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${getPart("weekday")}, ${getPart("day")} ${getPart("month")} ${getPart("year")}, ${getPart("hour")}:${getPart("minute")} WIB`;
+}
+
+function formatCommentDateTime(value: string) {
+  const parts = new Intl.DateTimeFormat("id-ID", {
     timeZone: "Asia/Jakarta",
-  });
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(value));
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${getPart("weekday")}, ${getPart("day")} ${getPart("month")} ${getPart("year")}, ${getPart("hour")}:${getPart("minute")} WIB`;
 }
 
 function formatActivityValue(value: unknown) {
@@ -501,10 +510,11 @@ export default function JadwalProject() {
     departmentName.includes("engineering");
 
   const canViewPoAmount =
-    ["admin", "direktur", "director", "dir"].includes(role) ||
+    role !== "admin_marketing" &&
+    (["admin", "direktur", "director", "dir"].includes(role) ||
     (!["PUR", "ENG"].includes(departmentCode) &&
       !departmentName.includes("purchasing") &&
-      !departmentName.includes("engineering"));
+      !departmentName.includes("engineering")));
 
   const canViewPoActivity =
     ["admin", "direktur", "director", "dir"].includes(role) ||
@@ -1045,17 +1055,19 @@ export default function JadwalProject() {
           color: "text-orange-600",
           bg: "bg-orange-50",
         },
+        ...(canViewPoAmount
+          ? [
         {
           label: "Pencapaian Target",
           value: `${(summary as { persentasePencapaian: number }).persentasePencapaian}%`,
-          description: canViewPoAmount
-            ? `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`
-            : undefined,
+          description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
           targetLabel: `Target Bulan ${(summary as { targetMonthName?: string }).targetMonthName ?? months.find((item) => item.v === filterMonth)?.l ?? ""}`,
           icon: TrendingUp,
           color: "text-purple-600",
           bg: "bg-purple-50",
         },
+            ]
+          : []),
       ]
     : [];
 
@@ -1159,7 +1171,7 @@ export default function JadwalProject() {
                         <p className="text-sm font-semibold text-foreground">
                           {log.changedByName ?? "User"} {getActivityActionLabel(log.action)} {log.noPo}
                         </p>
-                        <span className="text-xs text-muted-foreground">{formatActivityTime(log.createdAt)}</span>
+                        <span className="text-xs text-muted-foreground">{formatActivityDateTime(log.createdAt)}</span>
                       </div>
                       {entries.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-2">

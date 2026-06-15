@@ -941,6 +941,15 @@ components:
         tasksPending: { type: integer }
         submitRate: { type: integer }
         completionRate: { type: integer }
+        pendingAssignedTasksCount: { type: integer }
+        pendingAssignedTasksByAssigner:
+          type: array
+          items:
+            type: object
+            properties:
+              assignedByName: { type: string }
+              count: { type: integer }
+            required: [assignedByName, count]
       required:
         [
           totalEmployees,
@@ -951,6 +960,8 @@ components:
           tasksPending,
           submitRate,
           completionRate,
+          pendingAssignedTasksCount,
+          pendingAssignedTasksByAssigner,
         ]
 
     DepartmentProductivity:
@@ -1071,7 +1082,6 @@ components:
           poBelumSelesai,
           poDelay,
           poHampirDeadline,
-          persentasePencapaian,
           month,
           year,
         ]
