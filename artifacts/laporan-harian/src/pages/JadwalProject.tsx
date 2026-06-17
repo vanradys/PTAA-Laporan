@@ -546,26 +546,26 @@ export default function JadwalProject() {
     departmentName.includes("purchasing") ||
     departmentName.includes("engineering");
 
-  const canViewPoAmount =
+  const localCanViewPoAmount =
+    !["monitoring_dummy", "monitoring", "monitor"].includes(role) &&
+    !email.includes("monitor") &&
     [
       "admin@adiyasa.com",
       "director@adiyasa.com",
       "marketing@adiyasa.com",
-      "monitoring.progress@adiyasa.com",
       "finance@adiyasa.com",
     ].includes(email) ||
-    [
-      "admin",
-      "direktur",
-      "director",
-      "dir",
-      "monitoring_dummy",
-      "monitoring",
-      "monitor",
-      "finance",
-    ].includes(role) ||
-    ["AAF", "FIN"].includes(departmentCode) ||
-    departmentName.includes("finance");
+    (!["monitoring_dummy", "monitoring", "monitor"].includes(role) &&
+      !email.includes("monitor") &&
+      ([
+        "admin",
+        "direktur",
+        "director",
+        "dir",
+        "finance",
+      ].includes(role) ||
+        ["AAF", "FIN"].includes(departmentCode) ||
+        departmentName.includes("finance")));
 
   const canViewPoActivity =
     ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||
@@ -629,6 +629,13 @@ export default function JadwalProject() {
       },
     },
   );
+
+  const canViewPoAmount =
+    !["monitoring_dummy", "monitoring", "monitor"].includes(role) &&
+    !email.includes("monitor") &&
+    (localCanViewPoAmount ||
+      Boolean((summary as { canViewAmount?: boolean } | undefined)?.canViewAmount) ||
+      Boolean((yearlyTrend as { canViewAmount?: boolean } | undefined)?.canViewAmount));
 
   const { data: poActivityLogs } = useQuery({
     queryKey: ["po-activity"],

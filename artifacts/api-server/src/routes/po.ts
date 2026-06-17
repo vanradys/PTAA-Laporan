@@ -70,9 +70,6 @@ const PO_AMOUNT_VISIBLE_ROLES = [
   "direktur",
   "director",
   "dir",
-  "monitoring_dummy",
-  "monitoring",
-  "monitor",
   "finance",
 ];
 const PO_AMOUNT_VISIBLE_DEPARTMENT_CODES = ["AAF", "FIN"];
@@ -81,10 +78,10 @@ const PO_AMOUNT_VISIBLE_EMAILS = [
   "admin@adiyasa.com",
   "director@adiyasa.com",
   "marketing@adiyasa.com",
-  "monitoring.progress@adiyasa.com",
   "finance@adiyasa.com",
 ];
-const PO_AMOUNT_HIDDEN_ROLES = ["admin_marketing"];
+const PO_AMOUNT_HIDDEN_ROLES = ["admin_marketing", "monitoring_dummy", "monitoring", "monitor"];
+const PO_AMOUNT_HIDDEN_EMAILS = ["monitoring.progress@adiyasa.com"];
 const MONTHLY_PO_TARGET = 10_000_000_000;
 const MONTH_NAMES = [
   "Januari",
@@ -108,10 +105,11 @@ function canViewPoAmount(user?: {
   departmentName?: string | null;
 }): boolean {
   const email = String(user?.email ?? "").toLowerCase();
-  if (PO_AMOUNT_VISIBLE_EMAILS.includes(email)) return true;
+  if (PO_AMOUNT_HIDDEN_EMAILS.includes(email) || email.includes("monitor")) return false;
 
   const role = String(user?.role ?? "").toLowerCase();
   if (PO_AMOUNT_HIDDEN_ROLES.includes(role)) return false;
+  if (PO_AMOUNT_VISIBLE_EMAILS.includes(email)) return true;
   if (PO_AMOUNT_VISIBLE_ROLES.includes(role)) return true;
 
   const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
@@ -610,6 +608,7 @@ router.get("/po/summary", async (req, res) => {
   );
 
   res.json({
+    canViewAmount: canSeeAmount,
     totalPo,
     poSelesai,
     poBelumSelesai,
