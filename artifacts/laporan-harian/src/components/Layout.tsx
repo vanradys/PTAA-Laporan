@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import NotificationBell from "@/components/NotificationBell";
+import { getRoleDisplayName } from "@/lib/roles";
 
 const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
 
@@ -59,12 +60,6 @@ export default function Layout({ children }: LayoutProps) {
     setSidebarOpen(false);
   };
 
-  const roleLabel: Record<string, string> = {
-    karyawan: "Karyawan",
-    admin: "Admin",
-    direktur: "Direktur",
-    monitoring_dummy: "Monitoring",
-  };
   const visibleNavItems =
     user?.role === "admin"
       ? [
@@ -194,7 +189,7 @@ export default function Layout({ children }: LayoutProps) {
                   {user?.name ?? "Admin PTAA"}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {roleLabel[user?.role ?? ""] ?? user?.role ?? "Admin"}
+                  {getRoleDisplayName(user?.role, user?.departmentCode, user?.departmentName)}
                 </p>
               </div>
 

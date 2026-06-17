@@ -18,6 +18,15 @@ import { getUserFromToken } from "./auth";
 const router = Router();
 
 const MAX_TASK_ACTIONS = 2;
+const FULL_ACCESS_TASK_ROLES = ["admin", "direktur", "director", "dir"];
+
+type TaskJobItem = {
+  id: string;
+  text: string;
+  createdAt: string;
+  createdByUserId?: number | null;
+  createdByName?: string | null;
+};
 
 function getTodayString(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -44,9 +53,54 @@ function isTaskLockedByCount(editCount: number): boolean {
 
 function isTaskDelay(deadline: string | null, status: string): boolean {
   if (!deadline) return false;
-  if (status === "selesai") return false;
+  if (["selesai", "delivered"].includes(status)) return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
   return deadline < getTodayString();
+}
+
+function isFullAccessRole(user?: { role?: string | null }): boolean {
+  const role = String(user?.role ?? "").toLowerCase();
+  return FULL_ACCESS_TASK_ROLES.includes(role);
+}
+
+function getTaskProgressFromStatus(status: unknown): number {
+  const key = String(status ?? "").toLowerCase();
+  if (["delivered", "selesai"].includes(key)) return 100;
+  if (key === "review_approval") return 75;
+  if (["input_data_proses", "proses", "pending"].includes(key)) return 50;
+  if (key === "inquiry") return 25;
+  return 0;
+}
+
+function normalizeTaskJobItems(
+  value: unknown,
+  user?: { id?: number | null; name?: string | null },
+): TaskJobItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      const source: Record<string, unknown> =
+        typeof item === "object" && item !== null
+          ? (item as Record<string, unknown>)
+          : { text: item };
+      const text = String(source.text ?? source.value ?? "").trim();
+      if (!text) return null;
+      return {
+        id:
+          String(source.id ?? "").trim() ||
+          `task-job-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+        text,
+        createdAt:
+          String(source.createdAt ?? "").trim() || new Date().toISOString(),
+        createdByUserId:
+          Number.isInteger(Number(source.createdByUserId))
+            ? Number(source.createdByUserId)
+            : user?.id ?? null,
+        createdByName:
+          String(source.createdByName ?? "").trim() || (user?.name ?? null),
+      };
+    })
+    .filter(Boolean) as TaskJobItem[];
 }
 
 function formatAssignerRole(user: {
@@ -55,13 +109,14 @@ function formatAssignerRole(user: {
   departmentName?: string | null;
 }) {
   const role = String(user.role ?? "").toLowerCase();
-  if (role === "admin_marketing") return "Admin Marketing";
+  if (role === "admin_marketing") return "Admin Marketing 2";
+  if (role === "marketing") return "Admin Marketing 1";
   if (["direktur", "director", "dir"].includes(role)) return "Direktur";
   if (role === "admin") return "Admin";
   if (role === "hr") return "HR";
 
   const code = String(user.departmentCode ?? "").toUpperCase();
-  if (code === "MKT") return "Marketing";
+  if (code === "MKT") return "Admin Marketing 1";
   if (code === "ENG") return "Engineering";
   if (code === "PUR") return "Purchasing";
   if (code === "GA") return "General Affairs";
@@ -162,9 +217,17 @@ function buildTaskResponse(task: typeof dailyTasksTable.$inferSelect) {
     title: task.title,
     project: task.project ?? null,
     deadline: task.deadline ?? null,
-    progress: task.progress,
+    progress: getTaskProgressFromStatus(task.status),
     status: task.status,
     notes: task.notes ?? null,
+    jobItems: normalizeTaskJobItems(task.jobItems).length > 0
+      ? normalizeTaskJobItems(task.jobItems)
+      : normalizeTaskJobItems(
+          task.notes ? [{ text: task.notes, createdAt: task.createdAt.toISOString() }] : [],
+        ),
+    reviewNotes: task.reviewNotes ?? null,
+    startDate: task.startDate ?? null,
+    completedDate: task.completedDate ?? null,
     editCount,
     remainingActions: getRemainingActions(editCount),
     isLocked: isTaskLockedByCount(editCount),
@@ -173,7 +236,14 @@ function buildTaskResponse(task: typeof dailyTasksTable.$inferSelect) {
   };
 }
 
-function getAddTaskError(report: typeof dailyReportsTable.$inferSelect): string | null {
+function getAddTaskError(
+  report: typeof dailyReportsTable.$inferSelect,
+  user?: { role?: string | null },
+): string | null {
+  if (isFullAccessRole(user)) {
+    return null;
+  }
+
   if (report.date !== getTodayString()) {
     return "Tugas dari tanggal sebelumnya sudah terkunci dan tidak bisa ditambahkan.";
   }
@@ -188,7 +258,12 @@ function getAddTaskError(report: typeof dailyReportsTable.$inferSelect): string 
 function getModifyTaskError(
   report: typeof dailyReportsTable.$inferSelect,
   task: typeof dailyTasksTable.$inferSelect,
+  user?: { role?: string | null },
 ): string | null {
+  if (isFullAccessRole(user)) {
+    return null;
+  }
+
   if (report.date !== getTodayString()) {
     return "Tugas dari tanggal sebelumnya sudah terkunci dan tidak bisa diedit atau dihapus.";
   }
@@ -374,7 +449,7 @@ router.post("/assigned-tasks/:assignmentId/respond", async (req, res) => {
   }
 
   const report = await getOrCreateTodayReport(user);
-  const addTaskError = getAddTaskError(report);
+  const addTaskError = getAddTaskError(report, user);
   if (addTaskError) {
     res.status(400).json({ error: addTaskError });
     return;
@@ -435,25 +510,44 @@ router.post("/reports/:id/tasks", async (req, res) => {
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, reportId)).limit(1);
 
   if (!report[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
-  if (report[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (report[0].userId !== user.id && !isFullAccessRole(user)) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
-  const addTaskError = getAddTaskError(report[0]);
+  const addTaskError = getAddTaskError(report[0], user);
   if (addTaskError) {
     res.status(400).json({ error: addTaskError });
     return;
   }
 
-  const { title, project, deadline, progress, status, notes } = req.body;
+  const {
+    title,
+    project,
+    deadline,
+    status,
+    notes,
+    jobItems,
+    reviewNotes,
+    startDate,
+    completedDate,
+  } = req.body;
   if (!title || !title.trim()) { res.status(400).json({ error: "Nama tugas diperlukan" }); return; }
+  const nextStatus = status ?? "belum_mulai";
+  const normalizedJobItems = normalizeTaskJobItems(
+    jobItems ?? (notes ? [{ text: notes }] : []),
+    user,
+  );
 
   const [task] = await db.insert(dailyTasksTable).values({
     reportId,
     title,
     project: project ?? null,
     deadline: deadline || null,
-    progress: progress ?? 0,
-    status: status ?? "belum_mulai",
+    progress: getTaskProgressFromStatus(nextStatus),
+    status: nextStatus,
     notes: notes ?? null,
+    jobItems: normalizedJobItems,
+    reviewNotes: reviewNotes ?? null,
+    startDate: startDate || null,
+    completedDate: completedDate || null,
   }).returning();
 
   res.status(201).json(buildTaskResponse(task));
@@ -472,15 +566,25 @@ router.patch("/tasks/:taskId", async (req, res) => {
   if (!task[0]) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
 
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, task[0].reportId)).limit(1);
-  if (!report[0] || report[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!report[0] || (report[0].userId !== user.id && !isFullAccessRole(user))) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
-  const modifyTaskError = getModifyTaskError(report[0], task[0]);
+  const modifyTaskError = getModifyTaskError(report[0], task[0], user);
   if (modifyTaskError) {
     res.status(400).json({ error: modifyTaskError });
     return;
   }
 
-  const { title, project, deadline, progress, status, notes } = req.body;
+  const {
+    title,
+    project,
+    deadline,
+    status,
+    notes,
+    jobItems,
+    reviewNotes,
+    startDate,
+    completedDate,
+  } = req.body;
 
   if (title !== undefined && !String(title).trim()) {
     res.status(400).json({ error: "Nama tugas tidak boleh kosong" });
@@ -491,9 +595,12 @@ router.patch("/tasks/:taskId", async (req, res) => {
     title !== undefined ||
     project !== undefined ||
     deadline !== undefined ||
-    progress !== undefined ||
     status !== undefined ||
-    notes !== undefined;
+    notes !== undefined ||
+    jobItems !== undefined ||
+    reviewNotes !== undefined ||
+    startDate !== undefined ||
+    completedDate !== undefined;
 
   if (!hasUpdate) {
     res.status(400).json({ error: "Tidak ada data tugas yang diubah" });
@@ -505,9 +612,17 @@ router.patch("/tasks/:taskId", async (req, res) => {
       ...(title !== undefined && { title }),
       ...(project !== undefined && { project }),
       ...(deadline !== undefined && { deadline: deadline || null }),
-      ...(progress !== undefined && { progress }),
-      ...(status !== undefined && { status }),
+      ...(status !== undefined && {
+        status,
+        progress: getTaskProgressFromStatus(status),
+      }),
       ...(notes !== undefined && { notes }),
+      ...(jobItems !== undefined && {
+        jobItems: normalizeTaskJobItems(jobItems, user),
+      }),
+      ...(reviewNotes !== undefined && { reviewNotes }),
+      ...(startDate !== undefined && { startDate: startDate || null }),
+      ...(completedDate !== undefined && { completedDate: completedDate || null }),
       editCount: sql`${dailyTasksTable.editCount} + 1`,
     })
     .where(eq(dailyTasksTable.id, taskId))
@@ -529,9 +644,9 @@ router.delete("/tasks/:taskId", async (req, res) => {
   if (!task[0]) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
 
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, task[0].reportId)).limit(1);
-  if (!report[0] || report[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!report[0] || (report[0].userId !== user.id && !isFullAccessRole(user))) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
-  const modifyTaskError = getModifyTaskError(report[0], task[0]);
+  const modifyTaskError = getModifyTaskError(report[0], task[0], user);
   if (modifyTaskError) {
     res.status(400).json({ error: modifyTaskError });
     return;

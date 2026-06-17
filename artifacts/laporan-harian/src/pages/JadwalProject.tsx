@@ -61,18 +61,16 @@ import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
 import { apiRequest } from "@/lib/apiRequest";
 
+const DEFAULT_ACCOUNTING_COMMENT =
+  "Info dari pak Mulyadi BAST akan di ttd apabila sudah di trial";
+
 const PO_STATUS_OPTS = [
-  { value: "semua", label: "Semua Project Progress" },
-  { value: "po_received", label: "PO Received" },
-  { value: "engineering", label: "Engineering" },
-  { value: "approval_drawing", label: "Approval Drawing" },
-  { value: "material_order", label: "Material Order" },
-  { value: "production", label: "Production" },
-  { value: "quality_control", label: "Quality Control" },
-  { value: "finishing_trial", label: "Finishing & Trial" },
-  { value: "painting", label: "Painting" },
-  { value: "delivery", label: "Delivery" },
-  { value: "project_finished", label: "Project Finished" },
+  { value: "semua", label: "Semua Status" },
+  { value: "belum_mulai", label: "Belum Mulai" },
+  { value: "inquiry", label: "Menerima Permintaan (Inquiry)" },
+  { value: "input_data_proses", label: "Input Data/Proses" },
+  { value: "review_approval", label: "Review/Approval" },
+  { value: "delivered", label: "Delivered" },
 ];
 
 const CUSTOMER_TRACKING_STAGES = [
@@ -89,16 +87,30 @@ const CUSTOMER_TRACKING_STAGES = [
 ] as const;
 
 const PROJECT_PROGRESS_PERCENT: Record<string, number> = {
+  belum_mulai: 0,
   po_received: 0,
-  engineering: 20,
-  approval_drawing: 20,
-  material_order: 40,
-  production: 60,
-  quality_control: 60,
-  finishing_trial: 80,
-  painting: 80,
-  delivery: 90,
+  po_diterima: 0,
+  inquiry: 25,
+  input_data_proses: 50,
+  proses: 50,
+  engineering: 50,
+  approval_drawing: 50,
+  material_order: 50,
+  procurement: 50,
+  production: 50,
+  produksi: 50,
+  quality_control: 50,
+  qc: 50,
+  finishing_trial: 50,
+  painting: 50,
+  delivery: 50,
+  pengiriman: 50,
+  review_approval: 75,
+  hampir_deadline: 75,
+  delivered: 100,
   project_finished: 100,
+  selesai: 100,
+  close: 100,
 };
 
 interface StatusStyle {
@@ -108,10 +120,35 @@ interface StatusStyle {
 }
 
 const STATUS_STYLES: Record<string, StatusStyle> = {
-  po_received: {
-    label: "PO Received",
+  belum_mulai: {
+    label: "Belum Mulai",
     badge: "bg-gray-100 text-gray-700 border-gray-200",
     dot: "bg-gray-400",
+  },
+  po_received: {
+    label: "Belum Mulai",
+    badge: "bg-gray-100 text-gray-700 border-gray-200",
+    dot: "bg-gray-400",
+  },
+  inquiry: {
+    label: "Menerima Permintaan (Inquiry)",
+    badge: "bg-blue-100 text-blue-700 border-blue-200",
+    dot: "bg-blue-500",
+  },
+  input_data_proses: {
+    label: "Input Data/Proses",
+    badge: "bg-amber-100 text-amber-700 border-amber-200",
+    dot: "bg-amber-500",
+  },
+  review_approval: {
+    label: "Review/Approval",
+    badge: "bg-violet-100 text-violet-700 border-violet-200",
+    dot: "bg-violet-500",
+  },
+  delivered: {
+    label: "Delivered",
+    badge: "bg-green-100 text-green-700 border-green-200",
+    dot: "bg-green-500",
   },
   engineering: {
     label: "Engineering",
@@ -158,18 +195,13 @@ const STATUS_STYLES: Record<string, StatusStyle> = {
     badge: "bg-green-100 text-green-700 border-green-200",
     dot: "bg-green-500",
   },
-  belum_mulai: {
-    label: "PO Received",
-    badge: "bg-gray-100 text-gray-700 border-gray-200",
-    dot: "bg-gray-400",
-  },
   selesai: {
-    label: "Project Finished",
+    label: "Delivered",
     badge: "bg-green-100 text-green-700 border-green-200",
     dot: "bg-green-500",
   },
   close: {
-    label: "Project Finished",
+    label: "Delivered",
     badge: "bg-green-100 text-green-700 border-green-200",
     dot: "bg-green-500",
   },
@@ -252,6 +284,9 @@ interface PoItem {
   trackingStages?: string[];
   trackingTimeline?: TrackingTimelineItem[];
   catatan?: string | null;
+  jobItems?: PoJobItem[];
+  reviewEvaluation?: string | null;
+  accountingComment?: string | null;
   closedAt?: string | null;
   isEditLocked?: boolean;
   editLockNotice?: string | null;
@@ -275,11 +310,22 @@ interface PoFormState {
   trackingStages: string[];
   trackingTimeline: TrackingTimelineItem[];
   catatan: string;
+  jobItems: PoJobItem[];
+  reviewEvaluation: string;
+  accountingComment: string;
 }
 
 interface TrackingTimelineItem {
   date: string;
   description: string;
+}
+
+interface PoJobItem {
+  id: string;
+  text: string;
+  createdAt: string;
+  createdByUserId?: number | null;
+  createdByName?: string | null;
 }
 
 type DeliveryInputMode = "date" | "text";
@@ -326,8 +372,8 @@ const PO_FIELD_LABELS: Record<string, string> = {
   customer: "Customer",
   qty: "Qty",
   poAmount: "Nominal PO",
-  tanggalPoMasuk: "Tanggal PO Masuk",
-  targetPenyelesaian: "Target Pengiriman",
+  tanggalPoMasuk: "Tanggal Masuk PO",
+  targetPenyelesaian: "Tanggal Target Pengiriman",
   deadline: "Tanggal Delivery",
   picUserId: "PIC",
   picProject: "PIC Project",
@@ -337,7 +383,10 @@ const PO_FIELD_LABELS: Record<string, string> = {
   hasPainting: "Painting",
   trackingStages: "Project Progress",
   trackingTimeline: "Timeline Customer",
-  catatan: "Catatan",
+  catatan: "Job yang dikerjakan",
+  jobItems: "Job yang dikerjakan",
+  reviewEvaluation: "Review / Catatan Evaluasi",
+  accountingComment: "Komentar Accounting",
   closedAt: "Tanggal Close",
   closedByUserId: "Ditutup Oleh",
 };
@@ -354,12 +403,15 @@ const EMPTY_FORM: PoFormState = {
   picUserId: "",
   picProject: "",
   departmentId: "",
-  status: "po_received",
+  status: "belum_mulai",
   progress: "0",
   hasPainting: false,
   trackingStages: [],
   trackingTimeline: [],
   catatan: "",
+  jobItems: [],
+  reviewEvaluation: "",
+  accountingComment: DEFAULT_ACCOUNTING_COMMENT,
 };
 const NONE_VALUE = "none";
 function formatRupiah(value: number) {
@@ -482,7 +534,7 @@ function formatNominalAxisLabel(value: number) {
 }
 
 function isFinishedPo(status: string) {
-  return status === "project_finished" || status === "selesai" || status === "close";
+  return ["delivered", "project_finished", "selesai", "close"].includes(status);
 }
 
 function isDateOnly(value: string) {
@@ -501,11 +553,8 @@ function getProgressPercent(status: string) {
   return PROJECT_PROGRESS_PERCENT[status] ?? 0;
 }
 
-function getProgressOptions(hasPainting: boolean) {
-  return PO_STATUS_OPTS.filter(
-    (item) =>
-      item.value !== "semua" && (hasPainting || item.value !== "painting"),
-  );
+function getProgressOptions(_hasPainting: boolean) {
+  return PO_STATUS_OPTS.filter((item) => item.value !== "semua");
 }
 
 function getFinishedPoNotice(po: PoItem) {
@@ -522,6 +571,32 @@ function isoDateToDisplay(value: string) {
   if (!isDateOnly(value)) return value;
   const [year, month, day] = value.split("-");
   return `${day}/${month}/${year}`;
+}
+
+function normalizePoJobItems(po: Pick<PoItem, "jobItems" | "catatan">): PoJobItem[] {
+  const items = Array.isArray(po.jobItems) ? po.jobItems : [];
+  const normalized = items
+    .map((item, index) => ({
+      id: item.id || `job-${index}`,
+      text: String(item.text ?? "").trim(),
+      createdAt: item.createdAt || new Date().toISOString(),
+      createdByUserId: item.createdByUserId ?? null,
+      createdByName: item.createdByName ?? null,
+    }))
+    .filter((item) => item.text.length > 0);
+  if (normalized.length > 0) return normalized;
+  const fallback = String(po.catatan ?? "").trim();
+  return fallback
+    ? [{ id: `job-fallback-${Date.now()}`, text: fallback, createdAt: new Date().toISOString() }]
+    : [];
+}
+
+function createEmptyJobItem(): PoJobItem {
+  return {
+    id: `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text: "",
+    createdAt: new Date().toISOString(),
+  };
 }
 
 export default function JadwalProject() {
@@ -575,6 +650,7 @@ export default function JadwalProject() {
   const canDeleteComments = ["admin", "direktur", "director", "dir"].includes(
     role,
   );
+  const canEditAccountingComment = ["admin", "direktur", "director", "dir"].includes(role);
 
   const [filterMonth, setFilterMonth] = useState<string>(
     String(today.getMonth() + 1),
@@ -585,6 +661,11 @@ export default function JadwalProject() {
   const [filterStatus, setFilterStatus] = useState("semua");
   const [filterDept, setFilterDept] = useState("semua");
   const [searchText, setSearchText] = useState("");
+  const [exportStartMonth, setExportStartMonth] = useState(String(today.getMonth() + 1));
+  const [exportEndMonth, setExportEndMonth] = useState(String(today.getMonth() + 1));
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+  const [exportLoading, setExportLoading] = useState<"pdf" | "excel" | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [viewingPo, setViewingPo] = useState<PoItem | null>(null);
@@ -798,6 +879,9 @@ export default function JadwalProject() {
         ? po.trackingTimeline
         : [],
       catatan: po.catatan ?? "",
+      jobItems: normalizePoJobItems(po),
+      reviewEvaluation: po.reviewEvaluation ?? "",
+      accountingComment: po.accountingComment || DEFAULT_ACCOUNTING_COMMENT,
     });
     setShowForm(true);
   };
@@ -850,6 +934,29 @@ export default function JadwalProject() {
     }));
   };
 
+  const addJobItem = () => {
+    setForm((current) => ({
+      ...current,
+      jobItems: [...current.jobItems, createEmptyJobItem()],
+    }));
+  };
+
+  const updateJobItem = (index: number, text: string) => {
+    setForm((current) => ({
+      ...current,
+      jobItems: current.jobItems.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, text } : item,
+      ),
+    }));
+  };
+
+  const removeJobItem = (index: number) => {
+    setForm((current) => ({
+      ...current,
+      jobItems: current.jobItems.filter((_item, itemIndex) => itemIndex !== index),
+    }));
+  };
+
   const closeDetail = () => {
     setViewingPo(null);
     setInternalCommentDraft("");
@@ -876,6 +983,57 @@ export default function JadwalProject() {
           error instanceof Error ? error.message : "Gagal mengirim komentar",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleExportPo = async (format: "pdf" | "excel") => {
+    setExportLoading(format);
+    try {
+      const params = new URLSearchParams({
+        format,
+        year: filterYear,
+        startMonth: exportStartMonth,
+        endMonth: exportEndMonth,
+      });
+      if (exportStartDate && exportEndDate) {
+        params.set("startDate", exportStartDate);
+        params.set("endDate", exportEndDate);
+      }
+
+      const response = await fetch(`/api/po/export?${params.toString()}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Export gagal");
+      }
+
+      if (format === "pdf") {
+        const html = await response.text();
+        const printWindow = window.open("", "_blank");
+        if (!printWindow) throw new Error("Popup export PDF diblokir browser");
+        printWindow.document.open();
+        printWindow.document.write(html);
+        printWindow.document.close();
+      } else {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `export-po-${filterYear}.xls`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      toast({
+        title: "Export gagal",
+        description: error instanceof Error ? error.message : "Gagal export data PO",
+        variant: "destructive",
+      });
+    } finally {
+      setExportLoading(null);
     }
   };
 
@@ -989,7 +1147,20 @@ export default function JadwalProject() {
             description: item.description.trim(),
           }))
           .filter((item) => item.date || item.description),
-        catatan: form.catatan || undefined,
+        catatan:
+          form.jobItems.find((item) => item.text.trim())?.text ||
+          form.catatan ||
+          undefined,
+        jobItems: form.jobItems
+          .map((item) => ({ ...item, text: item.text.trim() }))
+          .filter((item) => item.text),
+        reviewEvaluation: form.reviewEvaluation || undefined,
+        ...(canEditAccountingComment
+          ? {
+              accountingComment:
+                form.accountingComment || DEFAULT_ACCOUNTING_COMMENT,
+            }
+          : {}),
       } : {
         status: form.status,
       };
@@ -1021,11 +1192,11 @@ export default function JadwalProject() {
   };
 
   const handleClose = async (po: PoItem) => {
-    if (!confirm(`Tandai PO "${po.noPo} - ${po.namaProject}" sebagai Project Finished?`))
+    if (!confirm(`Tandai PO "${po.noPo} - ${po.namaProject}" sebagai Delivered?`))
       return;
     try {
       await closePo.mutateAsync({ id: po.id });
-      toast({ title: "Berhasil", description: "PO ditandai sebagai Project Finished" });
+      toast({ title: "Berhasil", description: "PO ditandai sebagai Delivered" });
       invalidate();
     } catch (error) {
       const message =
@@ -1543,6 +1714,98 @@ export default function JadwalProject() {
           </CardContent>
         </Card>
 
+        {/* Export */}
+        <Card className="border border-border">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Dari Bulan</Label>
+                <Select value={exportStartMonth} onValueChange={setExportStartMonth}>
+                  <SelectTrigger className="h-8 w-32 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((m) => (
+                      <SelectItem key={m.v} value={m.v}>
+                        {m.l}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Sampai Bulan</Label>
+                <Select value={exportEndMonth} onValueChange={setExportEndMonth}>
+                  <SelectTrigger className="h-8 w-32 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((m) => (
+                      <SelectItem key={m.v} value={m.v}>
+                        {m.l}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Tahun</Label>
+                <Select value={filterYear} onValueChange={setFilterYear}>
+                  <SelectTrigger className="h-8 w-24 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {years.map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Tanggal Mulai</Label>
+                <Input
+                  type="date"
+                  value={exportStartDate}
+                  onChange={(event) => setExportStartDate(event.target.value)}
+                  className="h-8 w-40 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Tanggal Akhir</Label>
+                <Input
+                  type="date"
+                  value={exportEndDate}
+                  onChange={(event) => setExportEndDate(event.target.value)}
+                  className="h-8 w-40 text-sm"
+                />
+              </div>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExportPo("pdf")}
+                  disabled={exportLoading !== null}
+                >
+                  {exportLoading === "pdf" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                  Export PDF
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleExportPo("excel")}
+                  disabled={exportLoading !== null}
+                >
+                  {exportLoading === "excel" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                  Export Excel
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Table */}
         <Card className="border border-border">
           <CardHeader className="pb-0 pt-4 px-5">
@@ -1579,7 +1842,7 @@ export default function JadwalProject() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-sm">
+                <table className="w-full min-w-[1100px] text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
@@ -1603,7 +1866,10 @@ export default function JadwalProject() {
                         PIC
                       </th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
-                        Tanggal Masuk
+                        Tanggal Masuk PO
+                      </th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Tanggal Target Pengiriman
                       </th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
                         Tanggal Delivery
@@ -1681,6 +1947,11 @@ export default function JadwalProject() {
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span className="text-sm text-foreground">
+                              {isoDateToDisplay(po.targetPenyelesaian || "-")}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className="text-sm text-foreground">
                               {isoDateToDisplay(po.deadline)}
                             </span>
                           </td>
@@ -1705,8 +1976,8 @@ export default function JadwalProject() {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 min-w-20">
-                              <div className="flex-1 bg-muted rounded-full h-1.5">
+                            <div className="mx-auto flex max-w-28 items-center gap-2">
+                              <div className="w-16 bg-muted rounded-full h-1.5">
                                 <div
                                   className={`h-1.5 rounded-full transition-all ${isFinishedPo(po.status) ? "bg-green-500" : "bg-primary"}`}
                                   style={{ width: `${clampProgress(po.progress)}%` }}
@@ -1817,7 +2088,10 @@ export default function JadwalProject() {
                         </th>
                       )}
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
-                        Tanggal Masuk
+                        Tanggal Masuk PO
+                      </th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                        Tanggal Target Pengiriman
                       </th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
                         Tanggal Delivery
@@ -1881,6 +2155,9 @@ export default function JadwalProject() {
                             {isoDateToDisplay(po.tanggalPoMasuk)}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
+                            {isoDateToDisplay(po.targetPenyelesaian || "-")}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
                             {isoDateToDisplay(po.deadline)}
                           </td>
                           <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -1899,8 +2176,8 @@ export default function JadwalProject() {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 min-w-20">
-                              <div className="flex-1 bg-muted rounded-full h-1.5">
+                            <div className="mx-auto flex max-w-28 items-center gap-2">
+                              <div className="w-16 bg-muted rounded-full h-1.5">
                                 <div
                                   className={`h-1.5 rounded-full transition-all ${isFinishedPo(po.status) ? "bg-green-500" : "bg-primary"}`}
                                   style={{ width: `${clampProgress(po.progress)}%` }}
@@ -2064,16 +2341,16 @@ export default function JadwalProject() {
                       value={viewingPo.namaProject}
                     />
                     <DetailInfo
-                      label="Tanggal PO Masuk"
+                      label="Tanggal Masuk PO"
                       value={isoDateToDisplay(viewingPo.tanggalPoMasuk)}
+                    />
+                    <DetailInfo
+                      label="Tanggal Target Pengiriman"
+                      value={isoDateToDisplay(viewingPo.targetPenyelesaian || "-")}
                     />
                     <DetailInfo
                       label="Tanggal Delivery"
                       value={isoDateToDisplay(viewingPo.deadline)}
-                    />
-                    <DetailInfo
-                      label="Target Pengiriman"
-                      value={isoDateToDisplay(viewingPo.targetPenyelesaian || "-")}
                     />
                     <DetailInfo
                       label="PIC Departemen"
@@ -2127,13 +2404,25 @@ export default function JadwalProject() {
 
                 <Card className="border border-border">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Project Issue & Action</CardTitle>
+                    <CardTitle className="text-base">Job yang dikerjakan</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-slate-700">
-                      {viewingPo.catatan?.trim() ||
-                        "Tidak ada kendala yang dilaporkan."}
-                    </p>
+                  <CardContent className="space-y-2">
+                    {normalizePoJobItems(viewingPo).length > 0 ? (
+                      normalizePoJobItems(viewingPo).map((item, index) => (
+                        <div key={item.id} className="rounded-md border border-border bg-slate-50 p-2">
+                          <p className="text-xs font-semibold text-muted-foreground">
+                            Job yang dikerjakan {index + 1}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-700">{item.text}</p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {isoDateToDisplay(item.createdAt.slice(0, 10))}
+                            {item.createdByName ? ` oleh ${item.createdByName}` : ""}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Belum ada job yang dikerjakan.</p>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -2166,6 +2455,29 @@ export default function JadwalProject() {
                         <p className="text-sm text-slate-600">PO diterima</p>
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+              </section>
+
+              <section className="grid gap-4 lg:grid-cols-2">
+                <Card className="border border-border">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Review / Catatan Evaluasi</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-wrap text-sm text-slate-700">
+                      {viewingPo.reviewEvaluation?.trim() || "-"}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="border border-border">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Komentar Accounting</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-wrap text-sm text-slate-700">
+                      {viewingPo.accountingComment?.trim() || DEFAULT_ACCOUNTING_COMMENT}
+                    </p>
                   </CardContent>
                 </Card>
               </section>
@@ -2444,7 +2756,7 @@ export default function JadwalProject() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
-                    Tanggal PO Masuk <span className="text-red-500">*</span>
+                    Tanggal Masuk PO <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     type="date"
@@ -2460,7 +2772,7 @@ export default function JadwalProject() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">
-                    Target Pengiriman
+                    Tanggal Target Pengiriman
                   </Label>
                   <Input
                     type="date"
@@ -2561,12 +2873,12 @@ export default function JadwalProject() {
                       hasPainting: event.target.checked,
                       status:
                         !event.target.checked && f.status === "painting"
-                          ? "finishing_trial"
+                          ? "input_data_proses"
                           : f.status,
                       progress: String(
                         getProgressPercent(
                           !event.target.checked && f.status === "painting"
-                            ? "finishing_trial"
+                            ? "input_data_proses"
                             : f.status,
                         ),
                       ),
@@ -2650,18 +2962,100 @@ export default function JadwalProject() {
                   </div>
                 )}
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Catatan</Label>
-                <Textarea
-                  value={form.catatan}
-                  disabled={!canEditPoData}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, catatan: e.target.value }))
-                  }
-                  placeholder="Catatan tambahan..."
-                  rows={2}
-                  className="resize-none text-sm"
-                />
+              <div className="space-y-3 rounded-lg border border-border bg-slate-50 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <Label className="text-xs font-semibold">Job yang dikerjakan</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Bisa lebih dari satu item dalam satu PO.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addJobItem}
+                    disabled={!canEditPoData}
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Tambah Job
+                  </Button>
+                </div>
+                {form.jobItems.length === 0 ? (
+                  <p className="rounded-md border border-dashed border-border bg-white px-3 py-4 text-center text-xs text-muted-foreground">
+                    Belum ada job yang dikerjakan.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {form.jobItems.map((item, index) => (
+                      <div key={item.id} className="grid grid-cols-1 gap-2 rounded-md border border-border bg-white p-2 sm:grid-cols-[1fr_auto]">
+                        <div>
+                          <Label className="text-[11px] font-semibold">
+                            Job yang dikerjakan {index + 1}
+                          </Label>
+                          <Textarea
+                            value={item.text}
+                            disabled={!canEditPoData}
+                            onChange={(event) => updateJobItem(index, event.target.value)}
+                            placeholder="Isi pekerjaan..."
+                            rows={2}
+                            className="mt-1 min-h-[72px] resize-y text-sm"
+                          />
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {isoDateToDisplay(item.createdAt.slice(0, 10))}
+                            {item.createdByName ? ` oleh ${item.createdByName}` : ""}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => removeJobItem(index)}
+                          disabled={!canEditPoData}
+                          title="Hapus job"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">
+                    Review / Catatan Evaluasi
+                  </Label>
+                  <Textarea
+                    value={form.reviewEvaluation}
+                    disabled={!canEditPoData}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        reviewEvaluation: event.target.value,
+                      }))
+                    }
+                    placeholder="Review atau evaluasi pekerjaan..."
+                    rows={3}
+                    className="resize-y text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Komentar Accounting</Label>
+                  <Textarea
+                    value={form.accountingComment}
+                    disabled={!canEditAccountingComment}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        accountingComment: event.target.value,
+                      }))
+                    }
+                    rows={3}
+                    className="resize-y text-sm"
+                  />
+                </div>
               </div>
             </div>
             <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 rounded-b-xl border-t border-border bg-background px-4 py-4 sm:px-6">
