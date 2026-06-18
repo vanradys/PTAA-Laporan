@@ -63,7 +63,6 @@ export default function Layout({ children }: LayoutProps) {
     karyawan: "Karyawan",
     admin: "Admin",
     direktur: "Direktur",
-    admin_marketing: "Admin Marketing 2",
     monitoring_dummy: "Monitoring",
   };
   const visibleNavItems =

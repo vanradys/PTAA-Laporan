@@ -26,9 +26,8 @@ const TRACKING_STAGES = [
   { key: "quality_control", label: "Quality Control", progress: 60 },
   { key: "finishing_trial", label: "Finishing & Trial", progress: 80 },
   { key: "painting", label: "Painting", progress: 80 },
-  { key: "delivered", label: "Delivered", progress: 90 },
-  { key: "project_invoiced", label: "Project Invoiced (PIC Finance)", progress: 100 },
-  { key: "closed", label: "Project Sudah Dibayar (Closed)", progress: 100 },
+  { key: "delivery", label: "Delivery", progress: 90 },
+  { key: "project_finished", label: "Project Finished", progress: 100 },
 ] as const;
 
 type ProjectProgressKey = (typeof TRACKING_STAGES)[number]["key"];
@@ -42,11 +41,9 @@ const LEGACY_STAGE_MAP: Record<string, ProjectProgressKey> = {
   procurement: "material_order",
   produksi: "production",
   qc: "quality_control",
-  pengiriman: "delivered",
-  delivery: "delivered",
-  selesai: "project_invoiced",
-  project_finished: "project_invoiced",
-  close: "closed",
+  pengiriman: "delivery",
+  selesai: "project_finished",
+  close: "project_finished",
 };
 const GENERIC_LEGACY_STATUS_KEYS = new Set([
   "",
@@ -71,7 +68,7 @@ function getInternalCommentDisplayName(user: {
   departmentName?: string | null;
 }) {
   const role = String(user.role ?? "").toLowerCase();
-  if (role === "admin_marketing") return user.name ?? "Admin Marketing 2";
+  if (role === "admin_marketing") return user.name ?? "Admin Marketing";
   if (["direktur", "director", "dir"].includes(role)) return "Director";
   if (role === "admin") return "Admin";
 
@@ -165,8 +162,8 @@ function inferProjectProgressFromPercent(
 ): ProjectProgressKey {
   const numericProgress = Number(progress);
   if (!Number.isFinite(numericProgress)) return "po_received";
-  if (numericProgress >= 100) return "project_invoiced";
-  if (numericProgress >= 90) return "delivered";
+  if (numericProgress >= 100) return "project_finished";
+  if (numericProgress >= 90) return "delivery";
   if (numericProgress >= 80) return hasPainting ? "painting" : "finishing_trial";
   if (numericProgress >= 60) return "production";
   if (numericProgress >= 40) return "material_order";

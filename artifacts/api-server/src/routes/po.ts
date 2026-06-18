@@ -42,9 +42,8 @@ const PROJECT_PROGRESS_STAGES = [
   { key: "quality_control", label: "Quality Control", progress: 60, legacyKeys: ["qc"] },
   { key: "finishing_trial", label: "Finishing & Trial", progress: 80, legacyKeys: ["finishing_trial"] },
   { key: "painting", label: "Painting", progress: 80, legacyKeys: ["painting"] },
-  { key: "delivered", label: "Delivered", progress: 90, legacyKeys: ["delivery", "pengiriman"] },
-  { key: "project_invoiced", label: "Project Invoiced (PIC Finance)", progress: 100, legacyKeys: ["project_finished", "selesai"] },
-  { key: "closed", label: "Project Sudah Dibayar (Closed)", progress: 100, legacyKeys: ["close", "project_sudah_dibayar"] },
+  { key: "delivery", label: "Delivery", progress: 90, legacyKeys: ["pengiriman"] },
+  { key: "project_finished", label: "Project Finished", progress: 100, legacyKeys: ["selesai", "close"] },
 ] as const;
 
 type ProjectProgressKey = (typeof PROJECT_PROGRESS_STAGES)[number]["key"];
@@ -217,8 +216,8 @@ function inferProjectProgressFromPercent(
 ): ProjectProgressKey {
   const numericProgress = Number(progress);
   if (!Number.isFinite(numericProgress)) return "po_received";
-  if (numericProgress >= 100) return "project_invoiced";
-  if (numericProgress >= 90) return "delivered";
+  if (numericProgress >= 100) return "project_finished";
+  if (numericProgress >= 90) return "delivery";
   if (numericProgress >= 80) return hasPainting ? "painting" : "finishing_trial";
   if (numericProgress >= 60) return "production";
   if (numericProgress >= 40) return "material_order";
@@ -245,11 +244,7 @@ function getProjectProgressPercent(
 }
 
 function isProjectFinished(value: unknown): boolean {
-  return ["project_invoiced", "closed"].includes(normalizeProjectProgress(value));
-}
-
-function isProjectClosed(value: unknown): boolean {
-  return normalizeProjectProgress(value) === "closed";
+  return normalizeProjectProgress(value) === "project_finished";
 }
 
 function stageAllowedForPainting(
@@ -288,15 +283,6 @@ function isDateOnly(value: string | null | undefined): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 }
 
-function getJakartaDateString(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
 function canViewPoActivity(user?: {
   role?: string | null;
   departmentCode?: string | null;
@@ -314,13 +300,12 @@ function canViewPoActivity(user?: {
   );
 }
 
-function calcSisaHari(targetPengiriman: string, aktualPengiriman?: string | null): number | null {
-  if (aktualPengiriman?.trim()) return null;
-  if (!isDateOnly(targetPengiriman)) return null;
+function calcSisaHari(deadline: string): number | null {
+  if (!isDateOnly(deadline)) return null;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const dl = new Date(`${targetPengiriman}T00:00:00`);
+  const dl = new Date(deadline);
   dl.setHours(0, 0, 0, 0);
   return Math.round((dl.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -340,7 +325,7 @@ function calcDaysAfterClosed(closedAt?: Date | string | null): number | null {
 }
 
 function isPoEditLocked(po: typeof projectsPoTable.$inferSelect): boolean {
-  if (!isProjectClosed(po.status)) return false;
+  if (!isProjectFinished(po.status)) return false;
 
   const daysAfterClosed = calcDaysAfterClosed(po.closedAt);
   return daysAfterClosed !== null && daysAfterClosed >= 30;
@@ -434,24 +419,7 @@ async function buildPoItem(
   po: typeof projectsPoTable.$inferSelect,
   options?: { includeAmount?: boolean },
 ) {
-  const targetPengiriman = po.targetPengiriman || po.deadline;
-  const aktualPengiriman =
-    po.aktualPengiriman || (po.targetPenyelesaian ? String(po.targetPenyelesaian) : null);
-  const sisaHari = calcSisaHari(targetPengiriman, aktualPengiriman);
-  const targetValid = isDateOnly(targetPengiriman);
-  const actualValid = isDateOnly(aktualPengiriman);
-  const comparisonDate = aktualPengiriman || getJakartaDateString();
-  let deliveryStatus = "Tanggal Belum Valid";
-  let delayDays: number | null = null;
-  if (targetValid && (!aktualPengiriman || actualValid)) {
-    const difference = Math.round(
-      (new Date(`${comparisonDate}T00:00:00`).getTime() -
-        new Date(`${targetPengiriman}T00:00:00`).getTime()) /
-        (1000 * 60 * 60 * 24),
-    );
-    delayDays = Math.max(0, difference);
-    deliveryStatus = difference > 0 ? `Delay ${difference} hari` : "On Time";
-  }
+  const sisaHari = calcSisaHari(po.deadline);
   const computedStatus = normalizeProjectProgress(
     po.status,
     po.trackingStages,
@@ -494,11 +462,6 @@ async function buildPoItem(
     tanggalPoMasuk: po.tanggalPoMasuk,
     targetPenyelesaian: po.targetPenyelesaian,
     deadline: po.deadline,
-    targetPengiriman,
-    aktualPengiriman,
-    deliveryStatus,
-    delayDays,
-    aktualPengirimanBelumDiisi: !aktualPengiriman,
     sisaHari,
     picUserId: po.picUserId,
     picName,
@@ -524,12 +487,9 @@ async function buildPoItem(
 async function sendDeadlineNotifications(
   po: typeof projectsPoTable.$inferSelect,
 ) {
-  const targetPengiriman = po.targetPengiriman || po.deadline;
-  const aktualPengiriman =
-    po.aktualPengiriman || (po.targetPenyelesaian ? String(po.targetPenyelesaian) : null);
-  const sisaHari = calcSisaHari(targetPengiriman, aktualPengiriman);
+  const sisaHari = calcSisaHari(po.deadline);
   if (sisaHari === null) return;
-  if (isProjectClosed(po.status)) return;
+  if (isProjectFinished(po.status)) return;
 
   const recipients: number[] = [];
   if (po.picUserId) recipients.push(po.picUserId);
@@ -552,8 +512,8 @@ async function sendDeadlineNotifications(
       await db.insert(notificationsTable).values({
         userId: uid,
         type: "po_overdue",
-        title: `Target Pengiriman PO Terlewat: ${po.noPo}`,
-        message: `Project "${po.namaProject}" telah melewati Target Pengiriman (${targetPengiriman}). Segera tindak lanjut!`,
+        title: `Tanggal Delivery PO Terlewat: ${po.noPo}`,
+        message: `Project "${po.namaProject}" telah melewati Tanggal Delivery (${po.deadline}). Segera tindak lanjut!`,
         isRead: false,
       });
     }
@@ -566,8 +526,8 @@ async function sendDeadlineNotifications(
       await db.insert(notificationsTable).values({
         userId: uid,
         type: "po_deadline_7days",
-        title: `Target Pengiriman Mendekat: ${po.noPo}`,
-        message: `Project "${po.namaProject}" akan mencapai Target Pengiriman dalam ${sisaHari} hari (${targetPengiriman}). Percepat penyelesaian!`,
+        title: `Tanggal Delivery Mendekat: ${po.noPo}`,
+        message: `Project "${po.namaProject}" akan mencapai Tanggal Delivery dalam ${sisaHari} hari (${po.deadline}). Percepat penyelesaian!`,
         isRead: false,
       });
     }
@@ -580,8 +540,8 @@ async function sendDeadlineNotifications(
       await db.insert(notificationsTable).values({
         userId: uid,
         type: "po_deadline_14days",
-        title: `Reminder Target Pengiriman: ${po.noPo}`,
-        message: `Project "${po.namaProject}" akan mencapai Target Pengiriman dalam ${sisaHari} hari (${targetPengiriman}).`,
+        title: `Reminder Tanggal Delivery: ${po.noPo}`,
+        message: `Project "${po.namaProject}" akan mencapai Tanggal Delivery dalam ${sisaHari} hari (${po.deadline}).`,
         isRead: false,
       });
     }
@@ -619,19 +579,13 @@ router.get("/po/summary", async (req, res) => {
   const poBelumSelesai = totalPo - poSelesai;
   const poDelay = pos.filter(
     (p) =>
-      ((calcSisaHari(
-        p.targetPengiriman || p.deadline,
-        p.aktualPengiriman || (p.targetPenyelesaian ? String(p.targetPenyelesaian) : null),
-      ) ?? Number.POSITIVE_INFINITY) < 0 &&
-        !isProjectClosed(p.status)),
+      ((calcSisaHari(p.deadline) ?? Number.POSITIVE_INFINITY) < 0 &&
+        !isProjectFinished(p.status)),
   ).length;
   const poHampirDeadline = pos.filter((p) => {
-    const s = calcSisaHari(
-      p.targetPengiriman || p.deadline,
-      p.aktualPengiriman || (p.targetPenyelesaian ? String(p.targetPenyelesaian) : null),
-    );
+    const s = calcSisaHari(p.deadline);
     if (s === null) return false;
-    return s >= 0 && s <= 7 && !isProjectClosed(p.status);
+    return s >= 0 && s <= 7 && !isProjectFinished(p.status);
   }).length;
   const monthlyTarget = MONTHLY_PO_TARGET;
   const canSeeAmount = canViewPoAmount(user);
@@ -758,18 +712,7 @@ router.get("/po", async (req, res) => {
     return;
   }
 
-  const {
-    month,
-    year,
-    status,
-    departmentId,
-    picUserId,
-    customer,
-    search,
-    dateFrom,
-    dateTo,
-    openOnly,
-  } = req.query;
+  const { month, year, status, departmentId, picUserId, search } = req.query;
 
   const conditions = [];
   if (month && year) {
@@ -780,8 +723,6 @@ router.get("/po", async (req, res) => {
     conditions.push(gte(projectsPoTable.tanggalPoMasuk, startDate));
     conditions.push(lte(projectsPoTable.tanggalPoMasuk, endDate));
   }
-  if (dateFrom) conditions.push(gte(projectsPoTable.tanggalPoMasuk, String(dateFrom)));
-  if (dateTo) conditions.push(lte(projectsPoTable.tanggalPoMasuk, String(dateTo)));
   if (departmentId)
     conditions.push(
       eq(projectsPoTable.departmentId, parseInt(departmentId as string)),
@@ -800,9 +741,6 @@ router.get("/po", async (req, res) => {
       ),
     );
   }
-  if (customer) {
-    conditions.push(like(sql`coalesce(${projectsPoTable.customer}, '')`, `%${customer}%`));
-  }
 
   const pos = await db
     .select()
@@ -819,17 +757,13 @@ router.get("/po", async (req, res) => {
     pos.map((po) => buildPoItem(po, { includeAmount: canViewPoAmount(user) })),
   );
 
-  const filteredByStatus =
+  const filteredItems =
     status && status !== "semua"
       ? items.filter(
           (item) =>
             item.status === normalizeProjectProgress(String(status)),
         )
       : items;
-  const filteredItems =
-    String(openOnly) === "true"
-      ? filteredByStatus.filter((item) => item.status !== "closed")
-      : filteredByStatus;
 
   res.json(filteredItems);
 });
@@ -864,8 +798,6 @@ router.post("/po", async (req, res) => {
     targetPenyelesaian,
     deadline,
     tanggal_Delivery,
-    targetPengiriman,
-    aktualPengiriman,
     picUserId,
     picProject,
     departmentId,
@@ -876,7 +808,7 @@ router.post("/po", async (req, res) => {
     trackingTimeline,
     catatan,
   } = req.body;
-  const targetValue = targetPengiriman ?? deadline ?? tanggal_Delivery;
+  const deliveryValue = deadline ?? tanggal_Delivery;
   const usesPainting = Boolean(hasPainting);
   const parsedStatus = normalizeProjectProgress(status ?? "po_received");
   const parsedProgress = getProjectProgressPercent(parsedStatus);
@@ -888,9 +820,9 @@ router.post("/po", async (req, res) => {
     return;
   }
 
-  if (!noPo || !namaProject || !tanggalPoMasuk || !targetValue) {
+  if (!noPo || !namaProject || !tanggalPoMasuk || !deliveryValue) {
     res.status(400).json({
-      error: "No PO, nama project, Tanggal Masuk PO, dan Target Pengiriman diperlukan",
+      error: "noPo, namaProject, tanggalPoMasuk, dan Tanggal Delivery diperlukan",
     });
     return;
   }
@@ -921,9 +853,7 @@ router.post("/po", async (req, res) => {
           : null,
       tanggalPoMasuk,
       targetPenyelesaian: targetPenyelesaian ?? null,
-      deadline: String(targetValue).trim(),
-      targetPengiriman: String(targetValue).trim(),
-      aktualPengiriman: aktualPengiriman ? String(aktualPengiriman).trim() : null,
+      deadline: deliveryValue,
       picUserId: picUserId ? parseInt(picUserId) : null,
       picProject: picProject ? String(picProject).trim() : null,
       departmentId: departmentId ? parseInt(departmentId) : null,
@@ -932,7 +862,7 @@ router.post("/po", async (req, res) => {
       hasPainting: usesPainting,
       trackingStages: normalizeTrackingStages(trackingStages),
       trackingTimeline: normalizeTrackingTimeline(trackingTimeline),
-      ...(parsedStatus === "closed"
+      ...(parsedStatus === "project_finished"
         ? { closedAt: new Date(), closedByUserId: user.id }
         : {}),
       catatan: catatan ?? null,
@@ -955,8 +885,6 @@ router.post("/po", async (req, res) => {
       "tanggalPoMasuk",
       "targetPenyelesaian",
       "deadline",
-      "targetPengiriman",
-      "aktualPengiriman",
       "picUserId",
       "picProject",
       "departmentId",
@@ -1108,7 +1036,7 @@ router.patch("/po/:id", async (req, res) => {
     return;
   }
 
-  if (isPoEditLocked(existing) && user.role !== "admin") {
+  if (isPoEditLocked(existing)) {
     res.status(403).json({
       error:
         "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya",
@@ -1127,8 +1055,6 @@ router.patch("/po/:id", async (req, res) => {
     targetPenyelesaian,
     deadline,
     tanggal_Delivery,
-    targetPengiriman,
-    aktualPengiriman,
     picUserId,
     picProject,
     departmentId,
@@ -1151,17 +1077,18 @@ router.patch("/po/:id", async (req, res) => {
       targetPenyelesaian,
       deadline,
       tanggal_Delivery,
-      targetPengiriman,
-      aktualPengiriman,
       picUserId,
       picProject,
       departmentId,
       progress,
+      hasPainting,
+      trackingStages,
+      trackingTimeline,
       catatan,
     ];
     if (fullEditFields.some((value) => value !== undefined)) {
       res.status(403).json({
-        error: "Engineering/Purchasing hanya boleh mengubah Project Progress, Painting, dan Timeline Customer",
+        error: "Purchasing dan Engineering hanya boleh mengubah Project Progress",
       });
       return;
     }
@@ -1186,18 +1113,24 @@ router.patch("/po/:id", async (req, res) => {
     if (tanggalPoMasuk !== undefined) updates.tanggalPoMasuk = tanggalPoMasuk;
     if (targetPenyelesaian !== undefined)
       updates.targetPenyelesaian = targetPenyelesaian || null;
-    const targetValue = targetPengiriman ?? deadline ?? tanggal_Delivery;
-    if (targetValue !== undefined) {
-      const normalizedTargetValue = String(targetValue).trim();
-      if (!normalizedTargetValue) {
-        res.status(400).json({ error: "Target Pengiriman wajib diisi" });
+    const deliveryValue = deadline ?? tanggal_Delivery;
+    if (deliveryValue !== undefined) {
+      const normalizedDeliveryValue = String(deliveryValue).trim();
+      if (!normalizedDeliveryValue) {
+        res.status(400).json({ error: "Tanggal Delivery wajib diisi" });
         return;
       }
-      updates.deadline = normalizedTargetValue;
-      updates.targetPengiriman = normalizedTargetValue;
+      if (
+        String(existing.deadline ?? "").trim() &&
+        normalizedDeliveryValue !== String(existing.deadline).trim()
+      ) {
+        res.status(400).json({
+          error: "Tanggal Delivery tidak boleh diubah setelah PO dibuat",
+        });
+        return;
+      }
+      updates.deadline = normalizedDeliveryValue;
     }
-    if (aktualPengiriman !== undefined)
-      updates.aktualPengiriman = aktualPengiriman ? String(aktualPengiriman).trim() : null;
     if (picProject !== undefined)
       updates.picProject = picProject ? String(picProject).trim() : null;
     if (departmentId !== undefined) {
@@ -1219,14 +1152,6 @@ router.patch("/po/:id", async (req, res) => {
   if (hasFullManagePermission && picUserId !== undefined)
     updates.picUserId = picUserId ? parseInt(picUserId) : null;
 
-  if (!hasFullManagePermission && isPurchasingOrEngineering(user)) {
-    if (hasPainting !== undefined) updates.hasPainting = Boolean(hasPainting);
-    if (trackingStages !== undefined)
-      updates.trackingStages = normalizeTrackingStages(trackingStages);
-    if (trackingTimeline !== undefined)
-      updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
-  }
-
   if (status !== undefined) {
     const nextStatus = normalizeProjectProgress(status);
     const nextHasPainting =
@@ -1245,12 +1170,12 @@ router.patch("/po/:id", async (req, res) => {
     updates.status = nextStatus;
     updates.progress = getProjectProgressPercent(nextStatus);
 
-    if (nextStatus === "closed" && !existing.closedAt) {
+    if (nextStatus === "project_finished" && !existing.closedAt) {
       updates.closedAt = new Date();
       updates.closedByUserId = user.id;
     }
 
-    if (nextStatus !== "closed") {
+    if (nextStatus !== "project_finished") {
       updates.closedAt = null;
       updates.closedByUserId = null;
     }
@@ -1284,8 +1209,6 @@ router.patch("/po/:id", async (req, res) => {
     "tanggalPoMasuk",
     "targetPenyelesaian",
     "deadline",
-    "targetPengiriman",
-    "aktualPengiriman",
     "picUserId",
     "picProject",
     "departmentId",
@@ -1342,7 +1265,7 @@ router.post("/po/:id/close", async (req, res) => {
     return;
   }
 
-  if (isPoEditLocked(po) && user.role !== "admin") {
+  if (isPoEditLocked(po)) {
     res.status(403).json({
       error:
         "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya",
@@ -1353,7 +1276,7 @@ router.post("/po/:id/close", async (req, res) => {
   const [updated] = await db
     .update(projectsPoTable)
     .set({
-      status: "closed",
+      status: "project_finished",
       closedAt: new Date(),
       closedByUserId: user.id,
       progress: 100,
@@ -1404,7 +1327,7 @@ router.delete("/po/:id", async (req, res) => {
     return;
   }
 
-  if (isPoEditLocked(po) && user.role !== "admin") {
+  if (isPoEditLocked(po)) {
     res.status(403).json({
       error:
         "PO yang sudah selesai tidak bisa di edit kembali setelah 30 hari setelahnya",

@@ -55,13 +55,13 @@ function formatAssignerRole(user: {
   departmentName?: string | null;
 }) {
   const role = String(user.role ?? "").toLowerCase();
-  if (role === "admin_marketing") return "Admin Marketing 2";
+  if (role === "admin_marketing") return "Admin Marketing";
   if (["direktur", "director", "dir"].includes(role)) return "Direktur";
   if (role === "admin") return "Admin";
   if (role === "hr") return "HR";
 
   const code = String(user.departmentCode ?? "").toUpperCase();
-  if (code === "MKT") return "Admin Marketing 1";
+  if (code === "MKT") return "Marketing";
   if (code === "ENG") return "Engineering";
   if (code === "PUR") return "Purchasing";
   if (code === "GA") return "General Affairs";
@@ -165,12 +165,6 @@ function buildTaskResponse(task: typeof dailyTasksTable.$inferSelect) {
     progress: task.progress,
     status: task.status,
     notes: task.notes ?? null,
-    reviewStatus: task.reviewStatus ?? null,
-    reviewComment: task.reviewComment ?? null,
-    reviewedByUserId: task.reviewedByUserId ?? null,
-    reviewedByName: task.reviewedByName ?? null,
-    reviewedAt: task.reviewedAt?.toISOString() ?? null,
-    correctedAt: task.correctedAt?.toISOString() ?? null,
     editCount,
     remainingActions: getRemainingActions(editCount),
     isLocked: isTaskLockedByCount(editCount),
@@ -195,7 +189,7 @@ function getModifyTaskError(
   report: typeof dailyReportsTable.$inferSelect,
   task: typeof dailyTasksTable.$inferSelect,
 ): string | null {
-  if (report.date !== getTodayString() && task.reviewStatus !== "revisi") {
+  if (report.date !== getTodayString()) {
     return "Tugas dari tanggal sebelumnya sudah terkunci dan tidak bisa diedit atau dihapus.";
   }
 
@@ -203,37 +197,11 @@ function getModifyTaskError(
     return "Laporan sudah direview, tugas tidak bisa diedit atau dihapus.";
   }
 
-  if (task.reviewStatus !== "revisi" && isTaskLockedByCount(task.editCount ?? 0)) {
+  if (isTaskLockedByCount(task.editCount ?? 0)) {
     return "Batas edit/hapus tugas ini sudah mencapai 2x. Tugas sudah terkunci.";
   }
 
   return null;
-}
-
-async function refreshReportReviewStatus(reportId: number) {
-  const tasks = await db
-    .select({ reviewStatus: dailyTasksTable.reviewStatus })
-    .from(dailyTasksTable)
-    .where(eq(dailyTasksTable.reportId, reportId));
-
-  const revisionCount = tasks.filter((task) => task.reviewStatus === "revisi").length;
-  const correctedCount = tasks.filter((task) => task.reviewStatus === "sudah_diperbaiki").length;
-  const reviewedCount = tasks.filter((task) => task.reviewStatus === "direview").length;
-  const status =
-    revisionCount > 0
-      ? "perlu_revisi"
-      : correctedCount > 0
-        ? "selesai"
-        : reviewedCount > 0
-          ? "direview"
-          : "dikirim";
-
-  await db
-    .update(dailyReportsTable)
-    .set({ status })
-    .where(eq(dailyReportsTable.id, reportId));
-
-  return { status, revisionCount };
 }
 
 router.get("/assigned-tasks/pending", async (req, res) => {
@@ -504,9 +472,9 @@ router.patch("/tasks/:taskId", async (req, res) => {
   if (!task[0]) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
 
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, task[0].reportId)).limit(1);
-  if (!report[0] || (report[0].userId !== user.id && user.role !== "admin")) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!report[0] || report[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
-  const modifyTaskError = user.role === "admin" ? null : getModifyTaskError(report[0], task[0]);
+  const modifyTaskError = getModifyTaskError(report[0], task[0]);
   if (modifyTaskError) {
     res.status(400).json({ error: modifyTaskError });
     return;
@@ -540,90 +508,12 @@ router.patch("/tasks/:taskId", async (req, res) => {
       ...(progress !== undefined && { progress }),
       ...(status !== undefined && { status }),
       ...(notes !== undefined && { notes }),
-      ...(task[0].reviewStatus === "revisi"
-        ? { reviewStatus: "sudah_diperbaiki", correctedAt: new Date() }
-        : {}),
       editCount: sql`${dailyTasksTable.editCount} + 1`,
     })
     .where(eq(dailyTasksTable.id, taskId))
     .returning();
 
-  if (task[0].reviewStatus === "revisi") {
-    await refreshReportReviewStatus(task[0].reportId);
-  }
-
   res.json(buildTaskResponse(updated));
-});
-
-router.post("/tasks/:taskId/review", async (req, res) => {
-  const token = req.cookies?.session_token;
-  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-
-  const user = await getUserFromToken(token);
-  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
-  if (!["admin", "direktur", "director", "dir"].includes(String(user.role).toLowerCase())) {
-    res.status(403).json({ error: "Hanya Admin/Direktur yang dapat mereview tugas" });
-    return;
-  }
-
-  const taskId = parseInt(req.params.taskId);
-  const { action, comment } = req.body as { action?: string; comment?: string };
-  const reviewStatus =
-    action === "review" ? "direview" :
-    action === "revision" ? "revisi" :
-    action === "comment" ? null : undefined;
-  if (reviewStatus === undefined) {
-    res.status(400).json({ error: "Tindakan review tidak valid" });
-    return;
-  }
-
-  const [task] = await db
-    .select()
-    .from(dailyTasksTable)
-    .where(eq(dailyTasksTable.id, taskId))
-    .limit(1);
-  if (!task) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
-
-  const [updated] = await db
-    .update(dailyTasksTable)
-    .set({
-      ...(reviewStatus ? { reviewStatus } : {}),
-      reviewComment: comment?.trim() || null,
-      reviewedByUserId: user.id,
-      reviewedByName: user.name,
-      reviewedAt: new Date(),
-      correctedAt: null,
-    })
-    .where(eq(dailyTasksTable.id, taskId))
-    .returning();
-
-  const [report] = await db
-    .select()
-    .from(dailyReportsTable)
-    .where(eq(dailyReportsTable.id, task.reportId))
-    .limit(1);
-  const reviewSummary = await refreshReportReviewStatus(task.reportId);
-
-  if (report && action === "revision") {
-    const formattedDate = new Intl.DateTimeFormat("id-ID", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      timeZone: "Asia/Jakarta",
-    }).format(new Date(`${report.date}T00:00:00+07:00`));
-    const reviewerRole = ["direktur", "director", "dir"].includes(String(user.role).toLowerCase())
-      ? "Direktur"
-      : "Admin";
-    await db.insert(notificationsTable).values({
-      userId: report.userId,
-      title: "Revisi Tugas Laporan Harian",
-      message: `Laporan Harian Anda pada ${formattedDate} telah mendapat revisi dari ${reviewerRole}.`,
-      type: "revision",
-      relatedReportId: report.id,
-    });
-  }
-
-  res.json({ task: buildTaskResponse(updated), reportStatus: reviewSummary.status, revisionCount: reviewSummary.revisionCount });
 });
 
 router.delete("/tasks/:taskId", async (req, res) => {
@@ -639,9 +529,9 @@ router.delete("/tasks/:taskId", async (req, res) => {
   if (!task[0]) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
 
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, task[0].reportId)).limit(1);
-  if (!report[0] || (report[0].userId !== user.id && user.role !== "admin")) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!report[0] || report[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
-  const modifyTaskError = user.role === "admin" ? null : getModifyTaskError(report[0], task[0]);
+  const modifyTaskError = getModifyTaskError(report[0], task[0]);
   if (modifyTaskError) {
     res.status(400).json({ error: modifyTaskError });
     return;

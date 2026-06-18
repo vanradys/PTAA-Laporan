@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   useGetDashboardSummary,
   useGetDepartmentProductivity,
-  useListNotifications,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -85,7 +84,7 @@ function formatDepartmentChartLabel(value: string) {
   if (label.includes("finance")) return "Finance";
   if (label.includes("general affairs")) return "GA";
   if (label.includes("engineering")) return "Engineering";
-  if (label.includes("marketing")) return "Admin Marketing 1";
+  if (label.includes("marketing")) return "Marketing";
   if (label.includes("purchasing")) return "Purchasing";
 
   return value;
@@ -120,16 +119,6 @@ export default function Dashboard() {
       dashboardParams,
       { query: { queryKey: ["dept-productivity", today, period] } },
     );
-  const { data: notifications } = useListNotifications();
-  const revisionNotifications = Array.isArray(notifications)
-    ? (notifications as Array<{
-        id: number;
-        type: string;
-        title: string;
-        message: string;
-        relatedReportId?: number | null;
-      }>).filter((item) => item.type === "revision").slice(0, 3)
-    : [];
 
   const todayFormatted = formatJakartaDateLong();
   const periodRangeText =
@@ -391,23 +380,6 @@ export default function Dashboard() {
                       </div>
                     </div>
                   )}
-
-                  {revisionNotifications.map((notification) => (
-                    <div key={notification.id} className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
-                      <p className="text-sm font-bold text-orange-900">
-                        {notification.title}
-                      </p>
-                      <p className="mt-1 text-xs text-orange-800">
-                        {notification.message}
-                      </p>
-                      <Link
-                        href={notification.relatedReportId ? `/laporan/${notification.relatedReportId}` : "/laporan-saya"}
-                        className="mt-2 inline-flex rounded-md bg-orange-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-orange-700"
-                      >
-                        Revisi
-                      </Link>
-                    </div>
-                  ))}
                 </CardContent>
               </Card>
             </section>
