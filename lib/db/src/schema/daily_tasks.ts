@@ -2,6 +2,7 @@ import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { dailyReportsTable } from "./daily_reports";
+import { usersTable } from "./users";
 
 export const dailyTasksTable = pgTable("daily_tasks", {
   id: serial("id").primaryKey(),
@@ -12,6 +13,12 @@ export const dailyTasksTable = pgTable("daily_tasks", {
   progress: integer("progress").notNull().default(0),
   status: text("status").notNull().default("belum_mulai"),
   notes: text("notes"),
+  reviewStatus: text("review_status"),
+  reviewComment: text("review_comment"),
+  reviewedByUserId: integer("reviewed_by_user_id").references(() => usersTable.id),
+  reviewedByName: text("reviewed_by_name"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  correctedAt: timestamp("corrected_at", { withTimezone: true }),
   editCount: integer("edit_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
