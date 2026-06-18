@@ -273,6 +273,16 @@ async function createInAppReminderNotification(options: {
   sentBy: number | null;
   reportDate: string;
 }) {
+  const [recipient] = await db
+    .select({ role: usersTable.role })
+    .from(usersTable)
+    .where(eq(usersTable.id, options.userId))
+    .limit(1);
+
+  if (!recipient || String(recipient.role).toLowerCase() === "admin") {
+    return null;
+  }
+
   const insertedLog = await db
     .insert(dailyReportReminderLogsTable)
     .values({

@@ -47,6 +47,7 @@ export default function NotificationPermissionPrompt() {
   const [isVisible, setIsVisible] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [isActivating, setIsActivating] = useState(false);
+  const isAdmin = user?.role?.toLowerCase() === "admin";
 
   const storageKeys = useMemo(() => {
     if (!user?.id) {
@@ -63,7 +64,7 @@ export default function NotificationPermissionPrompt() {
     let isMounted = true;
 
     async function checkPromptVisibility() {
-      if (!user || !storageKeys) {
+      if (!user || !storageKeys || isAdmin) {
         setIsVisible(false);
         setIsChecking(false);
         return;
@@ -104,7 +105,7 @@ export default function NotificationPermissionPrompt() {
     return () => {
       isMounted = false;
     };
-  }, [storageKeys, user]);
+  }, [isAdmin, storageKeys, user]);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;

@@ -35,13 +35,24 @@ router.get("/notifications", async (req: any, res: any) => {
     return;
   }
 
+  const isAdmin = String(user.role ?? "").toLowerCase() === "admin";
+  const hiddenNotificationTypes = isAdmin
+    ? sql`${notificationsTable.type} not in (
+        'report_created',
+        'daily_report',
+        'po_overdue',
+        'po_deadline_7days',
+        'po_deadline_14days'
+      )`
+    : sql`${notificationsTable.type} <> 'report_created'`;
+
   const notifications = await db
     .select()
     .from(notificationsTable)
     .where(
       and(
         eq(notificationsTable.userId, user.id),
-        sql`${notificationsTable.type} <> 'report_created'`,
+        hiddenNotificationTypes,
       ),
     )
     .orderBy(notificationsTable.createdAt);

@@ -5,6 +5,7 @@ import {
   desc,
   eq,
   gte,
+  inArray,
   like,
   lte,
   notificationsTable,
@@ -550,16 +551,28 @@ async function sendDeadlineNotifications(
   if (sisaHari === null) return;
   if (isProjectClosed(po.status)) return;
 
-  const recipients: number[] = [];
-  if (po.picUserId) recipients.push(po.picUserId);
-  if (po.createdByUserId && !recipients.includes(po.createdByUserId))
-    recipients.push(po.createdByUserId);
+  const candidateRecipientIds = Array.from(
+    new Set(
+      [po.picUserId, po.createdByUserId].filter(
+        (userId): userId is number => typeof userId === "number",
+      ),
+    ),
+  );
+  const candidateRecipients = candidateRecipientIds.length > 0
+    ? await db
+        .select({ id: usersTable.id, role: usersTable.role })
+        .from(usersTable)
+        .where(inArray(usersTable.id, candidateRecipientIds))
+    : [];
+  const recipients = candidateRecipients
+    .filter((recipient) => String(recipient.role).toLowerCase() !== "admin")
+    .map((recipient) => recipient.id);
 
   if (sisaHari < 0 && !po.notifiedPassed) {
     const leadershipRecipients = await db
       .select({ id: usersTable.id })
       .from(usersTable)
-      .where(sql`lower(${usersTable.role}) in ('admin', 'direktur', 'director')`);
+      .where(sql`lower(${usersTable.role}) in ('direktur', 'director')`);
 
     for (const recipient of leadershipRecipients) {
       if (!recipients.includes(recipient.id)) {
