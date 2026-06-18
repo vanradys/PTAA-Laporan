@@ -77,6 +77,7 @@ function getInternalCommentDisplayName(user: {
 
   const code = String(user.departmentCode ?? "").toUpperCase();
   if (code === "MKT") return user.name ?? "Admin Marketing 1";
+  if (code === "MKS") return user.name ?? "Marketing Specialist";
   if (code === "ENG") return "ENG";
   if (code === "PUR") return "PUR";
   if (code === "GA") return "GA";

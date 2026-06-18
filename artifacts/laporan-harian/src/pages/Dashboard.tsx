@@ -85,6 +85,7 @@ function formatDepartmentChartLabel(value: string) {
   if (label.includes("finance")) return "Finance";
   if (label.includes("general affairs")) return "GA";
   if (label.includes("engineering")) return "Engineering";
+  if (label.includes("marketing specialist")) return "Marketing Specialist";
   if (label.includes("marketing")) return "Admin Marketing 1";
   if (label.includes("purchasing")) return "Purchasing";
 

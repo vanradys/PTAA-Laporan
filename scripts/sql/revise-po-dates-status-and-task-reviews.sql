@@ -35,5 +35,25 @@ UPDATE users SET name = 'Admin Marketing 2 PTAA' WHERE lower(name) IN ('admin ma
 UPDATE users SET role = 'karyawan' WHERE lower(role) = 'marketing';
 UPDATE users SET role = 'admin_marketing' WHERE lower(role) IN ('admin marketing', 'admin_marketing_2');
 UPDATE departments SET name = 'Admin Marketing 1' WHERE upper(code) = 'MKT';
+INSERT INTO departments (name, code)
+VALUES ('Marketing Specialist', 'MKS')
+ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
+UPDATE users
+SET
+  name = 'Marketing Specialist',
+  password = 'efaf8493e4c74b58d9452c2e6c594a4c9fb1873411ade62f0f196f33d5a76d6d',
+  role = 'marketing_specialist',
+  department_id = departments.id
+FROM departments
+WHERE lower(users.email) = 'mkt.specialist@adiyasa.com'
+  AND departments.code = 'MKS';
+UPDATE users
+SET department_id = departments.id
+FROM departments
+WHERE
+  (lower(users.role) = 'direktur' AND departments.code = 'DIR')
+  OR (lower(users.role) = 'admin_marketing' AND departments.code = 'MKT')
+  OR (lower(users.role) = 'marketing_specialist' AND departments.code = 'MKS')
+  OR (lower(users.role) = 'monitoring_dummy' AND departments.code = 'ADM');
 
 COMMIT;

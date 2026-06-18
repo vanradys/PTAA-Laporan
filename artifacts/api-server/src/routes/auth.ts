@@ -42,6 +42,7 @@ export const defaultDepartments = [
   { code: "AAF", name: "Finance & Accounting" },
   { code: "PUR", name: "Purchasing" },
   { code: "MKT", name: "Admin Marketing 1" },
+  { code: "MKS", name: "Marketing Specialist" },
   { code: "ENG", name: "Engineering" },
 ];
 
@@ -77,8 +78,8 @@ const ptaaUsers = [
     name: "Marketing Specialist",
     email: "mkt.specialist@adiyasa.com",
     password: "MKSPTAA",
-    role: "karyawan",
-    departmentCode: "MKT",
+    role: "marketing_specialist",
+    departmentCode: "MKS",
   },
   {
     name: "Admin Marketing 2 PTAA",
@@ -132,10 +133,7 @@ const ptaaUsers = [
 ];
 
 const inactiveEmails = [
-  "admin@ptaa.com",
   "ahmad@perusahaan.com",
-  "budi@perusahaan.com",
-  "eko@perusahaan.com",
   "engineering3@adiyasa.com",
   "mkspec@adiyasa.com",
   "hr@adiyasa.com",

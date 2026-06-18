@@ -9,6 +9,11 @@ export function getRoleDisplayName(
 
   if (normalizedRole === "admin_marketing") return "Admin Marketing 2";
   if (
+    normalizedRole === "marketing_specialist" ||
+    normalizedDepartmentCode === "MKS"
+  )
+    return "Marketing Specialist";
+  if (
     normalizedRole === "marketing" ||
     (normalizedRole === "karyawan" &&
       (normalizedDepartmentCode === "MKT" ||

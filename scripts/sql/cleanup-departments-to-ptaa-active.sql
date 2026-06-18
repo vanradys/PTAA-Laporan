@@ -1,6 +1,6 @@
 -- Jalankan hanya kalau ingin membersihkan master departments lama di database.
 -- Departemen aktif PTAA:
--- DIR, GA, AAF, PUR, MKT, ENG
+-- DIR, GA, AAF, PUR, MKT, MKS, ENG
 -- ADM adalah departemen internal tersembunyi untuk akun admin.
 --
 -- Script ini melepas referensi ke departemen lama sebelum menghapus row master-nya.
@@ -15,7 +15,7 @@ UPDATE users
 SET department_id = NULL, updated_at = NOW()
 WHERE department_id IN (
   SELECT id FROM departments
-  WHERE code NOT IN ('ADM', 'DIR', 'GA', 'AAF', 'PUR', 'MKT', 'ENG')
+  WHERE code NOT IN ('ADM', 'DIR', 'GA', 'AAF', 'PUR', 'MKT', 'MKS', 'ENG')
 );
 
 UPDATE users
@@ -33,17 +33,17 @@ UPDATE daily_reports
 SET department_id = NULL
 WHERE department_id IN (
   SELECT id FROM departments
-  WHERE code NOT IN ('ADM', 'DIR', 'GA', 'AAF', 'PUR', 'MKT', 'ENG')
+  WHERE code NOT IN ('ADM', 'DIR', 'GA', 'AAF', 'PUR', 'MKT', 'MKS', 'ENG')
 );
 
 UPDATE projects_po
 SET department_id = NULL
 WHERE department_id IN (
   SELECT id FROM departments
-  WHERE code NOT IN ('ADM', 'DIR', 'GA', 'AAF', 'PUR', 'MKT', 'ENG')
+  WHERE code NOT IN ('ADM', 'DIR', 'GA', 'AAF', 'PUR', 'MKT', 'MKS', 'ENG')
 );
 
 DELETE FROM departments
-WHERE code NOT IN ('ADM', 'DIR', 'GA', 'AAF', 'PUR', 'MKT', 'ENG');
+WHERE code NOT IN ('ADM', 'DIR', 'GA', 'AAF', 'PUR', 'MKT', 'MKS', 'ENG');
 
 COMMIT;

@@ -62,6 +62,7 @@ function formatAssignerRole(user: {
 
   const code = String(user.departmentCode ?? "").toUpperCase();
   if (code === "MKT") return "Admin Marketing 1";
+  if (code === "MKS") return "Marketing Specialist";
   if (code === "ENG") return "Engineering";
   if (code === "PUR") return "Purchasing";
   if (code === "GA") return "General Affairs";

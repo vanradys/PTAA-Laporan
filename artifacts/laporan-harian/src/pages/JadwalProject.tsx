@@ -581,7 +581,7 @@ export default function JadwalProject() {
   const departmentCode = user?.departmentCode?.toUpperCase() ?? "";
   const canManage =
     ["admin", "hr", "direktur", "director", "dir"].includes(role) ||
-    ["AAF", "FIN", "MKT", "GA"].includes(departmentCode) ||
+    ["AAF", "FIN", "MKT", "MKS", "GA"].includes(departmentCode) ||
     departmentName.includes("finance") ||
     departmentName.includes("marketing") ||
     departmentName.includes("general affairs");
@@ -860,7 +860,7 @@ export default function JadwalProject() {
   const picDepartments = depts.filter((department) => {
     const name = department.name.toLowerCase();
     const code = String(department.code ?? "").toUpperCase();
-    return code === "MKT" || code === "ENG" || name.includes("marketing") || name.includes("engineering");
+    return ["MKT", "MKS", "ENG"].includes(code) || name.includes("marketing") || name.includes("engineering");
   });
   const emps = (Array.isArray(employees) ? employees : []) as {
     id: number;

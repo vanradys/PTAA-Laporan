@@ -18,10 +18,7 @@ const REMINDER_MESSAGE = "Anda belum mengisi laporan harian hari ini. Silakan se
 const FULL_ACCESS_ROLES = ["admin", "hr", "direktur", "director"];
 const DEPARTMENT_LEADER_ROLES = ["atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 const REMOVED_USER_EMAILS = [
-  "admin@ptaa.com",
   "ahmad@perusahaan.com",
-  "budi@perusahaan.com",
-  "eko@perusahaan.com",
   "engineering3@adiyasa.com",
   "mkspec@adiyasa.com",
 ];
@@ -165,10 +162,7 @@ export function reportingUserCondition(): SQL {
     ${usersTable.isActive} is distinct from false
     and lower(${usersTable.role}) not in ('admin', 'hr', 'direktur', 'director', 'monitoring_dummy')
     and lower(${usersTable.email}) not in (
-      'admin@ptaa.com',
       'ahmad@perusahaan.com',
-      'budi@perusahaan.com',
-      'eko@perusahaan.com',
       'engineering3@adiyasa.com',
       'mkspec@adiyasa.com',
       'hr@adiyasa.com'

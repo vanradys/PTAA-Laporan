@@ -1,24 +1,24 @@
 -- Jalankan di PostgreSQL/Railway SQL editor setelah patch code.
 -- Tujuan:
--- 1) Menambahkan user MKT Specialist sebagai karyawan wajib submit laporan.
+-- 1) Menambahkan user Marketing Specialist dengan role/departemen khusus.
 -- 2) Menonaktifkan akun lama/demo yang tidak boleh muncul di dashboard/monitoring/reminder.
 
 INSERT INTO departments (name, code)
-VALUES ('Marketing', 'MKT')
+VALUES ('Marketing Specialist', 'MKS')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO users (name, email, password, role, department_id, is_active, created_at, updated_at)
 SELECT
-  'MKT Specialist',
+  'Marketing Specialist',
   'mkt.specialist@adiyasa.com',
-  'b3fb6c41e800b83decc6e243bb3f8ed11e08a6d84201ed7f722cf2523677417b',
-  'karyawan',
+  'efaf8493e4c74b58d9452c2e6c594a4c9fb1873411ade62f0f196f33d5a76d6d',
+  'marketing_specialist',
   departments.id,
   true,
   NOW(),
   NOW()
 FROM departments
-WHERE departments.code = 'MKT'
+WHERE departments.code = 'MKS'
 ON CONFLICT (email) DO UPDATE SET
   name = EXCLUDED.name,
   password = EXCLUDED.password,

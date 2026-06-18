@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Save, Users } from "lucide-react";
+import { Loader2, Users } from "lucide-react";
+import { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { getRoleDisplayName } from "@/lib/roleDisplay";
+import { getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 
 type UserRow = {
   id: number;
@@ -28,6 +30,7 @@ const ROLE_OPTIONS = [
   { value: "direktur", label: "Direktur" },
   { value: "karyawan", label: "Karyawan / Admin Marketing 1 sesuai departemen" },
   { value: "admin_marketing", label: "Admin Marketing 2" },
+  { value: "marketing_specialist", label: "Marketing Specialist" },
   { value: "monitoring_dummy", label: "Monitoring Laporan" },
 ];
 
@@ -35,25 +38,46 @@ export default function UserManagement() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { data: users, isLoading } = useQuery({
+  const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
+  const { data: users, isLoading, error: usersError } = useQuery({
     queryKey: ["user-management"],
     queryFn: () => apiRequest<UserRow[]>("/api/users"),
     enabled: user?.role === "admin",
   });
-  const { data: departments } = useQuery({
+  const { data: departments, error: departmentsError } = useQuery({
     queryKey: ["departments-user-management"],
-    queryFn: () => apiRequest<Department[]>("/api/departments"),
+    queryFn: () => apiRequest<Department[]>("/api/user-management/departments"),
     enabled: user?.role === "admin",
   });
 
   const updateUser = async (id: number, changes: Partial<UserRow>) => {
-    await apiRequest(`/api/users/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(changes),
-    });
-    await queryClient.invalidateQueries({ queryKey: ["user-management"] });
-    toast({ title: "Berhasil", description: "Data user dan hak akses diperbarui." });
+    if (updatingUserId !== null) return false;
+    setUpdatingUserId(id);
+    try {
+      await apiRequest(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      if (id === user?.id) {
+        await queryClient.invalidateQueries({
+          queryKey: getGetCurrentUserQueryKey(),
+        });
+      }
+      toast({ title: "Berhasil", description: "Data user dan hak akses diperbarui." });
+      return true;
+    } catch (error) {
+      toast({
+        title: "Gagal memperbarui user",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan data user.",
+        variant: "destructive",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      return false;
+    } finally {
+      setUpdatingUserId(null);
+    }
   };
 
   if (user?.role !== "admin") {
@@ -74,6 +98,10 @@ export default function UserManagement() {
           <CardContent className="p-0">
             {isLoading ? (
               <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            ) : usersError || departmentsError ? (
+              <div className="px-5 py-10 text-center text-sm text-red-600">
+                Gagal memuat data User Management. Muat ulang halaman atau periksa koneksi backend.
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[920px] text-sm">
@@ -90,15 +118,23 @@ export default function UserManagement() {
                         <td className="px-4 py-3">
                           <Input
                             defaultValue={item.name}
-                            onBlur={(event) => {
+                            disabled={updatingUserId !== null}
+                            onBlur={async (event) => {
                               const name = event.target.value.trim();
-                              if (name && name !== item.name) updateUser(item.id, { name });
+                              if (name && name !== item.name) {
+                                const saved = await updateUser(item.id, { name });
+                                if (!saved) event.target.value = item.name;
+                              }
                             }}
                           />
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{item.email}</td>
                         <td className="px-4 py-3">
-                          <Select value={item.role} onValueChange={(role) => updateUser(item.id, { role })}>
+                          <Select
+                            value={item.role}
+                            disabled={updatingUserId !== null || item.id === user.id}
+                            onValueChange={(role) => void updateUser(item.id, { role })}
+                          >
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>{ROLE_OPTIONS.map((role) => (
                               <SelectItem key={role.value} value={role.value}>
@@ -110,7 +146,11 @@ export default function UserManagement() {
                           </Select>
                         </td>
                         <td className="px-4 py-3">
-                          <Select value={String(item.departmentId ?? "none")} onValueChange={(value) => updateUser(item.id, { departmentId: value === "none" ? null : Number(value) })}>
+                          <Select
+                            value={String(item.departmentId ?? "none")}
+                            disabled={updatingUserId !== null}
+                            onValueChange={(value) => void updateUser(item.id, { departmentId: value === "none" ? null : Number(value) })}
+                          >
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">Tanpa Departemen</SelectItem>
@@ -119,8 +159,20 @@ export default function UserManagement() {
                           </Select>
                         </td>
                         <td className="px-4 py-3">
-                          <Button variant={item.isActive ? "outline" : "destructive"} size="sm" onClick={() => updateUser(item.id, { isActive: !item.isActive })}>
-                            <Save className="mr-1.5 h-3.5 w-3.5" />{item.isActive ? "Aktif" : "Nonaktif"}
+                          <Button
+                            variant={item.isActive ? "outline" : "destructive"}
+                            size="sm"
+                            disabled={updatingUserId !== null || item.id === user.id}
+                            onClick={() => {
+                              const action = item.isActive ? "menonaktifkan" : "mengaktifkan";
+                              if (window.confirm(`Yakin ingin ${action} akun ${item.name}?`)) {
+                                void updateUser(item.id, { isActive: !item.isActive });
+                              }
+                            }}
+                            title={item.id === user.id ? "Akun Admin yang sedang digunakan tidak dapat dinonaktifkan" : undefined}
+                          >
+                            {updatingUserId === item.id && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                            {item.isActive ? "Nonaktifkan" : "Aktifkan"}
                           </Button>
                         </td>
                       </tr>

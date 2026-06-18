@@ -37,10 +37,7 @@ const REPORT_STATUSES = [
 const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
 
 const REMOVED_EMPLOYEE_EMAILS = new Set([
-  "admin@ptaa.com",
   "ahmad@perusahaan.com",
-  "budi@perusahaan.com",
-  "eko@perusahaan.com",
   "engineering3@adiyasa.com",
   "mkspec@adiyasa.com",
 ]);

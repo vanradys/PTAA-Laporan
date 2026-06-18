@@ -124,7 +124,7 @@ function canViewPoAmount(user?: {
 
 const PO_MANAGE_ROLES = ["admin", "direktur", "director", "dir", "hr"];
 const PO_EDIT_ROLES = [...PO_MANAGE_ROLES, "monitoring_dummy"];
-const PO_MANAGE_DEPARTMENT_CODES = ["AAF", "FIN", "MKT", "GA"];
+const PO_MANAGE_DEPARTMENT_CODES = ["AAF", "FIN", "MKT", "MKS", "GA"];
 const PO_MANAGE_DEPARTMENT_NAMES = ["finance", "marketing", "general affairs"];
 const PO_ACTIVITY_VISIBLE_ROLES = ["admin", "direktur", "director", "dir", "monitoring_dummy"];
 const PO_ACTIVITY_VISIBLE_DEPARTMENT_CODES = ["GA"];
@@ -278,10 +278,10 @@ async function validatePicDepartment(id: unknown): Promise<string | null> {
 
   const code = String(department.code ?? "").toUpperCase();
   const name = String(department.name ?? "").toLowerCase();
-  if (code === "MKT" || code === "ENG") return null;
+  if (code === "MKT" || code === "MKS" || code === "ENG") return null;
   if (name.includes("marketing") || name.includes("engineering")) return null;
 
-  return "PIC Departemen hanya boleh Marketing atau Engineering";
+  return "PIC Departemen hanya boleh Admin Marketing 1, Marketing Specialist, atau Engineering";
 }
 
 function isDateOnly(value: string | null | undefined): value is string {
