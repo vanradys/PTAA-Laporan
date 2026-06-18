@@ -25,17 +25,6 @@ export const projectsPoTable = pgTable("projects_po", {
     { date: string; description: string }[]
   >(),
   catatan: text("catatan"),
-  jobItems: jsonb("job_items").$type<
-    {
-      id: string;
-      text: string;
-      createdAt: string;
-      createdByUserId?: number | null;
-      createdByName?: string | null;
-    }[]
-  >().notNull().default([]),
-  reviewEvaluation: text("review_evaluation"),
-  accountingComment: text("accounting_comment").notNull().default("Info dari pak Mulyadi BAST akan di ttd apabila sudah di trial"),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   closedByUserId: integer("closed_by_user_id").references(() => usersTable.id),
   createdByUserId: integer("created_by_user_id").references(() => usersTable.id),

@@ -17,17 +17,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
-import { getRoleDisplayName } from "@/lib/roles";
 
 const TASK_STATUSES: Record<string, { label: string; color: string }> = {
   belum_mulai: { label: "Belum Mulai", color: "bg-gray-100 text-gray-700 border-gray-200" },
   proses: { label: "Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
   selesai: { label: "Selesai", color: "bg-green-100 text-green-700 border-green-200" },
   pending: { label: "Pending", color: "bg-orange-100 text-orange-700 border-orange-200" },
-  inquiry: { label: "Menerima Permintaan (Inquiry)", color: "bg-blue-100 text-blue-700 border-blue-200" },
-  input_data_proses: { label: "Input Data/Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  review_approval: { label: "Review/Approval", color: "bg-violet-100 text-violet-700 border-violet-200" },
-  delivered: { label: "Delivered", color: "bg-green-100 text-green-700 border-green-200" },
 };
 
 const REPORT_STATUSES: Record<string, { label: string; color: string }> = {
@@ -44,9 +39,6 @@ interface Task {
   progress: number;
   status: string;
   notes: string | null;
-  reviewNotes?: string | null;
-  startDate?: string | null;
-  completedDate?: string | null;
 }
 
 interface Comment {
@@ -119,6 +111,10 @@ export default function DetailLaporan() {
     } catch {
       toast({ title: "Gagal", description: "Gagal menambahkan komentar", variant: "destructive" });
     }
+  };
+
+  const roleLabel: Record<string, string> = {
+    karyawan: "Karyawan", hr: "HR", admin: "Admin", direktur: "Direktur"
   };
 
   if (isLoading) {
@@ -216,16 +212,14 @@ export default function DetailLaporan() {
               <div className="px-5 py-8 text-center text-muted-foreground text-sm">Tidak ada tugas</div>
             ) : (
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Project</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Customer</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Tugas</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Project</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Periode Tugas</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Job yang dikerjakan</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Catatan Evaluasi</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Catatan</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -234,7 +228,7 @@ export default function DetailLaporan() {
                     return (
                       <tr key={task.id} className="border-b border-border last:border-0">
                         <td className="px-4 py-3 font-medium text-foreground">{task.title}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{task.project ?? "-"}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{task.project ?? "—"}</td>
                         <td className="px-4 py-3 text-center">
                           <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${ts.color}`}>
                             {ts.label}
@@ -248,7 +242,7 @@ export default function DetailLaporan() {
                             <span className="text-xs font-medium w-8">{task.progress}%</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">`r`n                          {task.startDate ?? "-"} s/d {task.completedDate ?? "Belum selesai"}`r`n                        </td>`r`n                        <td className="px-4 py-3 text-muted-foreground text-xs">{task.notes ?? "-"}</td>`r`n                        <td className="px-4 py-3 text-muted-foreground text-xs">{task.reviewNotes ?? "-"}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{task.notes ?? "—"}</td>
                       </tr>
                     );
                   })}
@@ -346,7 +340,7 @@ export default function DetailLaporan() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm font-medium text-foreground">{c.userName}</span>
-                      <span className="text-xs text-muted-foreground">{getRoleDisplayName(c.userRole)}</span>
+                      <span className="text-xs text-muted-foreground">{roleLabel[c.userRole] ?? c.userRole}</span>
                       <span className="text-xs text-muted-foreground ml-auto">
                         {new Date(c.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                       </span>

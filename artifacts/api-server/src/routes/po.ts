@@ -34,30 +34,16 @@ const CUSTOMER_TRACKING_STAGE_KEYS = [
 ] as const;
 
 const PROJECT_PROGRESS_STAGES = [
-  { key: "belum_mulai", label: "Belum Mulai", progress: 0, legacyKeys: ["po_received", "po_diterima"] },
-  { key: "inquiry", label: "Menerima Permintaan (Inquiry)", progress: 25, legacyKeys: [] },
-  {
-    key: "input_data_proses",
-    label: "Input Data/Proses",
-    progress: 50,
-    legacyKeys: [
-      "proses",
-      "engineering",
-      "approval_drawing",
-      "material_order",
-      "procurement",
-      "production",
-      "produksi",
-      "quality_control",
-      "qc",
-      "finishing_trial",
-      "painting",
-      "delivery",
-      "pengiriman",
-    ],
-  },
-  { key: "review_approval", label: "Review/Approval", progress: 75, legacyKeys: ["hampir_deadline"] },
-  { key: "delivered", label: "Delivered", progress: 100, legacyKeys: ["project_finished", "selesai", "close"] },
+  { key: "po_received", label: "PO Received", progress: 0, legacyKeys: ["po_diterima", "belum_mulai"] },
+  { key: "engineering", label: "Engineering", progress: 20, legacyKeys: ["engineering"] },
+  { key: "approval_drawing", label: "Approval Drawing", progress: 20, legacyKeys: ["approval_drawing"] },
+  { key: "material_order", label: "Material Order", progress: 40, legacyKeys: ["procurement"] },
+  { key: "production", label: "Production", progress: 60, legacyKeys: ["produksi"] },
+  { key: "quality_control", label: "Quality Control", progress: 60, legacyKeys: ["qc"] },
+  { key: "finishing_trial", label: "Finishing & Trial", progress: 80, legacyKeys: ["finishing_trial"] },
+  { key: "painting", label: "Painting", progress: 80, legacyKeys: ["painting"] },
+  { key: "delivery", label: "Delivery", progress: 90, legacyKeys: ["pengiriman"] },
+  { key: "project_finished", label: "Project Finished", progress: 100, legacyKeys: ["selesai", "close"] },
 ] as const;
 
 type ProjectProgressKey = (typeof PROJECT_PROGRESS_STAGES)[number]["key"];
@@ -72,10 +58,12 @@ const LEGACY_PROJECT_PROGRESS_MAP = new Map<string, ProjectProgressKey>(
 );
 const GENERIC_LEGACY_STATUS_KEYS = new Set([
   "",
+  "belum_mulai",
+  "po_diterima",
+  "proses",
+  "hampir_deadline",
   "delay",
 ]);
-const DEFAULT_ACCOUNTING_COMMENT =
-  "Info dari pak Mulyadi BAST akan di ttd apabila sudah di trial";
 
 const PO_AMOUNT_VISIBLE_ROLES = [
   "admin",
@@ -190,144 +178,6 @@ function canUpdateProjectProgress(user?: {
   return canEditPoData(user) || isPurchasingOrEngineering(user);
 }
 
-function isAdminOrDirector(user?: { role?: string | null }): boolean {
-  const role = String(user?.role ?? "").toLowerCase();
-  return ["admin", "direktur", "director", "dir"].includes(role);
-}
-
-type JobItem = {
-  id: string;
-  text: string;
-  createdAt: string;
-  createdByUserId?: number | null;
-  createdByName?: string | null;
-};
-
-function normalizeJobItems(
-  value: unknown,
-  user?: { id?: number | null; name?: string | null },
-): JobItem[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item, index) => {
-      const source: Record<string, unknown> =
-        typeof item === "object" && item !== null
-          ? (item as Record<string, unknown>)
-          : { text: item };
-      const text = String(source.text ?? source.value ?? "").trim();
-      if (!text) return null;
-      return {
-        id:
-          String(source.id ?? "").trim() ||
-          `job-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
-        text,
-        createdAt:
-          String(source.createdAt ?? "").trim() || new Date().toISOString(),
-        createdByUserId:
-          Number.isInteger(Number(source.createdByUserId))
-            ? Number(source.createdByUserId)
-            : user?.id ?? null,
-        createdByName:
-          String(source.createdByName ?? "").trim() || (user?.name ?? null),
-      };
-    })
-    .filter(Boolean) as JobItem[];
-}
-
-function jobItemsToText(value: unknown, fallback?: string | null): string {
-  const jobs = normalizeJobItems(value);
-  if (jobs.length > 0) return jobs.map((item) => item.text).join("; ");
-  return String(fallback ?? "").trim();
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function getPoExportRange(query: Record<string, unknown>) {
-  const now = new Date();
-  const year = Number(query.year) || now.getFullYear();
-  const startDate = String(query.startDate ?? "").trim();
-  const endDate = String(query.endDate ?? "").trim();
-
-  if (isDateOnly(startDate) && isDateOnly(endDate)) {
-    return { startDate, endDate };
-  }
-
-  const startMonth = Number(query.startMonth) || Number(query.month) || 1;
-  const endMonth = Number(query.endMonth) || Number(query.month) || 12;
-  const start = `${year}-${String(Math.min(startMonth, endMonth)).padStart(2, "0")}-01`;
-  const end = new Date(year, Math.max(startMonth, endMonth), 0)
-    .toISOString()
-    .split("T")[0];
-  return { startDate: start, endDate: end };
-}
-
-function buildExportRows(pos: (typeof projectsPoTable.$inferSelect)[]) {
-  return pos.map((po) => {
-    const status = normalizeProjectProgress(
-      po.status,
-      po.trackingStages,
-      po.progress,
-      po.hasPainting,
-    );
-    const progress = getProjectProgressPercent(status);
-    return {
-      customer: po.customer ?? "",
-      namaProject: po.namaProject,
-      tanggalPoMasuk: po.tanggalPoMasuk,
-      targetPenyelesaian: po.targetPenyelesaian ?? "",
-      deadline: po.deadline,
-      status: projectProgressLabel(status),
-      progress: `${progress}%`,
-      job: jobItemsToText(po.jobItems, po.catatan),
-      reviewEvaluation: po.reviewEvaluation ?? "",
-      accountingComment: po.accountingComment || DEFAULT_ACCOUNTING_COMMENT,
-    };
-  });
-}
-
-function buildPoExportTable(rows: ReturnType<typeof buildExportRows>) {
-  const headers = [
-    "Customer",
-    "Nama Project",
-    "Tanggal Masuk PO",
-    "Tanggal Target Pengiriman",
-    "Tanggal Delivery",
-    "Status",
-    "Progress",
-    "Job yang dikerjakan",
-    "Review / Catatan Evaluasi",
-    "Komentar Accounting",
-  ];
-  const body = rows
-    .map(
-      (row) => `<tr>
-        <td>${escapeHtml(row.customer)}</td>
-        <td>${escapeHtml(row.namaProject)}</td>
-        <td>${escapeHtml(row.tanggalPoMasuk)}</td>
-        <td>${escapeHtml(row.targetPenyelesaian)}</td>
-        <td>${escapeHtml(row.deadline)}</td>
-        <td>${escapeHtml(row.status)}</td>
-        <td>${escapeHtml(row.progress)}</td>
-        <td>${escapeHtml(row.job)}</td>
-        <td>${escapeHtml(row.reviewEvaluation)}</td>
-        <td>${escapeHtml(row.accountingComment)}</td>
-      </tr>`,
-    )
-    .join("");
-
-  return `<table>
-    <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
-    <tbody>${body || `<tr><td colspan="${headers.length}">Tidak ada data</td></tr>`}</tbody>
-  </table>`;
-}
-
 function projectProgressLabel(value: string): string {
   const normalized = normalizeProjectProgress(value);
   return (
@@ -362,15 +212,17 @@ function normalizeProjectProgress(
 
 function inferProjectProgressFromPercent(
   progress: unknown,
-  _hasPainting: boolean,
+  hasPainting: boolean,
 ): ProjectProgressKey {
   const numericProgress = Number(progress);
-  if (!Number.isFinite(numericProgress)) return "belum_mulai";
-  if (numericProgress >= 100) return "delivered";
-  if (numericProgress >= 75) return "review_approval";
-  if (numericProgress >= 50) return "input_data_proses";
-  if (numericProgress >= 25) return "inquiry";
-  return "belum_mulai";
+  if (!Number.isFinite(numericProgress)) return "po_received";
+  if (numericProgress >= 100) return "project_finished";
+  if (numericProgress >= 90) return "delivery";
+  if (numericProgress >= 80) return hasPainting ? "painting" : "finishing_trial";
+  if (numericProgress >= 60) return "production";
+  if (numericProgress >= 40) return "material_order";
+  if (numericProgress >= 20) return "engineering";
+  return "po_received";
 }
 
 function getProjectProgressPercent(
@@ -392,11 +244,11 @@ function getProjectProgressPercent(
 }
 
 function isProjectFinished(value: unknown): boolean {
-  return normalizeProjectProgress(value) === "delivered";
+  return normalizeProjectProgress(value) === "project_finished";
 }
 
 function stageAllowedForPainting(
-  stage: string,
+  stage: ProjectProgressKey,
   hasPainting: boolean,
 ): boolean {
   return stage !== "painting" || hasPainting;
@@ -623,13 +475,6 @@ async function buildPoItem(
     trackingStages: normalizeTrackingStages(po.trackingStages),
     trackingTimeline: normalizeTrackingTimeline(po.trackingTimeline),
     catatan: po.catatan,
-    jobItems: normalizeJobItems(po.jobItems).length > 0
-      ? normalizeJobItems(po.jobItems)
-      : normalizeJobItems(
-          po.catatan ? [{ text: po.catatan, createdAt: po.createdAt.toISOString() }] : [],
-        ),
-    reviewEvaluation: po.reviewEvaluation ?? null,
-    accountingComment: po.accountingComment || DEFAULT_ACCOUNTING_COMMENT,
     closedAt: po.closedAt ? po.closedAt.toISOString() : null,
     isEditLocked: isPoEditLocked(po),
     editLockNotice: getPoEditLockNotice(po),
@@ -962,18 +807,11 @@ router.post("/po", async (req, res) => {
     trackingStages,
     trackingTimeline,
     catatan,
-    jobItems,
-    reviewEvaluation,
-    accountingComment,
   } = req.body;
   const deliveryValue = deadline ?? tanggal_Delivery;
   const usesPainting = Boolean(hasPainting);
-  const parsedStatus = normalizeProjectProgress(status ?? "belum_mulai");
+  const parsedStatus = normalizeProjectProgress(status ?? "po_received");
   const parsedProgress = getProjectProgressPercent(parsedStatus);
-  const normalizedJobItems = normalizeJobItems(
-    jobItems ?? (catatan ? [{ text: catatan }] : []),
-    user,
-  );
 
   if (progress !== undefined) {
     res.status(400).json({
@@ -1024,15 +862,10 @@ router.post("/po", async (req, res) => {
       hasPainting: usesPainting,
       trackingStages: normalizeTrackingStages(trackingStages),
       trackingTimeline: normalizeTrackingTimeline(trackingTimeline),
-      ...(parsedStatus === "delivered"
+      ...(parsedStatus === "project_finished"
         ? { closedAt: new Date(), closedByUserId: user.id }
         : {}),
       catatan: catatan ?? null,
-      jobItems: normalizedJobItems,
-      reviewEvaluation: reviewEvaluation ?? null,
-      accountingComment: isAdminOrDirector(user)
-        ? accountingComment || DEFAULT_ACCOUNTING_COMMENT
-        : DEFAULT_ACCOUNTING_COMMENT,
       createdByUserId: user.id,
     })
     .returning();
@@ -1061,9 +894,6 @@ router.post("/po", async (req, res) => {
       "trackingStages",
       "trackingTimeline",
       "catatan",
-      "jobItems",
-      "reviewEvaluation",
-      "accountingComment",
     ]),
   });
   const item = await buildPoItem(po, {
@@ -1141,80 +971,6 @@ router.get("/po/yearly-trend", async (req, res) => {
     canViewAmount: canSeeAmount,
     items: trend,
   });
-});
-
-router.get("/po/export", async (req, res) => {
-  const token = req.cookies?.session_token;
-  if (!token) {
-    res.status(401).json({ error: "Tidak terautentikasi" });
-    return;
-  }
-
-  const user = await getUserFromToken(token);
-  if (!user) {
-    res.status(401).json({ error: "Sesi tidak valid" });
-    return;
-  }
-
-  if (!canEditPoData(user) && !canUpdateProjectProgress(user)) {
-    res.status(403).json({ error: "Tidak diizinkan" });
-    return;
-  }
-
-  const { startDate, endDate } = getPoExportRange(req.query);
-  const format = String(req.query.format ?? "excel").toLowerCase();
-  const pos = await db
-    .select()
-    .from(projectsPoTable)
-    .where(
-      and(
-        gte(projectsPoTable.tanggalPoMasuk, startDate),
-        lte(projectsPoTable.tanggalPoMasuk, endDate),
-      ),
-    )
-    .orderBy(projectsPoTable.tanggalPoMasuk);
-
-  const rows = buildExportRows(pos);
-  const table = buildPoExportTable(rows);
-  const filenameBase = `export-po-${startDate}-sd-${endDate}`;
-
-  if (format === "pdf") {
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="${filenameBase}.html"`,
-    );
-    res.send(`<!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Export PO ${escapeHtml(startDate)} - ${escapeHtml(endDate)}</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
-            h1 { font-size: 20px; margin: 0 0 4px; }
-            p { margin: 0 0 16px; color: #4b5563; font-size: 12px; }
-            table { width: 100%; border-collapse: collapse; font-size: 10px; }
-            th, td { border: 1px solid #d1d5db; padding: 6px; vertical-align: top; }
-            th { background: #eef2ff; text-align: left; }
-            @media print { body { margin: 12mm; } }
-          </style>
-        </head>
-        <body>
-          <h1>Export Data PO</h1>
-          <p>Periode: ${escapeHtml(startDate)} s/d ${escapeHtml(endDate)}</p>
-          ${table}
-          <script>window.addEventListener("load", () => window.print());</script>
-        </body>
-      </html>`);
-    return;
-  }
-
-  res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="${filenameBase}.xls"`,
-  );
-  res.send(`<!doctype html><html><head><meta charset="utf-8" /></head><body>${table}</body></html>`);
 });
 
 router.get("/po/:id", async (req, res) => {
@@ -1308,17 +1064,7 @@ router.patch("/po/:id", async (req, res) => {
     trackingStages,
     trackingTimeline,
     catatan,
-    jobItems,
-    reviewEvaluation,
-    accountingComment,
   } = req.body;
-
-  if (accountingComment !== undefined && !isAdminOrDirector(user)) {
-    res.status(403).json({
-      error: "Komentar Accounting hanya bisa diedit Admin/Direktur",
-    });
-    return;
-  }
 
   if (!hasFullManagePermission) {
     const fullEditFields = [
@@ -1339,9 +1085,6 @@ router.patch("/po/:id", async (req, res) => {
       trackingStages,
       trackingTimeline,
       catatan,
-      jobItems,
-      reviewEvaluation,
-      accountingComment,
     ];
     if (fullEditFields.some((value) => value !== undefined)) {
       res.status(403).json({
@@ -1404,13 +1147,6 @@ router.patch("/po/:id", async (req, res) => {
     if (trackingTimeline !== undefined)
       updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
     if (catatan !== undefined) updates.catatan = catatan;
-    if (jobItems !== undefined)
-      updates.jobItems = normalizeJobItems(jobItems, user);
-    if (reviewEvaluation !== undefined)
-      updates.reviewEvaluation = reviewEvaluation || null;
-    if (accountingComment !== undefined)
-      updates.accountingComment =
-        accountingComment || DEFAULT_ACCOUNTING_COMMENT;
   }
 
   if (hasFullManagePermission && picUserId !== undefined)
@@ -1434,12 +1170,12 @@ router.patch("/po/:id", async (req, res) => {
     updates.status = nextStatus;
     updates.progress = getProjectProgressPercent(nextStatus);
 
-    if (nextStatus === "delivered" && !existing.closedAt) {
+    if (nextStatus === "project_finished" && !existing.closedAt) {
       updates.closedAt = new Date();
       updates.closedByUserId = user.id;
     }
 
-    if (nextStatus !== "delivered") {
+    if (nextStatus !== "project_finished") {
       updates.closedAt = null;
       updates.closedByUserId = null;
     }
@@ -1450,7 +1186,7 @@ router.patch("/po/:id", async (req, res) => {
       updates.status ?? existing.status,
       updates.trackingStages ?? existing.trackingStages,
     );
-    if (String(effectiveStatus) === "painting") {
+    if (effectiveStatus === "painting") {
       res.status(400).json({
         error: "Status Painting tidak boleh dipilih jika Painting tidak aktif",
       });
@@ -1482,9 +1218,6 @@ router.patch("/po/:id", async (req, res) => {
     "trackingStages",
     "trackingTimeline",
     "catatan",
-    "jobItems",
-    "reviewEvaluation",
-    "accountingComment",
     "closedAt",
     "closedByUserId",
   ]);
@@ -1543,7 +1276,7 @@ router.post("/po/:id/close", async (req, res) => {
   const [updated] = await db
     .update(projectsPoTable)
     .set({
-      status: "delivered",
+      status: "project_finished",
       closedAt: new Date(),
       closedByUserId: user.id,
       progress: 100,
@@ -1624,9 +1357,6 @@ router.delete("/po/:id", async (req, res) => {
       "progress",
       "hasPainting",
       "catatan",
-      "jobItems",
-      "reviewEvaluation",
-      "accountingComment",
     ]),
   });
   res.json({ success: true, message: "PO berhasil dihapus" });
