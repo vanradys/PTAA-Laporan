@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
 import { formatIndonesianDate, formatJakartaDateLong, getJakartaDateString, isWeekendDate } from "@/lib/date";
@@ -25,10 +26,9 @@ import { apiRequest } from "@/lib/apiRequest";
 
 const TASK_STATUSES = [
   { value: "belum_mulai", label: "Belum Mulai", color: "bg-gray-100 text-gray-700 border-gray-200" },
-  { value: "inquiry", label: "Menerima Permintaan (Inquiry)", color: "bg-blue-100 text-blue-700 border-blue-200" },
-  { value: "input_data_proses", label: "Input Data/Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  { value: "review_approval", label: "Review/Approval", color: "bg-violet-100 text-violet-700 border-violet-200" },
-  { value: "delivered", label: "Delivered", color: "bg-green-100 text-green-700 border-green-200" },
+  { value: "proses", label: "Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  { value: "selesai", label: "Selesai", color: "bg-green-100 text-green-700 border-green-200" },
+  { value: "pending", label: "Pending", color: "bg-orange-100 text-orange-700 border-orange-200" },
 ];
 
 const REPORT_STATUSES = [
@@ -44,14 +44,6 @@ function getStatusInfo(status: string) {
 
 function getReportStatusInfo(status: string) {
   return REPORT_STATUSES.find(s => s.value === status) ?? REPORT_STATUSES[0];
-}
-
-function getTaskProgressFromStatus(status: string) {
-  if (["delivered", "selesai"].includes(status)) return 100;
-  if (status === "review_approval") return 75;
-  if (["input_data_proses", "proses", "pending"].includes(status)) return 50;
-  if (status === "inquiry") return 25;
-  return 0;
 }
 
 type DeliveryInputMode = "date" | "text";
@@ -127,9 +119,6 @@ interface TaskForm {
   progress: number;
   status: string;
   notes: string;
-  reviewNotes: string;
-  startDate: string;
-  completedDate: string;
 }
 
 interface NewTask extends TaskForm {
@@ -145,9 +134,6 @@ interface ExistingTask {
   progress: number;
   status: string;
   notes: string | null;
-  reviewNotes: string | null;
-  startDate: string | null;
-  completedDate: string | null;
   editCount: number;
   remainingActions: number;
   isLocked: boolean;
@@ -305,7 +291,7 @@ function AssignmentHistoryTable({
             <Input
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Cari nama project/customer/job..."
+              placeholder="Cari tugas/project..."
               className="h-8 w-full text-sm sm:w-52"
             />
             <Select value={statusFilter} onValueChange={onStatusFilterChange}>
@@ -337,13 +323,13 @@ function AssignmentHistoryTable({
                     Departemen
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
+                    Nama Tugas
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
                     Nama Project
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
-                    Customer
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
-                    Job yang dikerjakan
+                    Catatan Tambahan
                   </th>
                   <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">
                     Waktu Diberikan
@@ -552,9 +538,6 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
     progress: 0,
     status: "belum_mulai",
     notes: "",
-    reviewNotes: "",
-    startDate: today,
-    completedDate: "",
   },
 ]);
 
@@ -564,19 +547,13 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
   const removeNewTask = (id: string) => setNewTasks(prev => prev.filter(t => t.id !== id));
 
   const updateNewTask = (id: string, field: keyof TaskForm, value: string | number) =>
-    setNewTasks(prev => prev.map(t => {
-      if (t.id !== id) return t;
-      if (field === "status") {
-        return { ...t, status: String(value), progress: getTaskProgressFromStatus(String(value)) };
-      }
-      return { ...t, [field]: value };
-    }));
+    setNewTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
 
   const copyYesterdayTasksToToday = (showToast = true) => {
   if (!Array.isArray(yesterdayTasks)) return;
 
   const copies = yesterdayTasks
-    .filter((task) => !["selesai", "delivered"].includes(task.status) && task.title.trim().length > 0)
+    .filter((task) => task.status !== "selesai" && task.title.trim().length > 0)
     .map((t) => ({
       id: Date.now().toString() + Math.random(),
       title: t.title,
@@ -585,9 +562,6 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
       progress: t.progress,
       status: t.status,
       notes: t.notes ?? "",
-      reviewNotes: t.reviewNotes ?? "",
-      startDate: t.startDate ?? today,
-      completedDate: t.completedDate ?? "",
     }));
 
   if (copies.length === 0) {
@@ -766,13 +740,7 @@ useEffect(() => {
 
   const updateEditableTask = (taskId: number, field: keyof TaskForm, value: string | number) => {
     setEditableTasks((prev) =>
-      prev.map((task) => {
-        if (task.id !== taskId) return task;
-        if (field === "status") {
-          return { ...task, status: String(value), progress: getTaskProgressFromStatus(String(value)) };
-        }
-        return { ...task, [field]: value };
-      }),
+      prev.map((task) => (task.id === taskId ? { ...task, [field]: value } : task)),
     );
   };
 
@@ -805,13 +773,10 @@ useEffect(() => {
         title: task.title,
         project: task.project,
         deadline: task.deadline || undefined,
+        progress: task.progress,
         status: task.status,
         notes: task.notes,
-        jobItems: task.notes.trim() ? [{ text: task.notes }] : [],
-        reviewNotes: task.reviewNotes,
-        startDate: task.startDate || undefined,
-        completedDate: task.completedDate || undefined,
-      } as any
+      }
       });
     }
     setNewTasks([]);
@@ -838,12 +803,9 @@ useEffect(() => {
           title: task.title,
           project: task.project ?? "",
           deadline: task.deadline || undefined,
+          progress: task.progress,
           status: task.status,
           notes: task.notes ?? "",
-          jobItems: task.notes?.trim() ? [{ text: task.notes }] : [],
-          reviewNotes: task.reviewNotes ?? "",
-          startDate: task.startDate || undefined,
-          completedDate: task.completedDate || undefined,
         };
 
         if (
@@ -851,11 +813,9 @@ useEffect(() => {
           original.title !== task.title ||
           (original.project ?? "") !== (task.project ?? "") ||
           (original.deadline ?? "") !== (task.deadline ?? "") ||
+          original.progress !== task.progress ||
           original.status !== task.status ||
-          (original.notes ?? "") !== (task.notes ?? "") ||
-          (original.reviewNotes ?? "") !== (task.reviewNotes ?? "") ||
-          (original.startDate ?? "") !== (task.startDate ?? "") ||
-          (original.completedDate ?? "") !== (task.completedDate ?? "")
+          (original.notes ?? "") !== (task.notes ?? "")
         ) {
           await updateTask.mutateAsync({ taskId: task.id, data: dataToSave });
         }
@@ -869,13 +829,10 @@ useEffect(() => {
             title: task.title,
             project: task.project,
             deadline: task.deadline || undefined,
+            progress: task.progress,
             status: task.status,
             notes: task.notes,
-            jobItems: task.notes.trim() ? [{ text: task.notes }] : [],
-            reviewNotes: task.reviewNotes,
-            startDate: task.startDate || undefined,
-            completedDate: task.completedDate || undefined,
-          } as any,
+          },
         });
       }
 
@@ -948,11 +905,7 @@ useEffect(() => {
   }
 
   try {
-    const data =
-      field === "notes"
-        ? { notes: value, jobItems: String(value).trim() ? [{ text: String(value) }] : [] }
-        : { [field]: value };
-    await updateTask.mutateAsync({ taskId, data: data as any });
+    await updateTask.mutateAsync({ taskId, data: { [field]: value } });
     queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
     toast({
       title: "Tugas diperbarui",
@@ -1107,7 +1060,7 @@ useEffect(() => {
                     <thead>
                       <tr className="border-b border-border bg-muted/40">
                         <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tugas</th>
-                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Customer</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Project</th>
                         <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
                         <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
                       </tr>
@@ -1205,9 +1158,9 @@ useEffect(() => {
                             {assignment.title}
                           </p>
                           <p className="text-sm text-slate-700">
-                            Job yang dikerjakan:{" "}
+                            Catatan :{" "}
                             {assignment.project
-                              ? `ini buat customer ${assignment.project}`
+                              ? `ini buat project ${assignment.project}`
                               : assignment.notes?.trim() || "-"}
                           </p>
                           <p className="text-xs text-slate-500">
@@ -1310,7 +1263,7 @@ useEffect(() => {
                             <div className="flex flex-wrap items-center gap-2">
                               {task.project && (
                                 <span className="text-xs text-muted-foreground">
-                                  Customer: {task.project}
+                                  Project: {task.project}
                                 </span>
                               )}
 
@@ -1333,7 +1286,7 @@ useEffect(() => {
                           <div className="p-4 bg-muted/20 border-t border-border space-y-3">
                               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Nama Project</Label>
+                                  <Label className="text-xs">Nama Tugas</Label>
                                   <Input
                                     defaultValue={task.title}
                                     disabled={taskLocked}
@@ -1342,7 +1295,7 @@ useEffect(() => {
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Customer</Label>
+                                  <Label className="text-xs">Project</Label>
                                   <Input
                                     defaultValue={task.project ?? ""}
                                     disabled={taskLocked}
@@ -1380,58 +1333,29 @@ useEffect(() => {
                                 </Select>
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-xs">Progress Otomatis ({task.progress}%)</Label>
-                                <div className="flex h-8 items-center gap-2 rounded-md border border-border bg-muted px-2">
-                                  <div className="h-1.5 w-20 rounded-full bg-white">
-                                    <div className="h-1.5 rounded-full bg-primary" style={{ width: `${task.progress}%` }} />
-                                  </div>
-                                  <span className="text-xs font-semibold">{task.progress}%</span>
-                                </div>
+                                <Label className="text-xs">Progress ({task.progress}%)</Label>
+                                <div className="pt-2">
+                                  <Slider
+                                    disabled={taskLocked}
+                                    defaultValue={[task.progress]}
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    onValueChange={v => isEditingSubmitted && updateEditableTask(task.id, "progress", v[0])}
+                                    onValueCommit={v => !isEditingSubmitted && handleUpdateExistingTask(task.id, "progress", v[0])}
+                                  />
+                                 </div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Tanggal Mulai Tugas / Tanggal Diterima</Label>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Catatan Tugas</Label>
                                 <Input
-                                  type="date"
-                                  defaultValue={task.startDate ?? ""}
-                                  disabled={taskLocked}
-                                  onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "startDate", e.target.value) : handleUpdateExistingTask(task.id, "startDate", e.target.value)}
-                                  className="h-8 text-sm"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Tanggal Tugas Diselesaikan</Label>
-                                <Input
-                                  type="date"
-                                  defaultValue={task.completedDate ?? ""}
-                                  disabled={taskLocked}
-                                  onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "completedDate", e.target.value) : handleUpdateExistingTask(task.id, "completedDate", e.target.value)}
-                                  className="h-8 text-sm"
-                                />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr]">
-                              <div className="space-y-1">
-                              <Label className="text-xs">Job yang dikerjakan</Label>
-                                <Textarea
                                   defaultValue={task.notes ?? ""}
                                   disabled={taskLocked}
                                   onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "notes", e.target.value) : handleUpdateExistingTask(task.id, "notes", e.target.value)}
-                                  className="min-h-[76px] resize-y text-sm"
-                                  placeholder="Isi pekerjaan..."
+                                  className="h-8 text-sm"
+                                  placeholder="Catatan opsional..."
                                 /> 
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Review / Catatan Evaluasi</Label>
-                                <Textarea
-                                  defaultValue={task.reviewNotes ?? ""}
-                                  disabled={taskLocked}
-                                  onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "reviewNotes", e.target.value) : handleUpdateExistingTask(task.id, "reviewNotes", e.target.value)}
-                                  className="min-h-[76px] resize-y text-sm"
-                                  placeholder="Review/evaluasi..."
-                                />
-                              </div>
                             </div>
                             <div className="flex justify-end">
                               <Button
@@ -1464,21 +1388,21 @@ useEffect(() => {
                       </div>
                       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                       <div className="space-y-1">
-                        <Label className="text-xs">Nama Project *</Label>
+                        <Label className="text-xs">Nama Tugas *</Label>
                         <Input
                           value={task.title}
                           onChange={e => updateNewTask(task.id, "title", e.target.value)}
-                          placeholder="Nama project..."
+                          placeholder="Nama tugas..."
                           className="h-8 text-sm"
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs">Customer</Label>
+                        <Label className="text-xs">Project</Label>
                         <Input
                           value={task.project}
                           onChange={e => updateNewTask(task.id, "project", e.target.value)}
-                          placeholder="Nama customer..."
+                          placeholder="Nama project..."
                           className="h-8 text-sm"
                         />
                       </div>
@@ -1502,34 +1426,15 @@ useEffect(() => {
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Progress Otomatis ({task.progress}%)</Label>
-                          <div className="flex h-8 items-center gap-2 rounded-md border border-border bg-muted px-2">
-                            <div className="h-1.5 w-20 rounded-full bg-white">
-                              <div className="h-1.5 rounded-full bg-primary" style={{ width: `${task.progress}%` }} />
-                            </div>
-                            <span className="text-xs font-semibold">{task.progress}%</span>
+                          <Label className="text-xs">Progress ({task.progress}%)</Label>
+                          <div className="pt-2">
+                            <Slider value={[task.progress]} min={0} max={100} step={5} onValueChange={v => updateNewTask(task.id, "progress", v[0])} />
                           </div>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Tanggal Mulai Tugas / Tanggal Diterima</Label>
-                          <Input type="date" value={task.startDate} onChange={e => updateNewTask(task.id, "startDate", e.target.value)} className="h-8 text-sm" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Tanggal Tugas Diselesaikan</Label>
-                          <Input type="date" value={task.completedDate} onChange={e => updateNewTask(task.id, "completedDate", e.target.value)} className="h-8 text-sm" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr]">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Job yang dikerjakan</Label>
-                          <Textarea value={task.notes} onChange={e => updateNewTask(task.id, "notes", e.target.value)} placeholder="Isi pekerjaan..." className="min-h-[76px] resize-y text-sm" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Review / Catatan Evaluasi</Label>
-                          <Textarea value={task.reviewNotes} onChange={e => updateNewTask(task.id, "reviewNotes", e.target.value)} placeholder="Review/evaluasi..." className="min-h-[76px] resize-y text-sm" />
-                        </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Catatan Tugas</Label>
+                        <Input value={task.notes} onChange={e => updateNewTask(task.id, "notes", e.target.value)} placeholder="Catatan opsional..." className="h-8 text-sm" />
                       </div>
                     </div>
                   ))}
@@ -1677,7 +1582,7 @@ useEffect(() => {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Customer</Label>
+                <Label className="text-xs font-semibold">Project</Label>
                 <Input
                   value={assignForm.project}
                   onChange={(event) =>
@@ -1686,12 +1591,12 @@ useEffect(() => {
                       project: event.target.value,
                     }))
                   }
-                  placeholder="Contoh: Customer X"
+                  placeholder="Contoh: Project X"
                   className="h-9 text-sm"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Job yang dikerjakan</Label>
+                <Label className="text-xs font-semibold">Catatan Tambahan</Label>
                 <Input
                   value={assignForm.notes}
                   onChange={(event) =>
