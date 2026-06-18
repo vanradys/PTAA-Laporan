@@ -14,6 +14,8 @@ export const projectsPoTable = pgTable("projects_po", {
   tanggalPoMasuk: date("tanggal_po_masuk").notNull(),
   targetPenyelesaian: date("target_penyelesaian"),
   deadline: text("deadline").notNull(),
+  targetPengiriman: text("target_pengiriman"),
+  aktualPengiriman: text("aktual_pengiriman"),
   picUserId: integer("pic_user_id").references(() => usersTable.id),
   departmentId: integer("department_id").references(() => departmentsTable.id),
   picProject: text("pic_project"),
