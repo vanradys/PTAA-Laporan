@@ -90,6 +90,18 @@ function isTaskDelay(deadline: string | null, status: string): boolean {
   return deadline < getTodayString();
 }
 
+function getMonitoringReviewStatus(
+  storedStatus: string,
+  revisionCount: number,
+  correctedCount: number,
+  reviewedCount: number,
+): string {
+  if (revisionCount > 0) return `${revisionCount} Revisi`;
+  if (correctedCount > 0) return "Selesai";
+  if (reviewedCount > 0) return "Direview";
+  return storedStatus;
+}
+
 async function buildReportDetail(reportId: number) {
   const reports = await db
     .select({
@@ -154,7 +166,14 @@ async function buildReportDetail(reportId: number) {
     obstacles: r.obstacles ?? null,
     additionalNotes: r.additionalNotes ?? null,
     tomorrowPlan: r.tomorrowPlan ?? null,
-    status: r.status,
+    status: getMonitoringReviewStatus(
+      r.status,
+      tasks.filter((task) => task.reviewStatus === "revisi").length,
+      tasks.filter((task) => task.reviewStatus === "sudah_diperbaiki").length,
+      tasks.filter((task) => task.reviewStatus === "direview").length,
+    ),
+    storedStatus: r.status,
+    revisionCount: tasks.filter((task) => task.reviewStatus === "revisi").length,
     submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
     tasks: tasks.map(t => {
       const editCount = t.editCount ?? 0;
@@ -168,6 +187,12 @@ async function buildReportDetail(reportId: number) {
         progress: t.progress,
         status: t.status,
         notes: t.notes ?? null,
+        reviewStatus: t.reviewStatus ?? null,
+        reviewComment: t.reviewComment ?? null,
+        reviewedByUserId: t.reviewedByUserId ?? null,
+        reviewedByName: t.reviewedByName ?? null,
+        reviewedAt: t.reviewedAt?.toISOString() ?? null,
+        correctedAt: t.correctedAt?.toISOString() ?? null,
         editCount,
         remainingActions: getRemainingActions(editCount),
         isLocked: isTaskLockedByCount(editCount),
@@ -249,7 +274,7 @@ router.get("/reports", async (req, res) => {
     }
 
     const reportIds = reportsToday.map((report) => report.id);
-    let tasksByReport: Record<number, { count: number; avg: number }> = {};
+    let tasksByReport: Record<number, { count: number; avg: number; revisions: number; corrected: number; reviewed: number }> = {};
 
     if (reportIds.length > 0) {
       const taskStats = await db
@@ -257,19 +282,27 @@ router.get("/reports", async (req, res) => {
           reportId: dailyTasksTable.reportId,
           count: sql<number>`count(*)::int`,
           avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int`,
+          revisions: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'revisi')::int`,
+          corrected: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'sudah_diperbaiki')::int`,
+          reviewed: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'direview')::int`,
         })
         .from(dailyTasksTable)
         .where(inArray(dailyTasksTable.reportId, reportIds))
         .groupBy(dailyTasksTable.reportId);
 
-      tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, { count: item.count, avg: item.avg }]));
+      tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, item]));
     }
 
     const rows = activeUsers
       .map((activeUser) => {
         const report = reportByUser.get(activeUser.id);
         const rowStatus = report?.status ?? "belum_submit";
-        const stats = report ? tasksByReport[report.id] ?? { count: 0, avg: 0 } : { count: 0, avg: 0 };
+        const stats = report
+          ? tasksByReport[report.id] ?? { count: 0, avg: 0, revisions: 0, corrected: 0, reviewed: 0 }
+          : { count: 0, avg: 0, revisions: 0, corrected: 0, reviewed: 0 };
+        const displayStatus = report
+          ? getMonitoringReviewStatus(report.status, stats.revisions, stats.corrected, stats.reviewed)
+          : rowStatus;
 
         return {
           id: report?.id ?? -activeUser.id,
@@ -285,7 +318,9 @@ router.get("/reports", async (req, res) => {
           dayName: getDayName(date),
           taskCount: stats.count,
           avgProgress: stats.avg,
-          status: rowStatus,
+          status: displayStatus,
+          storedStatus: rowStatus,
+          revisionCount: stats.revisions,
           isSubmitted: isSubmittedStatus(rowStatus),
           submittedAt: report?.submittedAt?.toISOString() ?? null,
           createdAt: report?.createdAt?.toISOString() ?? null,
@@ -342,7 +377,7 @@ router.get("/reports", async (req, res) => {
     .orderBy(desc(dailyReportsTable.date), usersTable.name);
 
   const reportIds = reports.map((report) => report.id);
-  let tasksByReport: Record<number, { count: number; avg: number }> = {};
+  let tasksByReport: Record<number, { count: number; avg: number; revisions: number; corrected: number; reviewed: number }> = {};
 
   if (reportIds.length > 0) {
     const taskStats = await db
@@ -350,16 +385,19 @@ router.get("/reports", async (req, res) => {
         reportId: dailyTasksTable.reportId,
         count: sql<number>`count(*)::int`,
         avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int`,
+        revisions: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'revisi')::int`,
+        corrected: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'sudah_diperbaiki')::int`,
+        reviewed: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'direview')::int`,
       })
       .from(dailyTasksTable)
       .where(inArray(dailyTasksTable.reportId, reportIds))
       .groupBy(dailyTasksTable.reportId);
 
-    tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, { count: item.count, avg: item.avg }]));
+    tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, item]));
   }
 
   res.json(reports.map((report) => {
-    const stats = tasksByReport[report.id] ?? { count: 0, avg: 0 };
+    const stats = tasksByReport[report.id] ?? { count: 0, avg: 0, revisions: 0, corrected: 0, reviewed: 0 };
     return {
       id: report.id,
       reportId: report.id,
@@ -372,7 +410,9 @@ router.get("/reports", async (req, res) => {
       dayName: getDayName(report.date),
       taskCount: stats.count,
       avgProgress: stats.avg,
-      status: report.status,
+      status: getMonitoringReviewStatus(report.status, stats.revisions, stats.corrected, stats.reviewed),
+      storedStatus: report.status,
+      revisionCount: stats.revisions,
       isSubmitted: isSubmittedStatus(report.status),
       submittedAt: report.submittedAt?.toISOString() ?? null,
       createdAt: report.createdAt.toISOString(),
@@ -541,7 +581,7 @@ router.patch("/reports/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   const existing = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
-  if (existing[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (existing[0].userId !== user.id && user.role !== "admin") { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
   const { date, obstacles, additionalNotes, tomorrowPlan, status } = req.body;
 
@@ -573,7 +613,7 @@ router.delete("/reports/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   const existing = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
-  if (existing[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (existing[0].userId !== user.id && user.role !== "admin") { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
   await db.delete(dailyReportsTable).where(eq(dailyReportsTable.id, id));
   res.json({ success: true, message: "Laporan berhasil dihapus" });
