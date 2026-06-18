@@ -586,6 +586,7 @@ export default function JadwalProject() {
     departmentName.includes("marketing") ||
     departmentName.includes("general affairs");
   const canEditPoData = canManage || role === "monitoring_dummy";
+  const canClosePo = canManage || role === "monitoring_dummy";
   const canUpdateProjectProgress =
     canEditPoData ||
     ["PUR", "ENG"].includes(departmentCode) ||
@@ -1387,15 +1388,19 @@ export default function JadwalProject() {
           color: "text-orange-600",
           bg: "bg-orange-50",
         },
-        ...(canViewPoAmount ? [{
+        {
           label: "Pencapaian Target",
           value: `${Number.isFinite(targetPercentage) ? targetPercentage : 0}%`,
-          description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
+          ...(canViewPoAmount
+            ? {
+                description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
+              }
+            : {}),
           targetLabel: `Target Bulan ${(summary as { targetMonthName?: string }).targetMonthName ?? months.find((item) => item.v === filterMonth)?.l ?? ""}`,
           icon: TrendingUp,
           color: "text-purple-600",
           bg: "bg-purple-50",
-        }] : []),
+        },
       ];
     })()
     : [];
@@ -2144,7 +2149,7 @@ export default function JadwalProject() {
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
                                 </Button>
-                                {canManage && po.status === "project_invoiced" && (
+                                {canClosePo && po.status === "project_invoiced" && (
                                     <Button
                                       variant="ghost"
                                       size="icon"
@@ -2433,7 +2438,7 @@ export default function JadwalProject() {
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
                                 </Button>
-                                {canManage && po.status === "project_invoiced" && (
+                                {canClosePo && po.status === "project_invoiced" && (
                                     <Button
                                       variant="ghost"
                                       size="icon"

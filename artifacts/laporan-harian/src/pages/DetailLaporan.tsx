@@ -103,7 +103,7 @@ export default function DetailLaporan() {
     }
   };
 
-  const handleTaskReview = async (taskId: number, action: "review" | "revision" | "comment") => {
+  const handleTaskReview = async (taskId: number, action: "review" | "revision") => {
     setReviewingTaskId(taskId);
     try {
       await apiRequest(`/api/tasks/${taskId}/review`, {
@@ -114,7 +114,7 @@ export default function DetailLaporan() {
       setTaskReviewDrafts((current) => ({ ...current, [taskId]: "" }));
       queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(reportId) });
       queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
-      toast({ title: action === "revision" ? "Revisi tugas dikirim" : action === "review" ? "Tugas direview" : "Komentar tugas disimpan" });
+      toast({ title: action === "revision" ? "Revisi tugas dikirim" : "Tugas direview" });
     } catch (error) {
       toast({ title: "Gagal", description: error instanceof Error ? error.message : "Gagal memproses tugas", variant: "destructive" });
     } finally {
@@ -273,7 +273,7 @@ export default function DetailLaporan() {
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Catatan</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Revisi / Komentar</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Revisi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -298,15 +298,13 @@ export default function DetailLaporan() {
                         </td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{task.notes ?? "—"}</td>
                         <td className="px-4 py-3">
-                          {task.reviewStatus && (
+                          {task.reviewStatus && task.reviewStatus !== "komentar" && (
                             <div className="mb-2">
                               <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
                                 task.reviewStatus === "revisi"
                                   ? "border-orange-200 bg-orange-50 text-orange-700"
                                   : ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus)
                                     ? "border-blue-200 bg-blue-50 text-blue-700"
-                                    : task.reviewStatus === "komentar"
-                                      ? "border-slate-200 bg-slate-50 text-slate-700"
                                     : "border-green-200 bg-green-50 text-green-700"
                               }`}>
                                 {task.reviewStatus === "revisi"
@@ -315,8 +313,6 @@ export default function DetailLaporan() {
                                     ? "Sudah Diperbaiki"
                                     : task.reviewStatus === "selesai"
                                       ? "Selesai"
-                                    : task.reviewStatus === "komentar"
-                                      ? "Komentar"
                                       : "Direview"}
                               </span>
                               {task.reviewComment && (
@@ -341,7 +337,6 @@ export default function DetailLaporan() {
                               <div className="flex flex-wrap gap-1.5">
                                 <Button size="sm" onClick={() => handleTaskReview(task.id, "review")} disabled={reviewingTaskId === task.id}>Review</Button>
                                 <Button size="sm" variant="outline" className="border-orange-300 text-orange-700" onClick={() => handleTaskReview(task.id, "revision")} disabled={reviewingTaskId === task.id}>Revisi</Button>
-                                <Button size="sm" variant="secondary" onClick={() => handleTaskReview(task.id, "comment")} disabled={reviewingTaskId === task.id || !(taskReviewDrafts[task.id] ?? "").trim()}>Komentar</Button>
                               </div>
                             </div>
                           )}

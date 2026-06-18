@@ -680,7 +680,7 @@ router.get("/po/summary", async (req, res) => {
     poDelay,
     poHampirDeadline,
     ...(canSeeAmount ? { totalNominal, monthlyTarget } : {}),
-    ...(canSeeAmount ? { persentasePencapaian } : {}),
+    persentasePencapaian,
     targetMonthName: MONTH_NAMES[month - 1] ?? String(month),
     targetStartDate,
     targetEndDate,
@@ -1333,7 +1333,7 @@ router.post("/po/:id/close", async (req, res) => {
     return;
   }
 
-  if (!canManagePo(user)) {
+  if (!canEditPoData(user)) {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }

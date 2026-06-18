@@ -614,16 +614,11 @@ router.post("/tasks/:taskId/review", async (req, res) => {
 
   const [task] = await db.select().from(dailyTasksTable).where(eq(dailyTasksTable.id, taskId)).limit(1);
   if (!task) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
-  if (action === "comment" && !comment?.trim()) {
-    res.status(400).json({ error: "Komentar tugas wajib diisi" });
-    return;
-  }
 
   const reviewStatus =
     action === "review"
       ? task.reviewStatus === "sudah_diperbaiki" ? "selesai" : "direview" :
-    action === "revision" ? "revisi" :
-    action === "comment" ? (task.reviewStatus ?? "komentar") : undefined;
+    action === "revision" ? "revisi" : undefined;
   if (reviewStatus === undefined) {
     res.status(400).json({ error: "Tindakan review tidak valid" });
     return;
