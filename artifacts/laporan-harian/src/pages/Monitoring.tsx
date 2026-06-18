@@ -88,15 +88,6 @@ type MonitoringReportRow = {
 };
 
 function getStatusInfo(status: string) {
-  if (/^\d+\s+Revisi$/i.test(status)) {
-    return { value: status, label: status, color: "bg-orange-100 text-orange-700 border-orange-200" };
-  }
-  if (status === "Selesai") {
-    return { value: status, label: "Selesai", color: "bg-green-100 text-green-700 border-green-200" };
-  }
-  if (status === "Direview") {
-    return { value: status, label: "Direview", color: "bg-blue-100 text-blue-700 border-blue-200" };
-  }
   return REPORT_STATUSES.find((item) => item.value === status) ?? REPORT_STATUSES[0];
 }
 

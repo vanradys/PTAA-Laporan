@@ -377,7 +377,7 @@ export default function CustomerTracking() {
                   <Info label="Nama Customer" value={detail.customer ?? "-"} />
                   <Info label="Nama Project" value={detail.namaProject} />
                   <Info label="Tanggal PO Masuk" value={formatDate(detail.tanggalPoMasuk)} />
-                  <Info label="Target Pengiriman" value={formatDate(detail.tanggalDelivery)} />
+                  <Info label="Tanggal Delivery" value={formatDate(detail.tanggalDelivery)} />
                   <Info label="PIC Project" value={detail.picName ?? "-"} />
                 </CardContent>
               </Card>

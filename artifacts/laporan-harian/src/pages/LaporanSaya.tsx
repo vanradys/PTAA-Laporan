@@ -1343,7 +1343,7 @@ useEffect(() => {
                                     step={5}
                                     onValueChange={v => isEditingSubmitted && updateEditableTask(task.id, "progress", v[0])}
                                     onValueCommit={v => !isEditingSubmitted && handleUpdateExistingTask(task.id, "progress", v[0])}
-                                  />
+                                  /> 
                                  </div>
                               </div>
                             </div>
