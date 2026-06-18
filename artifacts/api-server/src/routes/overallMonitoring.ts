@@ -19,9 +19,6 @@ const AMOUNT_VISIBLE_ROLES = [
   "direktur",
   "director",
   "dir",
-  "monitoring_dummy",
-  "monitoring",
-  "monitor",
   "finance",
 ];
 const AMOUNT_VISIBLE_DEPARTMENT_CODES = ["AAF", "FIN"];
@@ -30,7 +27,6 @@ const AMOUNT_VISIBLE_EMAILS = [
   "admin@adiyasa.com",
   "director@adiyasa.com",
   "marketing@adiyasa.com",
-  "monitoring.progress@adiyasa.com",
   "finance@adiyasa.com",
 ];
 const OVERALL_MONITORING_ROLES = ["admin", "monitoring_dummy"];
@@ -47,9 +43,11 @@ function canViewAmount(user?: {
   departmentName?: string | null;
 }) {
   const email = String(user?.email ?? "").toLowerCase();
+  if (email.includes("monitor")) return false;
   if (AMOUNT_VISIBLE_EMAILS.includes(email)) return true;
 
   const role = String(user?.role ?? "").toLowerCase();
+  if (["monitoring_dummy", "monitoring", "monitor"].includes(role)) return false;
   if (AMOUNT_VISIBLE_ROLES.includes(role)) return true;
 
   const departmentCode = String(user?.departmentCode ?? "").toUpperCase();

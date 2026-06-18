@@ -31,6 +31,7 @@ const REPORT_STATUSES = [
   { value: "dikirim", label: "Sudah Dikirim", color: "bg-blue-100 text-blue-700 border-blue-200" },
   { value: "direview", label: "Direview", color: "bg-green-100 text-green-700 border-green-200" },
   { value: "perlu_revisi", label: "Perlu Revisi", color: "bg-orange-100 text-orange-700 border-orange-200" },
+  { value: "selesai", label: "Selesai", color: "bg-green-100 text-green-700 border-green-200" },
 ];
 
 const REMINDER_ACCESS_ROLES = ["admin", "hr", "direktur", "director", "atasan", "leader", "supervisor", "spv", "manager", "kepala_departemen"];
@@ -88,6 +89,15 @@ type MonitoringReportRow = {
 };
 
 function getStatusInfo(status: string) {
+  if (/^\d+\s+Revisi$/i.test(status)) {
+    return { value: status, label: status, color: "bg-orange-100 text-orange-700 border-orange-200" };
+  }
+  if (status === "Selesai") {
+    return { value: status, label: "Selesai", color: "bg-green-100 text-green-700 border-green-200" };
+  }
+  if (status === "Direview") {
+    return { value: status, label: "Direview", color: "bg-blue-100 text-blue-700 border-blue-200" };
+  }
   return REPORT_STATUSES.find((item) => item.value === status) ?? REPORT_STATUSES[0];
 }
 
@@ -247,7 +257,14 @@ export default function Monitoring() {
       if (filters.departmentId && String(row.departmentId ?? "") !== filters.departmentId) return false;
       if (filters.userId && String(row.userId) !== filters.userId) return false;
       if (filters.search && !row.userName.toLowerCase().includes(filters.search.toLowerCase())) return false;
-      if (filters.status && row.status !== filters.status) return false;
+      if (filters.status === "perlu_revisi" && !/^\d+\s+Revisi$/i.test(row.status) && row.status !== "perlu_revisi") return false;
+      if (filters.status === "direview" && !["Direview", "direview"].includes(row.status)) return false;
+      if (filters.status === "selesai" && !["Selesai", "selesai"].includes(row.status)) return false;
+      if (
+        filters.status &&
+        !["perlu_revisi", "direview", "selesai"].includes(filters.status) &&
+        row.status !== filters.status
+      ) return false;
       return true;
     });
   }, [filters.departmentId, filters.search, filters.status, filters.userId, reportRows]);

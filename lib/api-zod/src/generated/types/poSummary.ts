@@ -7,6 +7,7 @@
  */
 
 export interface PoSummary {
+  canViewAmount?: boolean;
   totalPo: number;
   poSelesai: number;
   poBelumSelesai: number;

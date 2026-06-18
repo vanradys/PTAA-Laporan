@@ -5,6 +5,7 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
+import type { PoInputTrackingTimelineItem } from "./poInputTrackingTimelineItem";
 
 export interface PoInput {
   noPo: string;
@@ -13,11 +14,15 @@ export interface PoInput {
   qty?: string;
   poAmount?: number | null;
   tanggalPoMasuk: string;
-  targetPenyelesaian?: string;
-  deadline: string;
+  deadline?: string;
+  targetPengiriman: string;
+  aktualPengiriman?: string;
   picUserId?: number;
+  picProject?: string;
   departmentId?: number;
   status?: string;
-  progress?: number;
+  hasPainting?: boolean;
+  trackingStages?: string[];
+  trackingTimeline?: PoInputTrackingTimelineItem[];
   catatan?: string;
 }

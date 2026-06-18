@@ -5,6 +5,7 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
+import type { DashboardSummaryPendingAssignedTasksByAssignerItem } from "./dashboardSummaryPendingAssignedTasksByAssignerItem";
 
 export interface DashboardSummary {
   totalEmployees: number;
@@ -16,8 +17,5 @@ export interface DashboardSummary {
   submitRate: number;
   completionRate: number;
   pendingAssignedTasksCount: number;
-  pendingAssignedTasksByAssigner: {
-    assignedByName: string;
-    count: number;
-  }[];
+  pendingAssignedTasksByAssigner: DashboardSummaryPendingAssignedTasksByAssignerItem[];
 }

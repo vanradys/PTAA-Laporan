@@ -7,5 +7,5 @@
  */
 
 export type GetDashboardSummaryParams = {
-date?: string;
+  date?: string;
 };

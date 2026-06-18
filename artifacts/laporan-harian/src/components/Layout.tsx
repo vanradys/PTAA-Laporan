@@ -15,12 +15,14 @@ import {
   Activity,
   Menu,
   X,
+  UsersRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import NotificationBell from "@/components/NotificationBell";
+import { getRoleDisplayName } from "@/lib/roleDisplay";
 
 const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
 
@@ -59,12 +61,11 @@ export default function Layout({ children }: LayoutProps) {
     setSidebarOpen(false);
   };
 
-  const roleLabel: Record<string, string> = {
-    karyawan: "Karyawan",
-    admin: "Admin",
-    direktur: "Direktur",
-    monitoring_dummy: "Monitoring",
-  };
+  const displayedRole = getRoleDisplayName(
+    user?.role,
+    user?.departmentCode,
+    user?.departmentName,
+  );
   const visibleNavItems =
     user?.role === "admin"
       ? [
@@ -73,6 +74,11 @@ export default function Layout({ children }: LayoutProps) {
             href: "/monitoring-keseluruhan",
             label: "Monitoring Keseluruhan",
             icon: Activity,
+          },
+          {
+            href: "/user-management",
+            label: "User Management",
+            icon: UsersRound,
           },
           ...navItems.slice(4),
         ]
@@ -194,7 +200,7 @@ export default function Layout({ children }: LayoutProps) {
                   {user?.name ?? "Admin PTAA"}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {roleLabel[user?.role ?? ""] ?? user?.role ?? "Admin"}
+                  {displayedRole}
                 </p>
               </div>
 

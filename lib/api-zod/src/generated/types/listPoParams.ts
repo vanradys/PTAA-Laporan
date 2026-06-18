@@ -7,11 +7,11 @@
  */
 
 export type ListPoParams = {
-month?: number;
-year?: number;
-status?: string;
-departmentId?: number;
-picUserId?: number;
-customer?: string;
-search?: string;
+  month?: number;
+  year?: number;
+  status?: string;
+  departmentId?: number;
+  picUserId?: number;
+  customer?: string;
+  search?: string;
 };

@@ -7,5 +7,5 @@
  */
 
 export type GetDepartmentProductivityParams = {
-date?: string;
+  date?: string;
 };

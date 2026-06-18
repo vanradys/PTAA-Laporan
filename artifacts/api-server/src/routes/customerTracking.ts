@@ -26,8 +26,9 @@ const TRACKING_STAGES = [
   { key: "quality_control", label: "Quality Control", progress: 60 },
   { key: "finishing_trial", label: "Finishing & Trial", progress: 80 },
   { key: "painting", label: "Painting", progress: 80 },
-  { key: "delivery", label: "Delivery", progress: 90 },
-  { key: "project_finished", label: "Project Finished", progress: 100 },
+  { key: "delivered", label: "Delivered", progress: 90 },
+  { key: "project_invoiced", label: "Project Invoiced (PIC Finance)", progress: 100 },
+  { key: "closed", label: "Project Sudah Dibayar (Closed)", progress: 100 },
 ] as const;
 
 type ProjectProgressKey = (typeof TRACKING_STAGES)[number]["key"];
@@ -41,9 +42,11 @@ const LEGACY_STAGE_MAP: Record<string, ProjectProgressKey> = {
   procurement: "material_order",
   produksi: "production",
   qc: "quality_control",
-  pengiriman: "delivery",
-  selesai: "project_finished",
-  close: "project_finished",
+  pengiriman: "delivered",
+  delivery: "delivered",
+  selesai: "project_invoiced",
+  project_finished: "project_invoiced",
+  close: "closed",
 };
 const GENERIC_LEGACY_STATUS_KEYS = new Set([
   "",
@@ -68,12 +71,12 @@ function getInternalCommentDisplayName(user: {
   departmentName?: string | null;
 }) {
   const role = String(user.role ?? "").toLowerCase();
-  if (role === "admin_marketing") return user.name ?? "Admin Marketing";
+  if (role === "admin_marketing") return user.name ?? "Admin Marketing 2";
   if (["direktur", "director", "dir"].includes(role)) return "Director";
   if (role === "admin") return "Admin";
 
   const code = String(user.departmentCode ?? "").toUpperCase();
-  if (code === "MKT") return "MKT";
+  if (code === "MKT") return user.name ?? "Admin Marketing 1";
   if (code === "ENG") return "ENG";
   if (code === "PUR") return "PUR";
   if (code === "GA") return "GA";
@@ -162,8 +165,8 @@ function inferProjectProgressFromPercent(
 ): ProjectProgressKey {
   const numericProgress = Number(progress);
   if (!Number.isFinite(numericProgress)) return "po_received";
-  if (numericProgress >= 100) return "project_finished";
-  if (numericProgress >= 90) return "delivery";
+  if (numericProgress >= 100) return "project_invoiced";
+  if (numericProgress >= 90) return "delivered";
   if (numericProgress >= 80) return hasPainting ? "painting" : "finishing_trial";
   if (numericProgress >= 60) return "production";
   if (numericProgress >= 40) return "material_order";
@@ -204,7 +207,7 @@ function statusLabel(status: string) {
   const labels: Record<string, string> = {
     belum_mulai: "Belum Mulai",
     proses: "Proses",
-    hampir_deadline: "Hampir Tanggal Delivery",
+    hampir_deadline: "Hampir Target Pengiriman",
     delay: "Delay",
     selesai: "Selesai",
     close: "Close",
@@ -553,6 +556,34 @@ router.delete("/po/:poId/internal-comments/:commentId", async (req, res) => {
   res.json({ success: true });
 });
 
+router.patch("/po/:poId/internal-comments/:commentId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengedit komentar internal" });
+    return;
+  }
+
+  const poId = Number(req.params.poId);
+  const commentId = Number(req.params.commentId);
+  const comment = String(req.body?.comment ?? "").trim();
+  if (!comment) { res.status(400).json({ error: "Komentar wajib diisi" }); return; }
+
+  const [updated] = await db
+    .update(poInternalCommentsTable)
+    .set({ comment })
+    .where(and(
+      eq(poInternalCommentsTable.id, commentId),
+      eq(poInternalCommentsTable.poId, poId),
+    ))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Komentar tidak ditemukan" }); return; }
+
+  res.json({ ...updated, createdAt: updated.createdAt.toISOString() });
+});
+
 router.get("/customer-tracking/:poId", async (req, res) => {
   const poId = Number(req.params.poId);
   const [po] = await db
@@ -657,6 +688,42 @@ router.delete("/customer-tracking/:poId/comments/:commentId", async (req, res) =
     );
 
   res.json({ success: true });
+});
+
+router.patch("/customer-tracking/:poId/comments/:commentId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengedit customer notes" });
+    return;
+  }
+
+  const poId = Number(req.params.poId);
+  const commentId = Number(req.params.commentId);
+  const comment = String(req.body?.comment ?? "").trim();
+  if (!comment) { res.status(400).json({ error: "Komentar wajib diisi" }); return; }
+
+  const [updated] = await db
+    .update(customerTrackingCommentsTable)
+    .set({ comment })
+    .where(and(
+      eq(customerTrackingCommentsTable.id, commentId),
+      eq(customerTrackingCommentsTable.poId, poId),
+    ))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Customer note tidak ditemukan" }); return; }
+
+  res.json({
+    id: updated.id,
+    poId: updated.poId,
+    displayName: updated.customerName,
+    comment: updated.comment,
+    createdAt: updated.createdAt.toISOString(),
+    isRead: updated.isRead,
+    source: "customer",
+  });
 });
 
 export default router;

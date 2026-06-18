@@ -1,4 +1,4 @@
-import { db, reportCommentsTable, usersTable, eq } from "@workspace/db";
+import { and, db, reportCommentsTable, usersTable, eq } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router } from "express";
 
@@ -54,6 +54,58 @@ router.post("/reports/:id/comments", async (req, res) => {
     userName: user.name, userRole: user.role,
     comment: inserted.comment, createdAt: inserted.createdAt.toISOString(),
   });
+});
+
+router.patch("/reports/:reportId/comments/:commentId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengedit komentar" });
+    return;
+  }
+
+  const reportId = Number(req.params.reportId);
+  const commentId = Number(req.params.commentId);
+  const comment = String(req.body?.comment ?? "").trim();
+  if (!comment) { res.status(400).json({ error: "Komentar tidak boleh kosong" }); return; }
+
+  const [updated] = await db
+    .update(reportCommentsTable)
+    .set({ comment })
+    .where(and(
+      eq(reportCommentsTable.id, commentId),
+      eq(reportCommentsTable.reportId, reportId),
+    ))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "Komentar tidak ditemukan" });
+    return;
+  }
+  res.json({ ...updated, createdAt: updated.createdAt.toISOString() });
+});
+
+router.delete("/reports/:reportId/comments/:commentId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat menghapus komentar" });
+    return;
+  }
+
+  const reportId = Number(req.params.reportId);
+  const commentId = Number(req.params.commentId);
+  await db
+    .delete(reportCommentsTable)
+    .where(and(
+      eq(reportCommentsTable.id, commentId),
+      eq(reportCommentsTable.reportId, reportId),
+    ));
+  res.json({ success: true, reportId });
 });
 
 export default router;

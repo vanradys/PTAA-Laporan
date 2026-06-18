@@ -153,18 +153,6 @@ export interface ReportInput {
   status?: string;
 }
 
-export interface PreviousReportTasks {
-  tasks: DailyTask[];
-  /** @nullable */
-  sourceReportId?: number | null;
-  /** @nullable */
-  sourceReportDate?: string | null;
-  requestedYesterdayDate: string;
-  /** @nullable */
-  missingYesterdayDate?: string | null;
-  yesterdayReportMissing: boolean;
-}
-
 export interface ReportUpdate {
   date?: string;
   obstacles?: string;
@@ -190,6 +178,11 @@ export interface Notification {
   createdAt: string;
 }
 
+export type DashboardSummaryPendingAssignedTasksByAssignerItem = {
+  assignedByName: string;
+  count: number;
+};
+
 export interface DashboardSummary {
   totalEmployees: number;
   submittedToday: number;
@@ -200,10 +193,7 @@ export interface DashboardSummary {
   submitRate: number;
   completionRate: number;
   pendingAssignedTasksCount: number;
-  pendingAssignedTasksByAssigner: {
-    assignedByName: string;
-    count: number;
-  }[];
+  pendingAssignedTasksByAssigner: DashboardSummaryPendingAssignedTasksByAssignerItem[];
 }
 
 export interface DepartmentProductivity {
@@ -214,6 +204,11 @@ export interface DepartmentProductivity {
   avgProgress: number;
   submitRate: number;
 }
+
+export type PoItemTrackingTimelineItem = {
+  date: string;
+  description: string;
+};
 
 export interface PoItem {
   id: number;
@@ -228,6 +223,13 @@ export interface PoItem {
   /** @nullable */
   targetPenyelesaian?: string | null;
   deadline: string;
+  targetPengiriman: string;
+  /** @nullable */
+  aktualPengiriman?: string | null;
+  deliveryStatus: string;
+  /** @nullable */
+  delayDays?: number | null;
+  aktualPengirimanBelumDiisi: boolean;
   /** @nullable */
   sisaHari: number | null;
   /** @nullable */
@@ -239,7 +241,11 @@ export interface PoItem {
   /** @nullable */
   departmentName?: string | null;
   status: string;
+  statusLabel?: string;
   progress: number;
+  hasPainting?: boolean;
+  trackingStages?: string[];
+  trackingTimeline?: PoItemTrackingTimelineItem[];
   /** @nullable */
   catatan?: string | null;
   /** @nullable */
@@ -253,6 +259,11 @@ export interface PoItem {
   updatedAt: string;
 }
 
+export type PoInputTrackingTimelineItem = {
+  date?: string;
+  description?: string;
+};
+
 export interface PoInput {
   noPo: string;
   namaProject: string;
@@ -260,14 +271,23 @@ export interface PoInput {
   qty?: string;
   poAmount?: number | null;
   tanggalPoMasuk: string;
-  targetPenyelesaian?: string;
-  deadline: string;
+  deadline?: string;
+  targetPengiriman: string;
+  aktualPengiriman?: string;
   picUserId?: number;
+  picProject?: string;
   departmentId?: number;
   status?: string;
-  progress?: number;
+  hasPainting?: boolean;
+  trackingStages?: string[];
+  trackingTimeline?: PoInputTrackingTimelineItem[];
   catatan?: string;
 }
+
+export type PoUpdateTrackingTimelineItem = {
+  date?: string;
+  description?: string;
+};
 
 export interface PoUpdate {
   noPo?: string;
@@ -276,16 +296,21 @@ export interface PoUpdate {
   qty?: string;
   poAmount?: number | null;
   tanggalPoMasuk?: string;
-  targetPenyelesaian?: string;
   deadline?: string;
+  targetPengiriman?: string;
+  aktualPengiriman?: string;
   picUserId?: number;
+  picProject?: string;
   departmentId?: number;
   status?: string;
-  progress?: number;
+  hasPainting?: boolean;
+  trackingStages?: string[];
+  trackingTimeline?: PoUpdateTrackingTimelineItem[];
   catatan?: string;
 }
 
 export interface PoSummary {
+  canViewAmount?: boolean;
   totalPo: number;
   poSelesai: number;
   poBelumSelesai: number;
@@ -297,44 +322,44 @@ export interface PoSummary {
 }
 
 export type ListReportsParams = {
-date?: string;
-month?: string;
-year?: string;
-/**
- * @nullable
- */
-departmentId?: number | null;
-/**
- * @nullable
- */
-userId?: number | null;
-status?: string;
-search?: string;
+  date?: string;
+  month?: string;
+  year?: string;
+  /**
+   * @nullable
+   */
+  departmentId?: number | null;
+  /**
+   * @nullable
+   */
+  userId?: number | null;
+  status?: string;
+  search?: string;
 };
 
 export type ListPoParams = {
-month?: number;
-year?: number;
-status?: string;
-departmentId?: number;
-picUserId?: number;
-customer?: string;
-search?: string;
+  month?: number;
+  year?: number;
+  status?: string;
+  departmentId?: number;
+  picUserId?: number;
+  customer?: string;
+  search?: string;
 };
 
 export type GetPoSummaryParams = {
-month?: number;
-year?: number;
+  month?: number;
+  year?: number;
 };
 
 export type GetPoYearlyTrendParams = {
-year?: number;
+  year?: number;
 };
 
 export type GetDashboardSummaryParams = {
-date?: string;
+  date?: string;
 };
 
 export type GetDepartmentProductivityParams = {
-date?: string;
+  date?: string;
 };

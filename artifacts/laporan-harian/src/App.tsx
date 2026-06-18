@@ -12,6 +12,7 @@ import Notifikasi from "@/pages/Notifikasi";
 import JadwalProject from "@/pages/JadwalProject";
 import CustomerTracking from "@/pages/CustomerTracking";
 import MonitoringKeseluruhan from "@/pages/MonitoringKeseluruhan";
+import UserManagement from "@/pages/UserManagement";
 import { Loader2 } from "lucide-react";
 import NotificationPermissionPrompt from "@/components/NotificationPermissionPrompt";
 
@@ -55,6 +56,7 @@ function AppRoutes() {
       <Route path="/laporan-saya" component={LaporanSaya} />
       <Route path="/monitoring" component={Monitoring} />
       <Route path="/monitoring-keseluruhan" component={MonitoringKeseluruhan} />
+      <Route path="/user-management" component={UserManagement} />
       <Route path="/laporan/:id" component={DetailLaporan} />
       <Route path="/jadwal-project" component={JadwalProject} />
       <Route path="/notifikasi" component={Notifikasi} />

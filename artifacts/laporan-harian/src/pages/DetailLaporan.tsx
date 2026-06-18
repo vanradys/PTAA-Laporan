@@ -2,21 +2,24 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  useGetReport, useReviewReport, useCreateComment,
+  useGetReport, useCreateComment,
   getGetReportQueryKey, getListReportsQueryKey
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  ArrowLeft, CheckCircle, AlertCircle, MessageSquare, Loader2,
-  User, Building2, Calendar, ClipboardList, FileText
+  ArrowLeft, MessageSquare, Loader2,
+  User, Building2, Calendar, ClipboardList, FileText, Pencil, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
+import { apiRequest } from "@/lib/apiRequest";
+import { getRoleDisplayName } from "@/lib/roleDisplay";
 
 const TASK_STATUSES: Record<string, { label: string; color: string }> = {
   belum_mulai: { label: "Belum Mulai", color: "bg-gray-100 text-gray-700 border-gray-200" },
@@ -39,6 +42,9 @@ interface Task {
   progress: number;
   status: string;
   notes: string | null;
+  reviewStatus?: string | null;
+  reviewComment?: string | null;
+  reviewedByName?: string | null;
 }
 
 interface Comment {
@@ -57,6 +63,9 @@ export default function DetailLaporan() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [commentText, setCommentText] = useState("");
+  const [taskReviewDrafts, setTaskReviewDrafts] = useState<Record<number, string>>({});
+  const [taskCorrectionDrafts, setTaskCorrectionDrafts] = useState<Record<number, { title: string; notes: string }>>({});
+  const [reviewingTaskId, setReviewingTaskId] = useState<number | null>(null);
 
   const reportId = parseInt(id ?? "0");
   const { data: report, isLoading } = useGetReport(
@@ -64,10 +73,9 @@ export default function DetailLaporan() {
     { query: { enabled: !!reportId, queryKey: getGetReportQueryKey(reportId) } }
   );
 
-  const reviewReport = useReviewReport();
   const createComment = useCreateComment();
 
-  const canReview = ["admin", "hr", "direktur"].includes(user?.role ?? "");
+  const canReview = ["admin", "direktur", "director", "dir"].includes(user?.role ?? "");
   const r = report as (typeof report & {
     tasks?: Task[];
     comments?: Comment[];
@@ -83,24 +91,6 @@ export default function DetailLaporan() {
     taskCount?: number;
   }) | null;
 
-  const handleReview = async (action: "review" | "revision") => {
-    try {
-      await reviewReport.mutateAsync({
-        id: reportId,
-        data: { action, comment: commentText || undefined }
-      });
-      setCommentText("");
-      queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(reportId) });
-      queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
-      toast({
-        title: action === "review" ? "Laporan Direview" : "Revisi Diminta",
-        description: action === "review" ? "Laporan berhasil ditandai direview" : "Permintaan revisi berhasil dikirim"
-      });
-    } catch {
-      toast({ title: "Gagal", description: "Gagal memproses tindakan", variant: "destructive" });
-    }
-  };
-
   const handleAddComment = async () => {
     if (!commentText.trim()) return;
     try {
@@ -113,8 +103,64 @@ export default function DetailLaporan() {
     }
   };
 
-  const roleLabel: Record<string, string> = {
-    karyawan: "Karyawan", hr: "HR", admin: "Admin", direktur: "Direktur"
+  const handleTaskReview = async (taskId: number, action: "review" | "revision" | "comment") => {
+    setReviewingTaskId(taskId);
+    try {
+      await apiRequest(`/api/tasks/${taskId}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, comment: taskReviewDrafts[taskId] || undefined }),
+      });
+      setTaskReviewDrafts((current) => ({ ...current, [taskId]: "" }));
+      queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(reportId) });
+      queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
+      toast({ title: action === "revision" ? "Revisi tugas dikirim" : action === "review" ? "Tugas direview" : "Komentar tugas disimpan" });
+    } catch (error) {
+      toast({ title: "Gagal", description: error instanceof Error ? error.message : "Gagal memproses tugas", variant: "destructive" });
+    } finally {
+      setReviewingTaskId(null);
+    }
+  };
+
+  const handleTaskCorrection = async (task: Task) => {
+    const draft = taskCorrectionDrafts[task.id] ?? { title: task.title, notes: task.notes ?? "" };
+    setReviewingTaskId(task.id);
+    try {
+      await apiRequest(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: draft.title, notes: draft.notes }),
+      });
+      await apiRequest(`/api/tasks/${task.id}/submit-correction`, {
+        method: "POST",
+      });
+      queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(reportId) });
+      queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
+      toast({ title: "Perbaikan dikirim", description: "Status tugas berubah menjadi Sudah Diperbaiki." });
+    } catch (error) {
+      toast({ title: "Gagal", description: error instanceof Error ? error.message : "Gagal menyimpan perbaikan", variant: "destructive" });
+    } finally {
+      setReviewingTaskId(null);
+    }
+  };
+
+  const handleEditComment = async (comment: Comment) => {
+    const nextComment = window.prompt("Edit komentar", comment.comment)?.trim();
+    if (!nextComment || nextComment === comment.comment) return;
+    await apiRequest(`/api/reports/${reportId}/comments/${comment.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment: nextComment }),
+    });
+    queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(reportId) });
+  };
+
+  const handleDeleteComment = async (comment: Comment) => {
+    if (!window.confirm("Hapus komentar ini?")) return;
+    await apiRequest(`/api/reports/${reportId}/comments/${comment.id}`, {
+      method: "DELETE",
+    });
+    queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(reportId) });
   };
 
   if (isLoading) {
@@ -140,7 +186,14 @@ export default function DetailLaporan() {
     );
   }
 
-  const statusInfo = REPORT_STATUSES[r.status ?? "draf"] ?? REPORT_STATUSES.draf;
+  const statusInfo =
+    /^\d+\s+Revisi$/i.test(r.status ?? "")
+      ? { label: r.status ?? "Revisi", color: "bg-orange-100 text-orange-700 border-orange-200" }
+      : r.status === "Selesai"
+        ? { label: "Selesai", color: "bg-green-100 text-green-700 border-green-200" }
+        : r.status === "Direview"
+          ? { label: "Direview", color: "bg-blue-100 text-blue-700 border-blue-200" }
+          : REPORT_STATUSES[r.status ?? "draf"] ?? REPORT_STATUSES.draf;
   const tasks: Task[] = r.tasks ?? [];
   const comments: Comment[] = r.comments ?? [];
 
@@ -212,7 +265,7 @@ export default function DetailLaporan() {
               <div className="px-5 py-8 text-center text-muted-foreground text-sm">Tidak ada tugas</div>
             ) : (
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
+              <table className="w-full min-w-[980px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Tugas</th>
@@ -220,6 +273,7 @@ export default function DetailLaporan() {
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Catatan</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Revisi / Komentar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -243,6 +297,79 @@ export default function DetailLaporan() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{task.notes ?? "—"}</td>
+                        <td className="px-4 py-3">
+                          {task.reviewStatus && (
+                            <div className="mb-2">
+                              <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                                task.reviewStatus === "revisi"
+                                  ? "border-orange-200 bg-orange-50 text-orange-700"
+                                  : ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus)
+                                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                                    : task.reviewStatus === "komentar"
+                                      ? "border-slate-200 bg-slate-50 text-slate-700"
+                                    : "border-green-200 bg-green-50 text-green-700"
+                              }`}>
+                                {task.reviewStatus === "revisi"
+                                  ? "Revisi"
+                                  : task.reviewStatus === "sudah_diperbaiki"
+                                    ? "Sudah Diperbaiki"
+                                    : task.reviewStatus === "selesai"
+                                      ? "Selesai"
+                                    : task.reviewStatus === "komentar"
+                                      ? "Komentar"
+                                      : "Direview"}
+                              </span>
+                              {task.reviewComment && (
+                                <div className="mt-1">
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                                    Komentar
+                                  </span>
+                                  <p className="mt-1 max-w-xs text-xs text-slate-600">{task.reviewComment}</p>
+                                </div>
+                              )}
+                              {task.reviewedByName && <p className="mt-0.5 text-[11px] text-slate-400">oleh {task.reviewedByName}</p>}
+                            </div>
+                          )}
+                          {canReview && (
+                            <div className="min-w-[270px] space-y-2">
+                              <Textarea
+                                value={taskReviewDrafts[task.id] ?? ""}
+                                onChange={(event) => setTaskReviewDrafts((current) => ({ ...current, [task.id]: event.target.value }))}
+                                placeholder="Catatan khusus tugas ini"
+                                rows={2}
+                              />
+                              <div className="flex flex-wrap gap-1.5">
+                                <Button size="sm" onClick={() => handleTaskReview(task.id, "review")} disabled={reviewingTaskId === task.id}>Review</Button>
+                                <Button size="sm" variant="outline" className="border-orange-300 text-orange-700" onClick={() => handleTaskReview(task.id, "revision")} disabled={reviewingTaskId === task.id}>Revisi</Button>
+                                <Button size="sm" variant="secondary" onClick={() => handleTaskReview(task.id, "comment")} disabled={reviewingTaskId === task.id || !(taskReviewDrafts[task.id] ?? "").trim()}>Komentar</Button>
+                              </div>
+                            </div>
+                          )}
+                          {user?.id === r.userId && task.reviewStatus === "revisi" && (
+                            <div className="mt-2 min-w-[270px] space-y-2 rounded-lg border border-orange-200 bg-orange-50 p-2">
+                              <p className="text-xs font-bold text-orange-800">Perbaiki tugas ini</p>
+                              <Input
+                                value={taskCorrectionDrafts[task.id]?.title ?? task.title}
+                                onChange={(event) => setTaskCorrectionDrafts((current) => ({
+                                  ...current,
+                                  [task.id]: { title: event.target.value, notes: current[task.id]?.notes ?? task.notes ?? "" },
+                                }))}
+                              />
+                              <Textarea
+                                value={taskCorrectionDrafts[task.id]?.notes ?? task.notes ?? ""}
+                                onChange={(event) => setTaskCorrectionDrafts((current) => ({
+                                  ...current,
+                                  [task.id]: { title: current[task.id]?.title ?? task.title, notes: event.target.value },
+                                }))}
+                                placeholder="Catatan hasil perbaikan"
+                                rows={2}
+                              />
+                              <Button size="sm" className="bg-orange-600 hover:bg-orange-700" onClick={() => handleTaskCorrection(task)} disabled={reviewingTaskId === task.id}>
+                                Kirim Perbaikan
+                              </Button>
+                            </div>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -271,53 +398,6 @@ export default function DetailLaporan() {
           ))}
         </div>
 
-        {/* Review Actions (HR/Admin/Director only) */}
-        {canReview && (
-          <Card className="border border-primary/20 bg-primary/5">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base text-primary">Tindakan Review</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Textarea
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Tambahkan komentar atau catatan review... (opsional)"
-                rows={3}
-                className="resize-none"
-              />
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => handleReview("review")}
-                  disabled={reviewReport.isPending}
-                  className="flex-1"
-                >
-                  {reviewReport.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                  Tandai Direview
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleReview("revision")}
-                  disabled={reviewReport.isPending}
-                  className="flex-1 border-orange-300 text-orange-700 hover:bg-orange-50"
-                >
-                  <AlertCircle className="w-4 h-4 mr-2" />
-                  Minta Revisi
-                </Button>
-                {commentText && (
-                  <Button
-                    variant="secondary"
-                    onClick={handleAddComment}
-                    disabled={createComment.isPending}
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Komentar
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Comments */}
         <Card className="border border-border">
           <CardHeader className="pb-3">
@@ -340,18 +420,29 @@ export default function DetailLaporan() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm font-medium text-foreground">{c.userName}</span>
-                      <span className="text-xs text-muted-foreground">{roleLabel[c.userRole] ?? c.userRole}</span>
+                      <span className="text-xs text-muted-foreground">{getRoleDisplayName(c.userRole)}</span>
                       <span className="text-xs text-muted-foreground ml-auto">
                         {new Date(c.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </div>
                     <p className="text-sm text-foreground whitespace-pre-wrap">{c.comment}</p>
+                    {user?.role === "admin" && (
+                      <div className="mt-2 flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => handleEditComment(c)}>
+                          <Pencil className="mr-1 h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDeleteComment(c)}>
+                          <Trash2 className="mr-1 h-3.5 w-3.5" />
+                          Hapus
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
             )}
-            {!canReview && (
-              <div className="pt-2 border-t border-border">
+            <div className="pt-2 border-t border-border">
                 <Textarea
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
@@ -367,8 +458,7 @@ export default function DetailLaporan() {
                 >
                   Kirim Komentar
                 </Button>
-              </div>
-            )}
+            </div>
           </CardContent>
         </Card>
       </div>

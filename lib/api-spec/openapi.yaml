@@ -22,7 +22,7 @@ tags:
   - name: dashboard
     description: Dashboard summary operations
   - name: po
-    description: Project/PO Tanggal Delivery monitoring
+    description: Monitoring target dan aktual pengiriman Project/PO
 paths:
   /healthz:
     get:
@@ -997,13 +997,31 @@ components:
         tanggalPoMasuk: { type: string }
         targetPenyelesaian: { type: ["string", "null"] }
         deadline: { type: string }
+        targetPengiriman: { type: string }
+        aktualPengiriman: { type: ["string", "null"] }
+        deliveryStatus: { type: string }
+        delayDays: { type: ["integer", "null"] }
+        aktualPengirimanBelumDiisi: { type: boolean }
         sisaHari: { type: ["integer", "null"] }
         picUserId: { type: ["integer", "null"] }
         picName: { type: ["string", "null"] }
         departmentId: { type: ["integer", "null"] }
         departmentName: { type: ["string", "null"] }
         status: { type: string }
+        statusLabel: { type: string }
         progress: { type: integer }
+        hasPainting: { type: boolean }
+        trackingStages:
+          type: array
+          items: { type: string }
+        trackingTimeline:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string }
+              description: { type: string }
+            required: [date, description]
         catatan: { type: ["string", "null"] }
         closedAt: { type: ["string", "null"] }
         isEditLocked: { type: boolean }
@@ -1017,6 +1035,9 @@ components:
           noPo,
           namaProject,
           deadline,
+          targetPengiriman,
+          deliveryStatus,
+          aktualPengirimanBelumDiisi,
           sisaHari,
           status,
           progress,
@@ -1036,14 +1057,26 @@ components:
           type: number
           nullable: true
         tanggalPoMasuk: { type: string }
-        targetPenyelesaian: { type: string }
         deadline: { type: string }
+        targetPengiriman: { type: string }
+        aktualPengiriman: { type: string }
         picUserId: { type: integer }
+        picProject: { type: string }
         departmentId: { type: integer }
         status: { type: string }
-        progress: { type: integer }
+        hasPainting: { type: boolean }
+        trackingStages:
+          type: array
+          items: { type: string }
+        trackingTimeline:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string }
+              description: { type: string }
         catatan: { type: string }
-      required: [noPo, namaProject, tanggalPoMasuk, deadline]
+      required: [noPo, namaProject, tanggalPoMasuk, targetPengiriman]
 
     PoUpdate:
       type: object
@@ -1056,17 +1089,30 @@ components:
           type: number
           nullable: true
         tanggalPoMasuk: { type: string }
-        targetPenyelesaian: { type: string }
         deadline: { type: string }
+        targetPengiriman: { type: string }
+        aktualPengiriman: { type: string }
         picUserId: { type: integer }
+        picProject: { type: string }
         departmentId: { type: integer }
         status: { type: string }
-        progress: { type: integer }
+        hasPainting: { type: boolean }
+        trackingStages:
+          type: array
+          items: { type: string }
+        trackingTimeline:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string }
+              description: { type: string }
         catatan: { type: string }
 
     PoSummary:
       type: object
       properties:
+        canViewAmount: { type: boolean }
         totalPo: { type: integer }
         poSelesai: { type: integer }
         poBelumSelesai: { type: integer }

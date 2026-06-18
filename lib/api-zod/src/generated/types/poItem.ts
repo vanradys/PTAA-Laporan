@@ -5,6 +5,7 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
+import type { PoItemTrackingTimelineItem } from "./poItemTrackingTimelineItem";
 
 export interface PoItem {
   id: number;
@@ -19,6 +20,13 @@ export interface PoItem {
   /** @nullable */
   targetPenyelesaian?: string | null;
   deadline: string;
+  targetPengiriman: string;
+  /** @nullable */
+  aktualPengiriman?: string | null;
+  deliveryStatus: string;
+  /** @nullable */
+  delayDays?: number | null;
+  aktualPengirimanBelumDiisi: boolean;
   /** @nullable */
   sisaHari: number | null;
   /** @nullable */
@@ -30,7 +38,11 @@ export interface PoItem {
   /** @nullable */
   departmentName?: string | null;
   status: string;
+  statusLabel?: string;
   progress: number;
+  hasPainting?: boolean;
+  trackingStages?: string[];
+  trackingTimeline?: PoItemTrackingTimelineItem[];
   /** @nullable */
   catatan?: string | null;
   /** @nullable */
