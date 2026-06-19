@@ -11,6 +11,7 @@ export const notificationsTable = pgTable("notifications", {
   isRead: boolean("is_read").notNull().default(false),
   type: text("type").notNull().default("info"),
   relatedReportId: integer("related_report_id"),
+  relatedTodoId: integer("related_todo_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

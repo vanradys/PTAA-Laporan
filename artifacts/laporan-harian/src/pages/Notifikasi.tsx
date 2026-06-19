@@ -19,18 +19,21 @@ interface NotifItem {
   isRead: boolean;
   type: string;
   relatedReportId: number | null | undefined;
+  relatedTodoId?: number | null;
   createdAt: string;
 }
 
 const TYPE_COLORS: Record<string, string> = {
   review: "bg-green-100 text-green-700",
   revision: "bg-orange-100 text-orange-700",
+  todo: "bg-violet-100 text-violet-700",
   info: "bg-blue-100 text-blue-700",
 };
 
 function getNotificationTarget(notif: NotifItem) {
   const searchableText = `${notif.type} ${notif.title} ${notif.message}`.toLowerCase();
 
+  if (notif.relatedTodoId) return `/to-do-list?task=${notif.relatedTodoId}`;
   if (notif.relatedReportId) return `/laporan/${notif.relatedReportId}`;
   if (
     searchableText.includes("po") ||

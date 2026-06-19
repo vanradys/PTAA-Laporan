@@ -23,6 +23,7 @@ function mapNotification(notification: typeof notificationsTable.$inferSelect) {
     isRead: notification.isRead,
     type: notification.type,
     relatedReportId: notification.relatedReportId ?? null,
+    relatedTodoId: notification.relatedTodoId ?? null,
     createdAt: notification.createdAt.toISOString(),
   };
 }

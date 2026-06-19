@@ -575,8 +575,23 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
   const copyYesterdayTasksToToday = (showToast = true) => {
   if (!Array.isArray(yesterdayTasks)) return;
 
+  const existingKeys = new Set([
+    ...existingTasks.map((task) =>
+      `${task.title.trim().toLowerCase()}|${(task.project ?? "").trim().toLowerCase()}`,
+    ),
+    ...newTasks.map((task) =>
+      `${task.title.trim().toLowerCase()}|${task.project.trim().toLowerCase()}`,
+    ),
+  ]);
   const copies = yesterdayTasks
-    .filter((task) => !["selesai", "delivered"].includes(task.status) && task.title.trim().length > 0)
+    .filter((task) => {
+      const key = `${task.title.trim().toLowerCase()}|${(task.project ?? "").trim().toLowerCase()}`;
+      return (
+        !["selesai", "delivered"].includes(task.status) &&
+        task.title.trim().length > 0 &&
+        !existingKeys.has(key)
+      );
+    })
     .map((t) => ({
       id: Date.now().toString() + Math.random(),
       title: t.title,
@@ -698,12 +713,24 @@ const handleRespondAssignedTask = async (
 
 useEffect(() => {
   if (hasAutoCopiedYesterdayTasks.current) return;
-  if (report) return;
   if (!Array.isArray(yesterdayTasks) || yesterdayTasks.length === 0) return;
+
+  const existingKeys = new Set(
+    existingTasks.map((task) =>
+      `${task.title.trim().toLowerCase()}|${(task.project ?? "").trim().toLowerCase()}`,
+    ),
+  );
+  const hasUncopiedTask = yesterdayTasks.some(
+    (task) =>
+      !existingKeys.has(
+        `${task.title.trim().toLowerCase()}|${(task.project ?? "").trim().toLowerCase()}`,
+      ),
+  );
+  if (!hasUncopiedTask) return;
 
   hasAutoCopiedYesterdayTasks.current = true;
   copyYesterdayTasksToToday(true);
-}, [yesterdayTasks, report]);
+}, [yesterdayTasks, existingTasks]);
 
     const validateRequiredReportFields = (data: {
     obstacles: string;
@@ -1239,14 +1266,18 @@ useEffect(() => {
                         <UserPlus className="w-3.5 h-3.5 mr-1.5" />
                         Beri Tugas
                       </Button>
-                      {yesterdayTasks.length > 0 && (
-                        <Button type="button" variant="outline" size="sm" onClick={handleCopyYesterday}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCopyYesterday}
+                        disabled={yesterdayTasks.length === 0}
+                      >
                           <Copy className="w-3.5 h-3.5 mr-1.5" />
                           {sourceReportDate && sourceReportDate !== previousTasksData?.requestedYesterdayDate
                             ? "Ambil Tugas Terakhir"
                             : "Ambil Tugas Kemarin"}
-                        </Button>
-                      )}
+                      </Button>
                       {canAddNewTasks && (
                         <Button type="button" variant="outline" size="sm" onClick={addNewTask}>
                           <Plus className="w-3.5 h-3.5 mr-1.5" />

@@ -27,12 +27,14 @@ interface NotificationItem {
   isRead: boolean;
   type: string;
   relatedReportId?: number | null;
+  relatedTodoId?: number | null;
   createdAt: string;
 }
 
 function getNotificationTarget(item: NotificationItem) {
   const searchableText = `${item.type} ${item.title} ${item.message}`.toLowerCase();
 
+  if (item.relatedTodoId) return `/to-do-list?task=${item.relatedTodoId}`;
   if (item.relatedReportId) return `/laporan/${item.relatedReportId}`;
   if (
     searchableText.includes("po") ||

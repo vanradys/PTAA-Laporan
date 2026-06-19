@@ -1,4 +1,7 @@
-import { type ElementType, type FormEvent, useMemo, useState } from "react";
+import { type ElementType, type FormEvent, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { useListEmployees } from "@workspace/api-client-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,763 +10,315 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  CalendarDays,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Columns3,
-  Grid2X2,
-  ListChecks,
-  Plus,
-  UsersRound,
-  X,
+  CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Columns3,
+  Grid2X2, ListChecks, MessageSquare, Plus, Send, UsersRound, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getJakartaDateString } from "@/lib/date";
+import { apiRequest } from "@/lib/apiRequest";
+import { useToast } from "@/hooks/use-toast";
 
 type TaskType = "personal" | "team";
 type TaskStatus = "Belum Mulai" | "In Progress" | "Selesai";
 type TaskPriority = "Rendah" | "Sedang" | "Urgent";
 type ViewMode = "today" | "calendar" | "cards";
-
+type Employee = { id: number; name: string; email: string; departmentName?: string | null };
+type ChecklistItem = { id: number; text: string; isCompleted: boolean };
+type TaskComment = { id: number; userName: string; comment: string; createdAt: string };
 type Task = {
-  id: number;
-  title: string;
-  type: TaskType;
-  startDate: string;
-  endDate: string;
-  priority: TaskPriority;
-  description: string;
-  employees: string[];
-  status: TaskStatus;
-  createdBy: string;
+  id: number; title: string; description: string | null; type: TaskType;
+  startDate: string; dueDate: string; priority: TaskPriority; status: TaskStatus;
+  createdByUserId: number; createdByName: string;
+  assignees: Array<{ id: number; userId: number; userName: string }>;
+  checklist: ChecklistItem[]; comments: TaskComment[];
+};
+type TaskForm = {
+  title: string; type: TaskType; startDate: string; dueDate: string;
+  priority: TaskPriority; description: string; assigneeIds: number[]; checklist: string[];
 };
 
-type TaskFormState = {
-  title: string;
-  type: TaskType;
-  startDate: string;
-  endDate: string;
-  priority: TaskPriority;
-  description: string;
-  employees: string[];
+const today = getJakartaDateString();
+const emptyForm: TaskForm = {
+  title: "", type: "personal", startDate: today, dueDate: today,
+  priority: "Sedang", description: "", assigneeIds: [], checklist: [""],
 };
-
-const todayDate = getJakartaDateString();
-
-const employeeOptions = [
-  { name: "Siti Aminah", initials: "SA", department: "Marketing" },
-  { name: "Andi Nugroho", initials: "AN", department: "Engineering" },
-  { name: "Budi Lesmana", initials: "BL", department: "Purchasing" },
-  { name: "Rena Fitri", initials: "RF", department: "Production" },
-];
-
-const initialFormState: TaskFormState = {
-  title: "",
-  type: "personal",
-  startDate: todayDate,
-  endDate: todayDate,
-  priority: "Sedang",
-  description: "",
-  employees: [],
-};
-
-const initialTasks: Task[] = [
-  {
-    id: 1,
-    title: "Persiapan launching produk baru",
-    type: "team",
-    startDate: "2026-06-19",
-    endDate: "2026-06-23",
-    priority: "Urgent",
-    description: "Persiapan materi, desain, dan publikasi launching.",
-    employees: ["Siti Aminah", "Andi Nugroho"],
-    status: "Selesai",
-    createdBy: "Admin Marketing",
-  },
-  {
-    id: 2,
-    title: "Update katalog produk",
-    type: "team",
-    startDate: "2026-06-19",
-    endDate: "2026-06-21",
-    priority: "Rendah",
-    description: "Update harga dan stok terbaru di katalog.",
-    employees: ["Budi Lesmana", "Rena Fitri"],
-    status: "In Progress",
-    createdBy: "Admin Marketing",
-  },
-];
-
 const priorityStyles: Record<TaskPriority, string> = {
   Rendah: "border-emerald-200 bg-emerald-50 text-emerald-700",
   Sedang: "border-blue-200 bg-blue-50 text-blue-700",
   Urgent: "border-red-200 bg-red-50 text-red-700",
 };
-
 const statusStyles: Record<TaskStatus, string> = {
   "Belum Mulai": "border-slate-200 bg-slate-100 text-slate-700",
   "In Progress": "border-blue-200 bg-blue-50 text-blue-700",
   Selesai: "border-emerald-200 bg-emerald-50 text-emerald-700",
 };
+const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
-function parseLocalDate(dateString: string) {
-  const [year, month, day] = dateString.split("-").map(Number);
-  return new Date(year, (month ?? 1) - 1, day ?? 1);
+function parseDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+function dateValue(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(parseDate(value));
+}
+function initials(name: string) {
+  return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+}
+function inRange(date: string, task: Task) {
+  return date >= task.startDate && date <= task.dueDate;
 }
 
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function toDateInputValue(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatLongDate(dateString: string) {
-  return new Intl.DateTimeFormat("id-ID", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(parseLocalDate(dateString));
-}
-
-function formatShortDate(dateString: string) {
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(parseLocalDate(dateString));
-}
-
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-}
-
-function isDateInRange(date: string, start: string, end: string) {
-  return date >= start && date <= end;
-}
-
-function taskMatchesToday(task: Task) {
-  return isDateInRange(todayDate, task.startDate, task.endDate);
-}
-
-function ViewButton({
-  active,
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  icon: ElementType;
-  label: string;
-  onClick: () => void;
+function ViewButton({ active, icon: Icon, label, onClick }: {
+  active: boolean; icon: ElementType; label: string; onClick: () => void;
 }) {
+  return <button type="button" onClick={onClick} className={cn(
+    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition",
+    active ? "bg-[#06258d] text-white" : "text-slate-600 hover:bg-slate-100",
+  )}><Icon className="h-4 w-4" />{label}</button>;
+}
+
+function TaskCard({ task, onOpen }: { task: Task; onOpen: (task: Task) => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition",
-        active
-          ? "bg-[#06258d] text-white shadow-sm"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
-      )}
-    >
-      <Icon className="h-4 w-4" />
-      {label}
+    <button type="button" onClick={() => onOpen(task)}
+      className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-black text-slate-950">{task.title}</h3>
+        <Badge className={cn("border", priorityStyles[task.priority])}>{task.priority}</Badge>
+      </div>
+      <p className="mt-2 line-clamp-2 text-sm text-slate-600">{task.description || "Tidak ada deskripsi."}</p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <span className="flex items-center gap-1 font-semibold"><CalendarDays className="h-3.5 w-3.5" />{formatDate(task.startDate)} - {formatDate(task.dueDate)}</span>
+        <Badge className={cn("border", statusStyles[task.status])}>{task.status}</Badge>
+      </div>
+      <div className="mt-3 flex items-center justify-between">
+        <div className="flex -space-x-1">
+          {task.assignees.slice(0, 4).map((employee) => <span key={employee.userId}
+            title={employee.userName}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black ring-2 ring-white">
+            {initials(employee.userName)}
+          </span>)}
+        </div>
+        <span className="text-[11px] font-semibold text-slate-400">{task.createdByName}</span>
+      </div>
     </button>
   );
 }
 
-function SummaryCard({
-  title,
-  value,
-  icon: Icon,
-  iconClass,
-  description,
-}: {
-  title: string;
-  value: number;
-  icon: ElementType;
-  iconClass: string;
-  description: string;
-}) {
-  return (
-    <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-slate-500">{title}</p>
-            <p className="mt-2 text-3xl font-black tracking-tight text-slate-950">
-              {value}
-            </p>
-            <p className="mt-2 text-xs font-semibold text-slate-500">
-              {description}
-            </p>
-          </div>
-          <div className={cn("rounded-xl p-3", iconClass)}>
-            <Icon className="h-5 w-5" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function TaskCard({ task }: { task: Task }) {
-  return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-base font-black leading-snug text-slate-950">
-          {task.title}
-        </h3>
-        <Badge className={cn("shrink-0 border px-2.5 py-1", priorityStyles[task.priority])}>
-          {task.priority}
-        </Badge>
-      </div>
-
-      <p className="mt-3 text-sm leading-6 text-slate-600">{task.description}</p>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
-        <div className="flex items-center gap-2 font-semibold">
-          <CalendarDays className="h-4 w-4" />
-          {task.startDate === task.endDate
-            ? formatShortDate(task.endDate)
-            : `${formatShortDate(task.startDate)} - ${formatShortDate(task.endDate)}`}
-        </div>
-        <Badge className={cn("border px-2.5 py-1", statusStyles[task.status])}>
-          {task.status}
-        </Badge>
-      </div>
-
-      {task.type === "team" && task.employees.length > 0 && (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            {task.employees.slice(0, 4).map((employee) => (
-              <div
-                key={employee}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-600 ring-2 ring-white"
-                title={employee}
-              >
-                {getInitials(employee)}
-              </div>
-            ))}
-          </div>
-          <span className="text-xs font-semibold text-slate-400">
-            {task.createdBy}
-          </span>
-        </div>
-      )}
-    </article>
-  );
-}
-
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-[120px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white/70 p-6 text-center text-sm font-semibold text-slate-500">
-      {label}
-    </div>
-  );
-}
-
 export default function ToDoList() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [viewMode, setViewMode] = useState<ViewMode>("today");
+  const [selectedDate, setSelectedDate] = useState(today);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  const [form, setForm] = useState<TaskFormState>(initialFormState);
-  const [calendarAnchor, setCalendarAnchor] = useState(parseLocalDate(todayDate));
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [form, setForm] = useState<TaskForm>(emptyForm);
+  const [comment, setComment] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const personalTasksToday = tasks.filter(
-    (task) => task.type === "personal" && taskMatchesToday(task),
-  );
-  const teamTasksToday = tasks.filter(
-    (task) => task.type === "team" && taskMatchesToday(task),
-  );
-  const personalTasks = tasks.filter((task) => task.type === "personal");
-  const teamTasks = tasks.filter(
-    (task) => task.type === "team" && task.status !== "Selesai",
-  );
-  const completedTasks = tasks.filter((task) => task.status === "Selesai");
+  const { data: tasks = [], isLoading } = useQuery({
+    queryKey: ["todo-tasks"],
+    queryFn: () => apiRequest<Task[]>("/api/todo-tasks"),
+  });
+  const { data: employeesData } = useListEmployees();
+  const employees = (Array.isArray(employeesData) ? employeesData : []) as Employee[];
+
+  const openTask = async (task: Task) => {
+    const detail = await apiRequest<Task>(`/api/todo-tasks/${task.id}`);
+    setSelectedTask(detail);
+    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+  };
+
+  useEffect(() => {
+    const taskId = Number(new URLSearchParams(window.location.search).get("task"));
+    if (!taskId || !tasks.length || selectedTask) return;
+    const task = tasks.find((item) => item.id === taskId);
+    if (task) void openTask(task);
+  }, [tasks]);
+
+  const filteredTasks = tasks.filter((task) => inRange(selectedDate, task));
+  const personal = filteredTasks.filter((task) => task.type === "personal" && task.status !== "Selesai");
+  const team = filteredTasks.filter((task) => task.type === "team" && task.status !== "Selesai");
+  const completed = filteredTasks.filter((task) => task.status === "Selesai");
 
   const weekDays = useMemo(() => {
-    const day = calendarAnchor.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const monday = addDays(calendarAnchor, mondayOffset);
-    return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
-  }, [calendarAnchor]);
-
-  const weekLabel = new Intl.DateTimeFormat("id-ID", {
-    month: "long",
-    year: "numeric",
-  }).format(weekDays[0]);
-
-  const handleOpenForm = () => {
-    setForm(initialFormState);
-    setIsFormOpen(true);
-  };
-
-  const handleChange = (field: keyof TaskFormState, value: string) => {
-    setForm((current) => {
-      const next = { ...current, [field]: value };
-
-      if (field === "type" && value === "personal") {
-        next.employees = [];
-      }
-
-      if (field === "startDate" && value > current.endDate) {
-        next.endDate = value;
-      }
-
-      if (field === "endDate" && value < current.startDate) {
-        next.startDate = value;
-      }
-
-      return next;
+    const anchor = parseDate(selectedDate);
+    const offset = anchor.getDay() === 0 ? -6 : 1 - anchor.getDay();
+    const monday = new Date(anchor); monday.setDate(anchor.getDate() + offset);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(monday); date.setDate(monday.getDate() + index); return date;
     });
+  }, [selectedDate]);
+  const selected = parseDate(selectedDate);
+  const years = Array.from({ length: 7 }, (_, index) => selected.getFullYear() - 3 + index);
+
+  const moveDate = (days: number) => {
+    const date = parseDate(selectedDate); date.setDate(date.getDate() + days); setSelectedDate(dateValue(date));
+  };
+  const changeMonth = (month: number) => {
+    const date = parseDate(selectedDate); date.setMonth(month, 1); setSelectedDate(dateValue(date));
+  };
+  const changeYear = (year: number) => {
+    const date = parseDate(selectedDate); date.setFullYear(year); setSelectedDate(dateValue(date));
   };
 
-  const handleToggleEmployee = (name: string) => {
-    setForm((current) => ({
-      ...current,
-      employees: current.employees.includes(name)
-        ? current.employees.filter((employee) => employee !== name)
-        : [...current.employees, name],
-    }));
-  };
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const submitTask = async (event: FormEvent) => {
     event.preventDefault();
+    setSaving(true);
+    try {
+      await apiRequest("/api/todo-tasks", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      setIsFormOpen(false); setForm(emptyForm);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["todo-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+      ]);
+      toast({ title: "To Do List disimpan" });
+    } catch (error) {
+      toast({ title: "Gagal", description: error instanceof Error ? error.message : "Gagal menyimpan tugas", variant: "destructive" });
+    } finally { setSaving(false); }
+  };
 
-    if (!form.title.trim()) return;
-
-    const nextTask: Task = {
-      id: Date.now(),
-      title: form.title.trim(),
-      type: form.type,
-      startDate: form.startDate,
-      endDate: form.endDate || form.startDate,
-      priority: form.priority,
-      description: form.description.trim() || "Tidak ada deskripsi tambahan.",
-      employees: form.type === "team" ? form.employees : [],
-      status: "Belum Mulai",
-      createdBy: "Saya",
-    };
-
-    setTasks((current) => [nextTask, ...current]);
-    setIsFormOpen(false);
+  const updateStatus = async (status: TaskStatus) => {
+    if (!selectedTask) return;
+    const updated = await apiRequest<Task>(`/api/todo-tasks/${selectedTask.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+    });
+    setSelectedTask(updated);
+    queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+  };
+  const toggleChecklist = async (item: ChecklistItem) => {
+    if (!selectedTask) return;
+    await apiRequest(`/api/todo-tasks/${selectedTask.id}/checklist/${item.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isCompleted: !item.isCompleted }),
+    });
+    await openTask(selectedTask);
+    queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+  };
+  const sendComment = async () => {
+    if (!selectedTask || !comment.trim()) return;
+    await apiRequest(`/api/todo-tasks/${selectedTask.id}/comments`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comment }),
+    });
+    setComment(""); await openTask(selectedTask);
   };
 
   return (
     <>
       <Layout>
         <div className="page-shell space-y-6">
-          <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6">
+          <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-6 py-6 text-white">
             <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
-            <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-sm font-medium text-blue-100">Manajemen tugas internal</p>
-                <h1 className="mt-1 text-xl font-black sm:text-2xl">To Do List</h1>
-                <div className="mt-2 flex items-center gap-2 text-sm font-medium text-blue-100">
-                  <CalendarDays className="h-4 w-4" />
-                  {formatLongDate(todayDate)}
-                </div>
-              </div>
-
-              <Button
-                type="button"
-                onClick={handleOpenForm}
-                className="w-full bg-white font-black text-[#06258d] hover:bg-blue-50 sm:w-auto"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Tambah To Do List
-              </Button>
+            <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div><p className="text-sm text-blue-100">Manajemen tugas internal</p><h1 className="text-2xl font-black">To Do List</h1></div>
+              <Button onClick={() => setIsFormOpen(true)} className="bg-white font-bold text-[#06258d] hover:bg-blue-50"><Plus className="mr-2 h-4 w-4" />Tambah To Do List</Button>
             </div>
           </section>
 
-          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-xl border bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
-              <ViewButton
-                active={viewMode === "today"}
-                icon={Grid2X2}
-                label="Hari Ini"
-                onClick={() => setViewMode("today")}
-              />
-              <ViewButton
-                active={viewMode === "calendar"}
-                icon={CalendarDays}
-                label="Kalender"
-                onClick={() => setViewMode("calendar")}
-              />
-              <ViewButton
-                active={viewMode === "cards"}
-                icon={Columns3}
-                label="Kartu"
-                onClick={() => setViewMode("cards")}
-              />
+              <ViewButton active={viewMode === "today"} icon={Grid2X2} label="Daftar" onClick={() => setViewMode("today")} />
+              <ViewButton active={viewMode === "calendar"} icon={CalendarDays} label="Kalender" onClick={() => setViewMode("calendar")} />
+              <ViewButton active={viewMode === "cards"} icon={Columns3} label="Kartu" onClick={() => setViewMode("cards")} />
             </div>
-            <p className="px-2 text-xs font-semibold text-slate-500">
-              Tugas pribadi hanya tampil untuk akun masing-masing. Tugas tim tampil untuk pembuat dan karyawan yang di-tag.
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => moveDate(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" onClick={() => setSelectedDate(today)}>Hari Ini</Button>
+              <Button variant="outline" size="icon" onClick={() => moveDate(1)}><ChevronRight className="h-4 w-4" /></Button>
+              <Input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="w-40" />
+              <select value={selected.getMonth()} onChange={(event) => changeMonth(Number(event.target.value))} className="h-10 rounded-md border bg-white px-3 text-sm">
+                {months.map((month, index) => <option key={month} value={index}>{month}</option>)}
+              </select>
+              <select value={selected.getFullYear()} onChange={(event) => changeYear(Number(event.target.value))} className="h-10 rounded-md border bg-white px-3 text-sm">
+                {years.map((year) => <option key={year}>{year}</option>)}
+              </select>
+            </div>
           </div>
 
-          {viewMode === "today" && (
-            <section className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <SummaryCard
-                  title="Tugas Pribadi Hari Ini"
-                  value={personalTasksToday.length}
-                  icon={ListChecks}
-                  iconClass="bg-blue-50 text-blue-600"
-                  description="Tugas milik akun pribadi"
-                />
-                <SummaryCard
-                  title="Tugas Tim Hari Ini"
-                  value={teamTasksToday.length}
-                  icon={UsersRound}
-                  iconClass="bg-emerald-50 text-emerald-600"
-                  description="Tugas tim yang perlu dipantau"
-                />
+          {isLoading ? <p className="py-12 text-center text-slate-500">Memuat tugas...</p> : viewMode === "calendar" ? (
+            <div className="overflow-x-auto rounded-xl border bg-white">
+              <div className="grid min-w-[900px] grid-cols-7">
+                {weekDays.map((date) => {
+                  const value = dateValue(date);
+                  const dayTasks = tasks.filter((task) => inRange(value, task));
+                  return <div key={value} className="min-h-[420px] border-r last:border-r-0">
+                    <button type="button" onClick={() => setSelectedDate(value)} className={cn("w-full border-b p-3 text-left", value === selectedDate && "bg-blue-50")}>
+                      <p className="text-xs font-bold text-slate-500">{new Intl.DateTimeFormat("id-ID", { weekday: "short" }).format(date)}</p>
+                      <p className="text-lg font-black">{date.getDate()}</p>
+                    </button>
+                    <div className="space-y-2 p-2">{dayTasks.map((task) => <TaskCard key={task.id} task={task} onOpen={openTask} />)}</div>
+                  </div>;
+                })}
               </div>
-
-              <div className="grid gap-5 xl:grid-cols-2">
-                <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <CardHeader className="border-b border-slate-100 pb-3">
-                    <CardTitle className="text-base font-bold text-slate-800">Tugas Pribadi</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 p-4">
-                    {personalTasksToday.length > 0 ? (
-                      personalTasksToday.map((task) => <TaskCard key={task.id} task={task} />)
-                    ) : (
-                      <EmptyState label="Tidak ada tugas pribadi untuk hari ini." />
-                    )}
-                  </CardContent>
+            </div>
+          ) : viewMode === "cards" ? (
+            <div className="grid gap-5 xl:grid-cols-3">
+              {([["Tugas Pribadi", personal], ["Tugas Tim", team], ["Selesai", completed]] as const).map(([label, list]) => (
+                <Card key={label} className="min-h-[480px] bg-slate-100/70"><CardHeader><CardTitle className="flex justify-between text-base">{label}<Badge>{list.length}</Badge></CardTitle></CardHeader>
+                  <CardContent className="space-y-3">{list.length ? list.map((task) => <TaskCard key={task.id} task={task} onOpen={openTask} />) : <p className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-slate-400">Kosong</p>}</CardContent>
                 </Card>
-
-                <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <CardHeader className="border-b border-slate-100 pb-3">
-                    <CardTitle className="text-base font-bold text-slate-800">Tugas Tim</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 p-4">
-                    {teamTasksToday.length > 0 ? (
-                      teamTasksToday.map((task) => <TaskCard key={task.id} task={task} />)
-                    ) : (
-                      <EmptyState label="Tidak ada tugas tim untuk hari ini." />
-                    )}
-                  </CardContent>
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-5 xl:grid-cols-2">
+              {([["Tugas Pribadi", personal, ListChecks], ["Tugas Tim", team, UsersRound]] as const).map(([label, list, Icon]) => (
+                <Card key={label}><CardHeader><CardTitle className="flex items-center gap-2 text-base"><Icon className="h-4 w-4" />{label}<Badge className="ml-auto">{list.length}</Badge></CardTitle></CardHeader>
+                  <CardContent className="space-y-3">{list.length ? list.map((task) => <TaskCard key={task.id} task={task} onOpen={openTask} />) : <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-400">Tidak ada tugas pada {formatDate(selectedDate)}</p>}</CardContent>
                 </Card>
-              </div>
-            </section>
-          )}
-
-          {viewMode === "calendar" && (
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-              <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="text-xl font-black text-slate-950">Kalender Tugas</h2>
-                  <p className="mt-1 text-sm font-semibold text-slate-500">
-                    Tampilan mingguan untuk melihat jadwal tugas pribadi dan tim.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setCalendarAnchor(addDays(calendarAnchor, -7))}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setCalendarAnchor(parseLocalDate(todayDate))}
-                    className="font-bold"
-                  >
-                    Hari Ini
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setCalendarAnchor(addDays(calendarAnchor, 7))}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mb-4 flex items-center gap-2 text-sm font-black text-[#06258d]">
-                <Clock3 className="h-4 w-4" />
-                {weekLabel}
-              </div>
-
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <div className="grid min-w-[900px] grid-cols-7 bg-slate-50">
-                  {weekDays.map((date) => {
-                    const value = toDateInputValue(date);
-                    const dayTasks = tasks.filter((task) => isDateInRange(value, task.startDate, task.endDate));
-                    const isToday = value === todayDate;
-
-                    return (
-                      <div key={value} className="min-h-[420px] border-r border-slate-200 last:border-r-0">
-                        <div className={cn("border-b border-slate-200 p-3", isToday && "bg-blue-50")}>
-                          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            {new Intl.DateTimeFormat("id-ID", { weekday: "short" }).format(date)}
-                          </p>
-                          <p className={cn("mt-1 text-lg font-black", isToday ? "text-[#06258d]" : "text-slate-900")}>
-                            {date.getDate()}
-                          </p>
-                        </div>
-                        <div className="space-y-2 p-3">
-                          {dayTasks.length > 0 ? (
-                            dayTasks.map((task) => (
-                              <div
-                                key={`${value}-${task.id}`}
-                                className={cn(
-                                  "rounded-lg border p-3 text-xs shadow-sm",
-                                  task.type === "team"
-                                    ? "border-blue-100 bg-blue-50/70"
-                                    : "border-emerald-100 bg-emerald-50/70",
-                                )}
-                              >
-                                <p className="font-black text-slate-950">{task.title}</p>
-                                <p className="mt-1 line-clamp-2 text-slate-600">{task.description}</p>
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  <Badge className={cn("border px-2 py-0.5 text-[10px]", statusStyles[task.status])}>
-                                    {task.status}
-                                  </Badge>
-                                  <Badge className={cn("border px-2 py-0.5 text-[10px]", priorityStyles[task.priority])}>
-                                    {task.priority}
-                                  </Badge>
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <p className="pt-6 text-center text-xs font-semibold text-slate-400">Tidak ada tugas</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {viewMode === "cards" && (
-            <section className="space-y-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-950">Papan Kartu</h2>
-                <p className="mt-1 text-sm font-semibold text-slate-500">
-                  Kelompokkan tugas berdasarkan jenis dan status penyelesaian.
-                </p>
-              </div>
-
-              <div className="grid gap-5 xl:grid-cols-3">
-                <Card className="min-h-[520px] rounded-xl border border-slate-200 bg-slate-100/70 shadow-sm">
-                  <CardHeader className="flex flex-row items-center justify-between pb-3">
-                    <CardTitle className="text-base font-bold text-slate-800">Tugas Pribadi</CardTitle>
-                    <Badge className="border-blue-200 bg-blue-50 text-blue-700">{personalTasks.length}</Badge>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {personalTasks.length > 0 ? (
-                      personalTasks.map((task) => <TaskCard key={task.id} task={task} />)
-                    ) : (
-                      <EmptyState label="Kosong" />
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="min-h-[520px] rounded-xl border border-slate-200 bg-slate-100/70 shadow-sm">
-                  <CardHeader className="flex flex-row items-center justify-between pb-3">
-                    <CardTitle className="text-base font-bold text-slate-800">Tugas Tim</CardTitle>
-                    <Badge className="border-amber-200 bg-amber-50 text-amber-700">{teamTasks.length}</Badge>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {teamTasks.length > 0 ? (
-                      teamTasks.map((task) => <TaskCard key={task.id} task={task} />)
-                    ) : (
-                      <EmptyState label="Kosong" />
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="min-h-[520px] rounded-xl border border-slate-200 bg-slate-100/70 shadow-sm">
-                  <CardHeader className="flex flex-row items-center justify-between pb-3">
-                    <CardTitle className="text-base font-bold text-slate-800">Selesai</CardTitle>
-                    <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">{completedTasks.length}</Badge>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {completedTasks.length > 0 ? (
-                      completedTasks.map((task) => <TaskCard key={task.id} task={task} />)
-                    ) : (
-                      <EmptyState label="Kosong" />
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </section>
+              ))}
+            </div>
           )}
         </div>
       </Layout>
 
-      {isFormOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div>
-                <h2 className="text-lg font-black text-slate-950">Tambah To Do List</h2>
-                <p className="text-sm font-semibold text-slate-500">
-                  Lengkapi detail tugas yang akan dibuat.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsFormOpen(false)}
-                title="Tutup"
-              >
-                <X className="h-5 w-5" />
-              </Button>
+      {isFormOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4">
+        <form onSubmit={submitTask} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b p-5"><div><h2 className="text-lg font-black">Tambah To Do List</h2><p className="text-sm text-slate-500">Data akan tersimpan di database.</p></div><Button type="button" variant="ghost" size="icon" onClick={() => setIsFormOpen(false)}><X /></Button></div>
+          <div className="space-y-4 p-5">
+            <div><Label>Nama Tugas</Label><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></div>
+            <div><Label>Deskripsi</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div><Label>Jenis</Label><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TaskType, assigneeIds: [] })} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi</option><option value="team">Tugas Tim</option></select></div>
+              <div><Label>Priority</Label><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as TaskPriority })} className="h-10 w-full rounded-md border px-3"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select></div>
+              <div><Label>Tanggal Mulai</Label><Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, dueDate: event.target.value > form.dueDate ? event.target.value : form.dueDate })} /></div>
+              <div><Label>Due Date</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></div>
             </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5 px-5 py-5">
-              <div className="space-y-2">
-                <Label htmlFor="todo-title">Nama Kegiatan</Label>
-                <Input
-                  id="todo-title"
-                  value={form.title}
-                  onChange={(event) => handleChange("title", event.target.value)}
-                  placeholder="Contoh: Follow up customer conveyor"
-                  required
-                />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="todo-type">Jenis Tugas</Label>
-                  <select
-                    id="todo-type"
-                    value={form.type}
-                    onChange={(event) => handleChange("type", event.target.value)}
-                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="personal">Tugas Pribadi</option>
-                    <option value="team">Tugas Tim</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="todo-priority">Prioritas</Label>
-                  <select
-                    id="todo-priority"
-                    value={form.priority}
-                    onChange={(event) => handleChange("priority", event.target.value)}
-                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="Rendah">Rendah</option>
-                    <option value="Sedang">Sedang</option>
-                    <option value="Urgent">Urgent</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="todo-start-date">Tanggal Mulai</Label>
-                  <Input
-                    id="todo-start-date"
-                    type="date"
-                    value={form.startDate}
-                    onChange={(event) => handleChange("startDate", event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="todo-end-date">Tanggal Selesai</Label>
-                  <Input
-                    id="todo-end-date"
-                    type="date"
-                    value={form.endDate}
-                    onChange={(event) => handleChange("endDate", event.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="todo-description">Deskripsi</Label>
-                <Textarea
-                  id="todo-description"
-                  value={form.description}
-                  onChange={(event) => handleChange("description", event.target.value)}
-                  placeholder="Tambahkan detail pekerjaan, catatan, atau arahan tugas."
-                  rows={4}
-                />
-              </div>
-
-              {form.type === "team" && (
-                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div>
-                    <Label>Tag Karyawan</Label>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">
-                      Tugas tim akan tampil untuk karyawan yang dipilih.
-                    </p>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {employeeOptions.map((employee) => {
-                      const checked = form.employees.includes(employee.name);
-                      return (
-                        <button
-                          type="button"
-                          key={employee.name}
-                          onClick={() => handleToggleEmployee(employee.name)}
-                          className={cn(
-                            "flex items-center gap-3 rounded-lg border p-3 text-left transition",
-                            checked
-                              ? "border-[#06258d] bg-blue-50 text-[#06258d]"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50/50",
-                          )}
-                        >
-                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-slate-600">
-                            {employee.initials}
-                          </span>
-                          <span>
-                            <span className="block text-sm font-black">{employee.name}</span>
-                            <span className="block text-xs font-semibold text-slate-500">{employee.department}</span>
-                          </span>
-                          {checked && <CheckCircle2 className="ml-auto h-4 w-4" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-                <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>
-                  Batal
-                </Button>
-                <Button type="submit" className="bg-[#06258d] font-black text-white hover:bg-[#061f78]">
-                  Simpan
-                </Button>
-              </div>
-            </form>
+            <div><div className="flex items-center justify-between"><Label>Sub-task / Checklist</Label><Button type="button" variant="outline" size="sm" onClick={() => setForm({ ...form, checklist: [...form.checklist, ""] })}><Plus className="mr-1 h-3 w-3" />Tambah</Button></div>
+              <div className="mt-2 space-y-2">{form.checklist.map((item, index) => <div key={index} className="flex gap-2"><Input value={item} onChange={(event) => setForm({ ...form, checklist: form.checklist.map((value, itemIndex) => itemIndex === index ? event.target.value : value) })} placeholder={`Sub-task ${index + 1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => setForm({ ...form, checklist: form.checklist.filter((_, itemIndex) => itemIndex !== index) })}><X className="h-4 w-4" /></Button></div>)}</div>
+            </div>
+            {form.type === "team" && <div><Label>Tag Karyawan</Label><p className="mb-2 text-xs text-slate-500">Data diambil dari database karyawan aktif.</p><div className="grid gap-2 sm:grid-cols-2">{employees.map((employee) => {
+              const checked = form.assigneeIds.includes(employee.id);
+              return <button key={employee.id} type="button" onClick={() => setForm({ ...form, assigneeIds: checked ? form.assigneeIds.filter((id) => id !== employee.id) : [...form.assigneeIds, employee.id] })} className={cn("flex items-center gap-3 rounded-lg border p-3 text-left", checked && "border-blue-600 bg-blue-50")}><span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-black">{initials(employee.name)}</span><span><b className="block text-sm">{employee.name}</b><small className="text-slate-500">{employee.departmentName || "Tanpa Departemen"}</small></span>{checked && <CheckCircle2 className="ml-auto h-4 w-4 text-blue-700" />}</button>;
+            })}</div></div>}
           </div>
+          <div className="flex justify-end gap-2 border-t p-5"><Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Batal</Button><Button disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</Button></div>
+        </form>
+      </div>}
+
+      {selectedTask && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-4">
+        <div className="grid max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl lg:grid-cols-[1fr_280px]">
+          <div className="p-6">
+            <div className="flex items-start gap-3"><button type="button" onClick={() => updateStatus(selectedTask.status === "Selesai" ? "Belum Mulai" : "Selesai")} className={cn("mt-1 h-5 w-5 rounded-full border-2", selectedTask.status === "Selesai" && "border-emerald-500 bg-emerald-500")} /><div className="flex-1"><h2 className="text-xl font-black">{selectedTask.title}</h2><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{selectedTask.description || "Tidak ada deskripsi."}</p></div><Button variant="ghost" size="icon" onClick={() => { setSelectedTask(null); navigate("/to-do-list"); }}><X /></Button></div>
+            <div className="mt-6"><h3 className="text-sm font-black">Sub-task / Checklist ({selectedTask.checklist.filter((item) => item.isCompleted).length}/{selectedTask.checklist.length})</h3><div className="mt-2 space-y-2">{selectedTask.checklist.length ? selectedTask.checklist.map((item) => <button key={item.id} type="button" onClick={() => toggleChecklist(item)} className="flex w-full items-center gap-3 rounded-lg border p-3 text-left"><span className={cn("h-4 w-4 rounded-full border", item.isCompleted && "border-emerald-500 bg-emerald-500")} /><span className={cn("text-sm", item.isCompleted && "text-slate-400 line-through")}>{item.text}</span></button>) : <p className="text-sm text-slate-400">Tidak ada checklist.</p>}</div></div>
+            <div className="mt-6"><h3 className="flex items-center gap-2 text-sm font-black"><MessageSquare className="h-4 w-4" />Komentar ({selectedTask.comments.length})</h3><div className="mt-3 max-h-52 space-y-3 overflow-y-auto">{selectedTask.comments.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-black">{item.userName}</p><p className="mt-1 text-sm text-slate-700">{item.comment}</p><p className="mt-1 text-[10px] text-slate-400">{new Date(item.createdAt).toLocaleString("id-ID")}</p></div>)}</div><div className="mt-3 flex gap-2"><Input value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Tambah komentar..." onKeyDown={(event) => { if (event.key === "Enter") void sendComment(); }} /><Button onClick={sendComment}><Send className="h-4 w-4" /></Button></div></div>
+          </div>
+          <aside className="border-t bg-slate-50 p-6 lg:border-l lg:border-t-0">
+            <div className="space-y-5">
+              <div><p className="text-xs font-bold text-slate-400">Assignee</p><div className="mt-2 space-y-2">{selectedTask.assignees.length ? selectedTask.assignees.map((item) => <div key={item.userId} className="flex items-center gap-2 text-sm font-bold"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs">{initials(item.userName)}</span>{item.userName}</div>) : <p className="text-sm text-slate-500">Pribadi</p>}</div></div>
+              <div><p className="text-xs font-bold text-slate-400">Due date</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4" />{formatDate(selectedTask.dueDate)}</p></div>
+              <div><p className="text-xs font-bold text-slate-400">Priority</p><Badge className={cn("mt-1 border", priorityStyles[selectedTask.priority])}>{selectedTask.priority}</Badge></div>
+              <div><Label>Status tugas</Label><select value={selectedTask.status} onChange={(event) => updateStatus(event.target.value as TaskStatus)} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option>Belum Mulai</option><option>In Progress</option><option>Selesai</option></select></div>
+              <div><p className="text-xs font-bold text-slate-400">Dibuat oleh</p><p className="mt-1 text-sm font-bold">{selectedTask.createdByName}</p></div>
+            </div>
+          </aside>
         </div>
-      )}
+      </div>}
     </>
   );
 }

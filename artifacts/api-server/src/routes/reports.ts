@@ -528,11 +528,7 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
   const tasks = await db.select().from(dailyTasksTable)
     .where(and(
       eq(dailyTasksTable.reportId, reports[0].id),
-      or(
-        eq(dailyTasksTable.status, "pending"),
-        eq(dailyTasksTable.status, "proses"),
-        eq(dailyTasksTable.status, "belum_mulai"),
-      )
+      sql`lower(${dailyTasksTable.status}) not in ('selesai', 'delivered')`
     ));
 
   res.json({

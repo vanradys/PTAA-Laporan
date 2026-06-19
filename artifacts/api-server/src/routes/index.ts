@@ -12,6 +12,7 @@ import customerTrackingRouter from "./customerTracking";
 import dailyReportsReminderRouter from "./dailyReportsReminder";
 import overallMonitoringRouter from "./overallMonitoring";
 import nameChangeRequestsRouter from "./nameChangeRequests";
+import todoRouter from "./todo";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use(customerTrackingRouter);
 router.use(dailyReportsReminderRouter);
 router.use(overallMonitoringRouter);
 router.use(nameChangeRequestsRouter);
+router.use(todoRouter);
 
 export default router;
