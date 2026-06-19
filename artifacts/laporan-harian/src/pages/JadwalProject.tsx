@@ -13,6 +13,7 @@ import {
   getListPoQueryKey,
   getGetPoSummaryQueryKey,
   getGetPoYearlyTrendQueryKey,
+  getListNotificationsQueryKey,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -1023,7 +1024,7 @@ export default function JadwalProject() {
       setInternalCommentDraft("");
       await refetchInternalPoComments();
       queryClient.invalidateQueries({ queryKey: ["po-internal-comments"] });
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
       toast({ title: "Berhasil", description: "Komentar internal terkirim" });
     } catch (error) {
       toast({

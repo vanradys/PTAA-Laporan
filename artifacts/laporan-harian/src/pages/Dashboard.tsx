@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/select";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 type StatCardProps = {
   title: string;
@@ -194,7 +195,10 @@ export default function Dashboard() {
           <h1 className="text-xl font-bold text-slate-950">Dashboard</h1>
         </div>
 
-        <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6 lg:pr-[430px]">
+        <section className={cn(
+          "relative overflow-hidden rounded-xl bg-[#062bbd] px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6",
+          todoNotifications.length > 0 && "lg:pr-[430px]",
+        )}>
           <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
           <p className="text-sm font-medium text-blue-100">
             Selamat datang kembali,

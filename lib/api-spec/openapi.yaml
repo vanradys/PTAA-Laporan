@@ -450,6 +450,130 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
 
+  /todo-tasks:
+    get:
+      operationId: listTodoTasks
+      tags: [todo]
+      summary: List accessible to-do tasks
+      responses:
+        "200":
+          description: To-do tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TodoTask"
+    post:
+      operationId: createTodoTask
+      tags: [todo]
+      summary: Create a to-do task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TodoTaskInput"
+      responses:
+        "201":
+          description: Created to-do task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodoTask"
+
+  /todo-tasks/{id}:
+    get:
+      operationId: getTodoTask
+      tags: [todo]
+      summary: Get to-do task detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: To-do task detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodoTask"
+    patch:
+      operationId: updateTodoTaskStatus
+      tags: [todo]
+      summary: Update to-do task status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TodoStatusUpdate"
+      responses:
+        "200":
+          description: Updated to-do task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodoTask"
+
+  /todo-tasks/{taskId}/checklist/{itemId}:
+    patch:
+      operationId: updateTodoChecklist
+      tags: [todo]
+      summary: Update to-do checklist item
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TodoChecklistUpdate"
+      responses:
+        "200":
+          description: Updated checklist item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodoChecklistItem"
+
+  /todo-tasks/{id}/comments:
+    post:
+      operationId: createTodoComment
+      tags: [todo]
+      summary: Add a comment to a to-do task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TodoCommentInput"
+      responses:
+        "201":
+          description: Created to-do comment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodoComment"
+
   /po:
     get:
       operationId: listPo
@@ -927,8 +1051,103 @@ components:
         isRead: { type: boolean }
         type: { type: string }
         relatedReportId: { type: ["integer", "null"] }
+        relatedTodoId: { type: ["integer", "null"] }
         createdAt: { type: string }
       required: [id, userId, title, message, isRead, type, createdAt]
+
+    TodoTaskInput:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        type: { type: string }
+        startDate: { type: string }
+        dueDate: { type: string }
+        priority: { type: string }
+        assigneeIds:
+          type: array
+          items: { type: integer }
+        checklist:
+          type: array
+          items: { type: string }
+      required: [title, type, startDate, dueDate, priority]
+
+    TodoStatusUpdate:
+      type: object
+      properties:
+        status: { type: string }
+      required: [status]
+
+    TodoChecklistUpdate:
+      type: object
+      properties:
+        isCompleted: { type: boolean }
+      required: [isCompleted]
+
+    TodoCommentInput:
+      type: object
+      properties:
+        comment: { type: string }
+      required: [comment]
+
+    TodoAssignee:
+      type: object
+      properties:
+        id: { type: integer }
+        taskId: { type: integer }
+        userId: { type: integer }
+        userName: { type: string }
+      required: [id, taskId, userId, userName]
+
+    TodoChecklistItem:
+      type: object
+      properties:
+        id: { type: integer }
+        taskId: { type: integer }
+        text: { type: string }
+        isCompleted: { type: boolean }
+      required: [id, taskId, text, isCompleted]
+
+    TodoComment:
+      type: object
+      properties:
+        id: { type: integer }
+        taskId: { type: integer }
+        userId: { type: ["integer", "null"] }
+        userName: { type: string }
+        comment: { type: string }
+        createdAt: { type: string }
+      required: [id, taskId, userName, comment, createdAt]
+
+    TodoTask:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: ["string", "null"] }
+        type: { type: string }
+        startDate: { type: string }
+        dueDate: { type: string }
+        priority: { type: string }
+        status: { type: string }
+        createdByUserId: { type: ["integer", "null"] }
+        createdByName: { type: string }
+        assignees:
+          type: array
+          items:
+            $ref: "#/components/schemas/TodoAssignee"
+        checklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/TodoChecklistItem"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/TodoComment"
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required:
+        [id, title, type, startDate, dueDate, priority, status, createdByName, assignees, checklist, comments, createdAt, updatedAt]
 
     DashboardSummary:
       type: object

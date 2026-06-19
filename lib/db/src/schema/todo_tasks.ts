@@ -10,7 +10,7 @@ export const todoTasksTable = pgTable("todo_tasks", {
   dueDate: date("due_date").notNull(),
   priority: text("priority").notNull().default("Sedang"),
   status: text("status").notNull().default("Belum Mulai"),
-  createdByUserId: integer("created_by_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  createdByUserId: integer("created_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdByName: text("created_by_name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

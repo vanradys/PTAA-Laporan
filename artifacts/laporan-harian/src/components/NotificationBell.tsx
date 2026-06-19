@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListNotifications,
+  getListNotificationsQueryKey,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
   useDeleteNotification,
@@ -68,7 +69,12 @@ export default function NotificationBell() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { data: notifications } = useListNotifications();
+  const { data: notifications } = useListNotifications({
+    query: {
+      queryKey: getListNotificationsQueryKey(),
+      refetchInterval: 15000,
+    },
+  });
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
   const deleteNotification = useDeleteNotification();

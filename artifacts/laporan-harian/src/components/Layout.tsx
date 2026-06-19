@@ -67,23 +67,26 @@ export default function Layout({ children }: LayoutProps) {
     user?.departmentCode,
     user?.departmentName,
   );
-  const visibleNavItems =
-    user?.role === "admin"
-      ? [
-          ...navItems.slice(0, 5),
-          {
-            href: "/monitoring-keseluruhan",
-            label: "Monitoring Keseluruhan",
-            icon: Activity,
-          },
-          {
-            href: "/user-management",
-            label: "User Management",
-            icon: UsersRound,
-          },
-          ...navItems.slice(5),
-        ]
-      : navItems;
+  const userRole = String(user?.role ?? "").toLowerCase();
+  const canViewOverallMonitoring = ["admin", "monitoring_dummy"].includes(userRole);
+  const visibleNavItems = [
+    ...navItems.slice(0, 5),
+    ...(canViewOverallMonitoring
+      ? [{
+          href: "/monitoring-keseluruhan",
+          label: "Monitoring Keseluruhan",
+          icon: Activity,
+        }]
+      : []),
+    ...(userRole === "admin"
+      ? [{
+          href: "/user-management",
+          label: "User Management",
+          icon: UsersRound,
+        }]
+      : []),
+    ...navItems.slice(5),
+  ];
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-slate-50 text-slate-950">

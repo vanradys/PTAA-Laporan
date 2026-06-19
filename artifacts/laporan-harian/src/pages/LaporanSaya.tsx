@@ -5,7 +5,8 @@ import {
   useGetTodayReport, useCreateReport, useUpdateReport, useSubmitReport,
   useCreateTask, useUpdateTask, useDeleteTask, useGetYesterdayTasks,
   useListEmployees,
-  getGetTodayReportQueryKey
+  getGetTodayReportQueryKey,
+  getListNotificationsQueryKey,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -495,6 +496,9 @@ export default function LaporanSaya() {
 const isSubmitted = report?.status === "dikirim";
 const isReviewed = report?.status === "direview";
 const isPastReport = !!report?.date && report.date !== today;
+const isFinanceUser =
+  ["AAF", "FIN"].includes(String(user?.departmentCode ?? "").toUpperCase()) ||
+  String(user?.departmentName ?? "").toLowerCase().includes("finance");
 
 const isLocked = isReviewed || isPastReport;
 const showSubmittedReadOnly = isSubmitted && !isEditingSubmitted;
@@ -572,26 +576,40 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
       return { ...t, [field]: value };
     }));
 
+  const getTaskCopyKey = (task: {
+    title: string;
+    project?: string | null;
+  }) =>
+    `${task.title.trim().toLowerCase()}|${String(task.project ?? "").trim().toLowerCase()}`;
+
+  const getUncopiedYesterdayTasks = () => {
+    const existingCounts = new Map<string, number>();
+    for (const task of [...existingTasks, ...newTasks]) {
+      const key = getTaskCopyKey(task);
+      existingCounts.set(key, (existingCounts.get(key) ?? 0) + 1);
+    }
+
+    return yesterdayTasks.filter((task) => {
+      if (
+        ["selesai", "delivered"].includes(task.status) ||
+        task.title.trim().length === 0
+      ) {
+        return false;
+      }
+      const key = getTaskCopyKey(task);
+      const existingCount = existingCounts.get(key) ?? 0;
+      if (existingCount > 0) {
+        existingCounts.set(key, existingCount - 1);
+        return false;
+      }
+      return true;
+    });
+  };
+
   const copyYesterdayTasksToToday = (showToast = true) => {
   if (!Array.isArray(yesterdayTasks)) return;
 
-  const existingKeys = new Set([
-    ...existingTasks.map((task) =>
-      `${task.title.trim().toLowerCase()}|${(task.project ?? "").trim().toLowerCase()}`,
-    ),
-    ...newTasks.map((task) =>
-      `${task.title.trim().toLowerCase()}|${task.project.trim().toLowerCase()}`,
-    ),
-  ]);
-  const copies = yesterdayTasks
-    .filter((task) => {
-      const key = `${task.title.trim().toLowerCase()}|${(task.project ?? "").trim().toLowerCase()}`;
-      return (
-        !["selesai", "delivered"].includes(task.status) &&
-        task.title.trim().length > 0 &&
-        !existingKeys.has(key)
-      );
-    })
+  const copies = getUncopiedYesterdayTasks()
     .map((t) => ({
       id: Date.now().toString() + Math.random(),
       title: t.title,
@@ -663,7 +681,7 @@ const handleAssignTask = async () => {
     });
 
     closeAssignModal();
-    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
     queryClient.invalidateQueries({ queryKey: ["assigned-tasks", "history"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-summary", today] });
     toast({ title: "Tugas dikirim", description: "Tugas berhasil dikirim ke penerima." });
@@ -713,24 +731,14 @@ const handleRespondAssignedTask = async (
 
 useEffect(() => {
   if (hasAutoCopiedYesterdayTasks.current) return;
+  if (isLoading || !canEditReportFields) return;
   if (!Array.isArray(yesterdayTasks) || yesterdayTasks.length === 0) return;
 
-  const existingKeys = new Set(
-    existingTasks.map((task) =>
-      `${task.title.trim().toLowerCase()}|${(task.project ?? "").trim().toLowerCase()}`,
-    ),
-  );
-  const hasUncopiedTask = yesterdayTasks.some(
-    (task) =>
-      !existingKeys.has(
-        `${task.title.trim().toLowerCase()}|${(task.project ?? "").trim().toLowerCase()}`,
-      ),
-  );
-  if (!hasUncopiedTask) return;
+  if (getUncopiedYesterdayTasks().length === 0) return;
 
   hasAutoCopiedYesterdayTasks.current = true;
   copyYesterdayTasksToToday(true);
-}, [yesterdayTasks, existingTasks]);
+}, [yesterdayTasks, existingTasks, isLoading, canEditReportFields]);
 
     const validateRequiredReportFields = (data: {
     obstacles: string;
@@ -952,7 +960,11 @@ useEffect(() => {
   const handleUpdateExistingTask = async (taskId: number, field: string, value: string | number) => {
   const task = existingTasks.find(t => t.id === taskId);
 
-  if (!task || !canModifyExistingTasks || task.isLocked || task.remainingActions <= 0) {
+  if (
+    !task ||
+    !canModifyExistingTasks ||
+    (!isFinanceUser && (task.isLocked || task.remainingActions <= 0))
+  ) {
     toast({
       title: "Tugas terkunci",
       description: "Tugas ini sudah tidak bisa diedit. Batas edit/hapus 2x sudah habis atau tanggal laporan sudah berganti.",
@@ -980,7 +992,11 @@ useEffect(() => {
   const handleDeleteExistingTask = async (taskId: number) => {
   const task = existingTasks.find(t => t.id === taskId);
 
-  if (!task || !canModifyExistingTasks || task.isLocked || task.remainingActions <= 0) {
+  if (
+    !task ||
+    !canModifyExistingTasks ||
+    (!isFinanceUser && (task.isLocked || task.remainingActions <= 0))
+  ) {
     toast({
       title: "Tugas terkunci",
       description: "Tugas ini sudah tidak bisa dihapus. Batas edit/hapus 2x sudah habis atau tanggal laporan sudah berganti.",
@@ -1271,7 +1287,7 @@ useEffect(() => {
                         variant="outline"
                         size="sm"
                         onClick={handleCopyYesterday}
-                        disabled={yesterdayTasks.length === 0}
+                        disabled={yesterdayTasks.length === 0 || !canAddNewTasks}
                       >
                           <Copy className="w-3.5 h-3.5 mr-1.5" />
                           {sourceReportDate && sourceReportDate !== previousTasksData?.requestedYesterdayDate
@@ -1299,7 +1315,9 @@ useEffect(() => {
                   {displayedExistingTasks.map(task => {
                     const statusInfo = getStatusInfo(task.status);
                     const isExpanded = expandedTasks.has(task.id);
-                    const taskLocked = !canModifyExistingTasks || task.isLocked || task.remainingActions <= 0;
+                    const taskLocked =
+                      !canModifyExistingTasks ||
+                      (!isFinanceUser && (task.isLocked || task.remainingActions <= 0));
                     return (
                           <div key={task.id} className="border border-border rounded-lg overflow-hidden bg-white">                        
                           <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(task.id)}>
@@ -1314,7 +1332,7 @@ useEffect(() => {
                               </span>
                             )}
 
-                            {task.remainingActions <= 0 && (
+                            {!isFinanceUser && task.remainingActions <= 0 && (
                               <span className="text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 bg-slate-100 text-slate-700 border-slate-200">
                                 Terkunci
                               </span>
@@ -1335,7 +1353,9 @@ useEffect(() => {
                               )}
 
                               <span className="text-xs text-muted-foreground">
-                                Sisa edit/hapus: {task.remainingActions}x
+                                {isFinanceUser
+                                  ? "Edit/hapus tidak dibatasi"
+                                  : `Sisa edit/hapus: ${task.remainingActions}x`}
                               </span>
                             </div>
                           <div className="flex items-center gap-2 shrink-0">
@@ -1381,6 +1401,8 @@ useEffect(() => {
                               <div className={`rounded-md border p-2 text-xs ${taskLocked ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
                                 {taskLocked
                                   ? "Tugas terkunci. Batas edit/hapus sudah habis atau tanggal laporan sudah berganti."
+                                  : isFinanceUser
+                                    ? "Tugas Finance tidak dibatasi jumlah edit/hapus."
                                   : `Sisa kesempatan edit/hapus tugas ini: ${task.remainingActions}x.`}
                               </div>
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

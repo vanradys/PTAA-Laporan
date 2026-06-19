@@ -175,7 +175,76 @@ export interface Notification {
   type: string;
   /** @nullable */
   relatedReportId?: number | null;
+  /** @nullable */
+  relatedTodoId?: number | null;
   createdAt: string;
+}
+
+export interface TodoTaskInput {
+  title: string;
+  description?: string;
+  type: string;
+  startDate: string;
+  dueDate: string;
+  priority: string;
+  assigneeIds?: number[];
+  checklist?: string[];
+}
+
+export interface TodoStatusUpdate {
+  status: string;
+}
+
+export interface TodoChecklistUpdate {
+  isCompleted: boolean;
+}
+
+export interface TodoCommentInput {
+  comment: string;
+}
+
+export interface TodoAssignee {
+  id: number;
+  taskId: number;
+  userId: number;
+  userName: string;
+}
+
+export interface TodoChecklistItem {
+  id: number;
+  taskId: number;
+  text: string;
+  isCompleted: boolean;
+}
+
+export interface TodoComment {
+  id: number;
+  taskId: number;
+  /** @nullable */
+  userId?: number | null;
+  userName: string;
+  comment: string;
+  createdAt: string;
+}
+
+export interface TodoTask {
+  id: number;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  type: string;
+  startDate: string;
+  dueDate: string;
+  priority: string;
+  status: string;
+  /** @nullable */
+  createdByUserId?: number | null;
+  createdByName: string;
+  assignees: TodoAssignee[];
+  checklist: TodoChecklistItem[];
+  comments: TodoComment[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type DashboardSummaryPendingAssignedTasksByAssignerItem = {

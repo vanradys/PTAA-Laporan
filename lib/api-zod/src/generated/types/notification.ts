@@ -15,5 +15,7 @@ export interface Notification {
   type: string;
   /** @nullable */
   relatedReportId?: number | null;
+  /** @nullable */
+  relatedTodoId?: number | null;
   createdAt: string;
 }

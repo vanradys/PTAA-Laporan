@@ -531,6 +531,7 @@ export const ListNotificationsResponseItem = zod.object({
   isRead: zod.boolean(),
   type: zod.string(),
   relatedReportId: zod.number().nullish(),
+  relatedTodoId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 export const ListNotificationsResponse = zod.array(
@@ -552,6 +553,7 @@ export const MarkNotificationReadResponse = zod.object({
   isRead: zod.boolean(),
   type: zod.string(),
   relatedReportId: zod.number().nullish(),
+  relatedTodoId: zod.number().nullish(),
   createdAt: zod.string(),
 });
 
@@ -573,6 +575,195 @@ export const DeleteNotificationResponse = zod.object({
 export const MarkAllNotificationsReadResponse = zod.object({
   success: zod.boolean(),
   message: zod.string().optional(),
+});
+
+/**
+ * @summary List accessible to-do tasks
+ */
+export const ListTodoTasksResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  type: zod.string(),
+  startDate: zod.string(),
+  dueDate: zod.string(),
+  priority: zod.string(),
+  status: zod.string(),
+  createdByUserId: zod.number().nullish(),
+  createdByName: zod.string(),
+  assignees: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      userId: zod.number(),
+      userName: zod.string(),
+    }),
+  ),
+  checklist: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      text: zod.string(),
+      isCompleted: zod.boolean(),
+    }),
+  ),
+  comments: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      userId: zod.number().nullish(),
+      userName: zod.string(),
+      comment: zod.string(),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListTodoTasksResponse = zod.array(ListTodoTasksResponseItem);
+
+/**
+ * @summary Create a to-do task
+ */
+export const CreateTodoTaskBody = zod.object({
+  title: zod.string(),
+  description: zod.string().optional(),
+  type: zod.string(),
+  startDate: zod.string(),
+  dueDate: zod.string(),
+  priority: zod.string(),
+  assigneeIds: zod.array(zod.number()).optional(),
+  checklist: zod.array(zod.string()).optional(),
+});
+
+/**
+ * @summary Get to-do task detail
+ */
+export const GetTodoTaskParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetTodoTaskResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  type: zod.string(),
+  startDate: zod.string(),
+  dueDate: zod.string(),
+  priority: zod.string(),
+  status: zod.string(),
+  createdByUserId: zod.number().nullish(),
+  createdByName: zod.string(),
+  assignees: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      userId: zod.number(),
+      userName: zod.string(),
+    }),
+  ),
+  checklist: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      text: zod.string(),
+      isCompleted: zod.boolean(),
+    }),
+  ),
+  comments: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      userId: zod.number().nullish(),
+      userName: zod.string(),
+      comment: zod.string(),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Update to-do task status
+ */
+export const UpdateTodoTaskStatusParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateTodoTaskStatusBody = zod.object({
+  status: zod.string(),
+});
+
+export const UpdateTodoTaskStatusResponse = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  description: zod.string().nullish(),
+  type: zod.string(),
+  startDate: zod.string(),
+  dueDate: zod.string(),
+  priority: zod.string(),
+  status: zod.string(),
+  createdByUserId: zod.number().nullish(),
+  createdByName: zod.string(),
+  assignees: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      userId: zod.number(),
+      userName: zod.string(),
+    }),
+  ),
+  checklist: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      text: zod.string(),
+      isCompleted: zod.boolean(),
+    }),
+  ),
+  comments: zod.array(
+    zod.object({
+      id: zod.number(),
+      taskId: zod.number(),
+      userId: zod.number().nullish(),
+      userName: zod.string(),
+      comment: zod.string(),
+      createdAt: zod.string(),
+    }),
+  ),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Update to-do checklist item
+ */
+export const UpdateTodoChecklistParams = zod.object({
+  taskId: zod.coerce.number(),
+  itemId: zod.coerce.number(),
+});
+
+export const UpdateTodoChecklistBody = zod.object({
+  isCompleted: zod.boolean(),
+});
+
+export const UpdateTodoChecklistResponse = zod.object({
+  id: zod.number(),
+  taskId: zod.number(),
+  text: zod.string(),
+  isCompleted: zod.boolean(),
+});
+
+/**
+ * @summary Add a comment to a to-do task
+ */
+export const CreateTodoCommentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateTodoCommentBody = zod.object({
+  comment: zod.string(),
 });
 
 /**

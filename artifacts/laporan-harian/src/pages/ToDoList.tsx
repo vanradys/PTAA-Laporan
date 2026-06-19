@@ -1,7 +1,10 @@
 import { type ElementType, type FormEvent, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { useListEmployees } from "@workspace/api-client-react";
+import { useLocation, useSearch } from "wouter";
+import {
+  getListNotificationsQueryKey,
+  useListEmployees,
+} from "@workspace/api-client-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Columns3,
+  CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Columns3,
   Grid2X2, ListChecks, MessageSquare, Plus, Send, UsersRound, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,13 +25,20 @@ type TaskType = "personal" | "team";
 type TaskStatus = "Belum Mulai" | "In Progress" | "Selesai";
 type TaskPriority = "Rendah" | "Sedang" | "Urgent";
 type ViewMode = "today" | "calendar" | "cards";
-type Employee = { id: number; name: string; email: string; departmentName?: string | null };
+type FilterMode = "date" | "month" | "year";
+type Employee = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  departmentName?: string | null;
+};
 type ChecklistItem = { id: number; text: string; isCompleted: boolean };
 type TaskComment = { id: number; userName: string; comment: string; createdAt: string };
 type Task = {
   id: number; title: string; description: string | null; type: TaskType;
   startDate: string; dueDate: string; priority: TaskPriority; status: TaskStatus;
-  createdByUserId: number; createdByName: string;
+  createdByUserId: number | null; createdByName: string;
   assignees: Array<{ id: number; userId: number; userName: string }>;
   checklist: ChecklistItem[]; comments: TaskComment[];
 };
@@ -64,11 +74,22 @@ function dateValue(date: Date) {
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(parseDate(value));
 }
+function formatLongDate(value: string) {
+  return new Intl.DateTimeFormat("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(parseDate(value));
+}
 function initials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 function inRange(date: string, task: Task) {
   return date >= task.startDate && date <= task.dueDate;
+}
+function taskOverlapsPeriod(task: Task, start: string, end: string) {
+  return task.startDate <= end && task.dueDate >= start;
 }
 
 function ViewButton({ active, icon: Icon, label, onClick }: {
@@ -107,11 +128,42 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (task: Task) => void }
   );
 }
 
+function SummaryCard({
+  title,
+  value,
+  icon: Icon,
+  description,
+}: {
+  title: string;
+  value: number;
+  icon: ElementType;
+  description: string;
+}) {
+  return (
+    <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-500">{title}</p>
+            <p className="mt-2 text-3xl font-black text-slate-950">{value}</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">{description}</p>
+          </div>
+          <div className="rounded-xl bg-blue-50 p-3 text-blue-700">
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ToDoList() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const search = useSearch();
   const [viewMode, setViewMode] = useState<ViewMode>("today");
+  const [filterMode, setFilterMode] = useState<FilterMode>("date");
   const [selectedDate, setSelectedDate] = useState(today);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -119,30 +171,60 @@ export default function ToDoList() {
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const { data: tasks = [], isLoading } = useQuery({
+  const { data: tasks = [], isLoading, isError, error } = useQuery({
     queryKey: ["todo-tasks"],
     queryFn: () => apiRequest<Task[]>("/api/todo-tasks"),
   });
   const { data: employeesData } = useListEmployees();
-  const employees = (Array.isArray(employeesData) ? employeesData : []) as Employee[];
+  const employees = ((Array.isArray(employeesData) ? employeesData : []) as Employee[])
+    .filter((employee) =>
+      !["admin", "direktur", "director", "dir", "hr", "monitoring_dummy"]
+        .includes(String(employee.role ?? "").toLowerCase()),
+    );
 
   const openTask = async (task: Task) => {
-    const detail = await apiRequest<Task>(`/api/todo-tasks/${task.id}`);
-    setSelectedTask(detail);
-    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    try {
+      const detail = await apiRequest<Task>(`/api/todo-tasks/${task.id}`);
+      setSelectedTask(detail);
+      queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+    } catch (error) {
+      toast({ title: "Gagal membuka tugas", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
   };
 
   useEffect(() => {
-    const taskId = Number(new URLSearchParams(window.location.search).get("task"));
+    const taskId = Number(new URLSearchParams(search).get("task"));
     if (!taskId || !tasks.length || selectedTask) return;
     const task = tasks.find((item) => item.id === taskId);
     if (task) void openTask(task);
-  }, [tasks]);
+  }, [tasks, search, selectedTask]);
 
-  const filteredTasks = tasks.filter((task) => inRange(selectedDate, task));
-  const personal = filteredTasks.filter((task) => task.type === "personal" && task.status !== "Selesai");
-  const team = filteredTasks.filter((task) => task.type === "team" && task.status !== "Selesai");
+  const selectedYear = selectedDate.slice(0, 4);
+  const selectedMonth = selectedDate.slice(0, 7);
+  const periodStart =
+    filterMode === "year"
+      ? `${selectedYear}-01-01`
+      : filterMode === "month"
+        ? `${selectedMonth}-01`
+        : selectedDate;
+  const periodEnd =
+    filterMode === "year"
+      ? `${selectedYear}-12-31`
+      : filterMode === "month"
+        ? new Date(
+            Date.UTC(Number(selectedYear), Number(selectedDate.slice(5, 7)), 0),
+          ).toISOString().slice(0, 10)
+        : selectedDate;
+  const filteredTasks = tasks.filter((task) =>
+    filterMode === "date"
+      ? inRange(selectedDate, task)
+      : taskOverlapsPeriod(task, periodStart, periodEnd),
+  );
+  const personal = filteredTasks.filter((task) => task.type === "personal");
+  const team = filteredTasks.filter((task) => task.type === "team");
   const completed = filteredTasks.filter((task) => task.status === "Selesai");
+  const openPersonal = personal.filter((task) => task.status !== "Selesai");
+  const openTeam = team.filter((task) => task.status !== "Selesai");
 
   const weekDays = useMemo(() => {
     const anchor = parseDate(selectedDate);
@@ -154,9 +236,23 @@ export default function ToDoList() {
   }, [selectedDate]);
   const selected = parseDate(selectedDate);
   const years = Array.from({ length: 7 }, (_, index) => selected.getFullYear() - 3 + index);
+  const weekLabel = new Intl.DateTimeFormat("id-ID", {
+    month: "long",
+    year: "numeric",
+  }).format(weekDays[0]);
+  const periodLabel =
+    filterMode === "year"
+      ? selectedYear
+      : filterMode === "month"
+        ? `${months[selected.getMonth()]} ${selected.getFullYear()}`
+        : formatLongDate(selectedDate);
 
-  const moveDate = (days: number) => {
-    const date = parseDate(selectedDate); date.setDate(date.getDate() + days); setSelectedDate(dateValue(date));
+  const movePeriod = (direction: number) => {
+    const date = parseDate(selectedDate);
+    if (filterMode === "year") date.setFullYear(date.getFullYear() + direction);
+    else if (filterMode === "month") date.setMonth(date.getMonth() + direction, 1);
+    else date.setDate(date.getDate() + direction);
+    setSelectedDate(dateValue(date));
   };
   const changeMonth = (month: number) => {
     const date = parseDate(selectedDate); date.setMonth(month, 1); setSelectedDate(dateValue(date));
@@ -167,6 +263,10 @@ export default function ToDoList() {
 
   const submitTask = async (event: FormEvent) => {
     event.preventDefault();
+    if (form.type === "team" && form.assigneeIds.length === 0) {
+      toast({ title: "Pilih karyawan", description: "Tugas tim wajib memiliki minimal 1 karyawan.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       await apiRequest("/api/todo-tasks", {
@@ -176,7 +276,7 @@ export default function ToDoList() {
       setIsFormOpen(false); setForm(emptyForm);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["todo-tasks"] }),
-        queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+        queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() }),
       ]);
       toast({ title: "To Do List disimpan" });
     } catch (error) {
@@ -186,27 +286,39 @@ export default function ToDoList() {
 
   const updateStatus = async (status: TaskStatus) => {
     if (!selectedTask) return;
-    const updated = await apiRequest<Task>(`/api/todo-tasks/${selectedTask.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
-    });
-    setSelectedTask(updated);
-    queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+    try {
+      const updated = await apiRequest<Task>(`/api/todo-tasks/${selectedTask.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+      });
+      setSelectedTask(updated);
+      queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+    } catch (error) {
+      toast({ title: "Gagal mengubah status", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
   };
   const toggleChecklist = async (item: ChecklistItem) => {
     if (!selectedTask) return;
-    await apiRequest(`/api/todo-tasks/${selectedTask.id}/checklist/${item.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isCompleted: !item.isCompleted }),
-    });
-    await openTask(selectedTask);
-    queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+    try {
+      await apiRequest(`/api/todo-tasks/${selectedTask.id}/checklist/${item.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isCompleted: !item.isCompleted }),
+      });
+      await openTask(selectedTask);
+      queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+    } catch (error) {
+      toast({ title: "Gagal memperbarui checklist", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
   };
   const sendComment = async () => {
     if (!selectedTask || !comment.trim()) return;
-    await apiRequest(`/api/todo-tasks/${selectedTask.id}/comments`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comment }),
-    });
-    setComment(""); await openTask(selectedTask);
+    try {
+      await apiRequest(`/api/todo-tasks/${selectedTask.id}/comments`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comment }),
+      });
+      setComment(""); await openTask(selectedTask);
+    } catch (error) {
+      toast({ title: "Gagal menambahkan komentar", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
   };
 
   return (
@@ -216,22 +328,36 @@ export default function ToDoList() {
           <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-6 py-6 text-white">
             <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
             <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div><p className="text-sm text-blue-100">Manajemen tugas internal</p><h1 className="text-2xl font-black">To Do List</h1></div>
+              <div>
+                <p className="text-sm text-blue-100">Manajemen tugas internal</p>
+                <h1 className="text-2xl font-black">To Do List</h1>
+                <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-blue-100">
+                  <CalendarDays className="h-4 w-4" />
+                  {formatLongDate(selectedDate)}
+                </p>
+              </div>
               <Button onClick={() => setIsFormOpen(true)} className="bg-white font-bold text-[#06258d] hover:bg-blue-50"><Plus className="mr-2 h-4 w-4" />Tambah To Do List</Button>
             </div>
           </section>
 
           <div className="flex flex-col gap-3 rounded-xl border bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
-              <ViewButton active={viewMode === "today"} icon={Grid2X2} label="Daftar" onClick={() => setViewMode("today")} />
+              <ViewButton active={viewMode === "today"} icon={Grid2X2} label="Hari Ini" onClick={() => setViewMode("today")} />
               <ViewButton active={viewMode === "calendar"} icon={CalendarDays} label="Kalender" onClick={() => setViewMode("calendar")} />
               <ViewButton active={viewMode === "cards"} icon={Columns3} label="Kartu" onClick={() => setViewMode("cards")} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="icon" onClick={() => moveDate(-1)}><ChevronLeft className="h-4 w-4" /></Button>
-              <Button variant="outline" onClick={() => setSelectedDate(today)}>Hari Ini</Button>
-              <Button variant="outline" size="icon" onClick={() => moveDate(1)}><ChevronRight className="h-4 w-4" /></Button>
-              <Input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="w-40" />
+              <select value={filterMode} onChange={(event) => setFilterMode(event.target.value as FilterMode)} className="h-10 rounded-md border bg-white px-3 text-sm">
+                <option value="date">Filter Tanggal</option>
+                <option value="month">Filter Bulan</option>
+                <option value="year">Filter Tahun</option>
+              </select>
+              <Button variant="outline" size="icon" onClick={() => movePeriod(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" onClick={() => { setSelectedDate(today); setFilterMode("date"); }}>Hari Ini</Button>
+              <Button variant="outline" size="icon" onClick={() => movePeriod(1)}><ChevronRight className="h-4 w-4" /></Button>
+              {filterMode === "date" && (
+                <Input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="w-40" />
+              )}
               <select value={selected.getMonth()} onChange={(event) => changeMonth(Number(event.target.value))} className="h-10 rounded-md border bg-white px-3 text-sm">
                 {months.map((month, index) => <option key={month} value={index}>{month}</option>)}
               </select>
@@ -240,15 +366,46 @@ export default function ToDoList() {
               </select>
             </div>
           </div>
+          <p className="text-xs font-semibold text-slate-500">
+            Tugas pribadi hanya tampil untuk akun masing-masing. Tugas tim tampil untuk pembuat dan karyawan yang di-tag.
+          </p>
+          <p className="text-xs font-bold text-[#06258d]">Filter aktif: {periodLabel}</p>
 
-          {isLoading ? <p className="py-12 text-center text-slate-500">Memuat tugas...</p> : viewMode === "calendar" ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SummaryCard
+              title={filterMode === "date" && selectedDate === today ? "Tugas Pribadi Hari Ini" : "Tugas Pribadi"}
+              value={personal.length}
+              icon={ListChecks}
+              description={`${filterMode === "date" ? "Pada tanggal" : "Dalam periode"} yang dipilih`}
+            />
+            <SummaryCard
+              title={filterMode === "date" && selectedDate === today ? "Tugas Tim Hari Ini" : "Tugas Tim"}
+              value={team.length}
+              icon={UsersRound}
+              description={`${filterMode === "date" ? "Pada tanggal" : "Dalam periode"} yang dipilih`}
+            />
+          </div>
+
+          {isLoading ? <p className="py-12 text-center text-slate-500">Memuat tugas...</p> : isError ? (
+            <p className="rounded-xl border border-red-200 bg-red-50 p-6 text-center text-sm font-semibold text-red-700">
+              {error instanceof Error ? error.message : "Gagal memuat To Do List."}
+            </p>
+          ) : viewMode === "calendar" ? (
+            <section className="space-y-3">
+              <div>
+                <h2 className="text-xl font-black text-slate-950">Kalender Tugas</h2>
+                <p className="text-sm font-semibold text-slate-500">
+                  Tampilan mingguan untuk melihat jadwal tugas pribadi dan tim.
+                </p>
+                <p className="mt-1 text-sm font-black text-[#06258d]">{weekLabel}</p>
+              </div>
             <div className="overflow-x-auto rounded-xl border bg-white">
               <div className="grid min-w-[900px] grid-cols-7">
                 {weekDays.map((date) => {
                   const value = dateValue(date);
                   const dayTasks = tasks.filter((task) => inRange(value, task));
                   return <div key={value} className="min-h-[420px] border-r last:border-r-0">
-                    <button type="button" onClick={() => setSelectedDate(value)} className={cn("w-full border-b p-3 text-left", value === selectedDate && "bg-blue-50")}>
+                    <button type="button" onClick={() => { setSelectedDate(value); setFilterMode("date"); }} className={cn("w-full border-b p-3 text-left", value === selectedDate && "bg-blue-50")}>
                       <p className="text-xs font-bold text-slate-500">{new Intl.DateTimeFormat("id-ID", { weekday: "short" }).format(date)}</p>
                       <p className="text-lg font-black">{date.getDate()}</p>
                     </button>
@@ -257,14 +414,23 @@ export default function ToDoList() {
                 })}
               </div>
             </div>
+            </section>
           ) : viewMode === "cards" ? (
+            <section className="space-y-3">
+              <div>
+                <h2 className="text-xl font-black text-slate-950">Papan Kartu</h2>
+                <p className="text-sm font-semibold text-slate-500">
+                  Kelompokkan tugas berdasarkan jenis dan status penyelesaian.
+                </p>
+              </div>
             <div className="grid gap-5 xl:grid-cols-3">
-              {([["Tugas Pribadi", personal], ["Tugas Tim", team], ["Selesai", completed]] as const).map(([label, list]) => (
+              {([["Tugas Pribadi", openPersonal], ["Tugas Tim", openTeam], ["Selesai", completed]] as const).map(([label, list]) => (
                 <Card key={label} className="min-h-[480px] bg-slate-100/70"><CardHeader><CardTitle className="flex justify-between text-base">{label}<Badge>{list.length}</Badge></CardTitle></CardHeader>
                   <CardContent className="space-y-3">{list.length ? list.map((task) => <TaskCard key={task.id} task={task} onOpen={openTask} />) : <p className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-slate-400">Kosong</p>}</CardContent>
                 </Card>
               ))}
             </div>
+            </section>
           ) : (
             <div className="grid gap-5 xl:grid-cols-2">
               {([["Tugas Pribadi", personal, ListChecks], ["Tugas Tim", team, UsersRound]] as const).map(([label, list, Icon]) => (
@@ -279,15 +445,15 @@ export default function ToDoList() {
 
       {isFormOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4">
         <form onSubmit={submitTask} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b p-5"><div><h2 className="text-lg font-black">Tambah To Do List</h2><p className="text-sm text-slate-500">Data akan tersimpan di database.</p></div><Button type="button" variant="ghost" size="icon" onClick={() => setIsFormOpen(false)}><X /></Button></div>
+          <div className="flex items-center justify-between border-b p-5"><div><h2 className="text-lg font-black">Tambah To Do List</h2><p className="text-sm text-slate-500">Lengkapi detail tugas yang akan dibuat.</p></div><Button type="button" variant="ghost" size="icon" onClick={() => setIsFormOpen(false)}><X /></Button></div>
           <div className="space-y-4 p-5">
             <div><Label>Nama Tugas</Label><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></div>
             <div><Label>Deskripsi</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div><Label>Jenis</Label><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TaskType, assigneeIds: [] })} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi</option><option value="team">Tugas Tim</option></select></div>
-              <div><Label>Priority</Label><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as TaskPriority })} className="h-10 w-full rounded-md border px-3"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select></div>
+              <div><Label>Jenis Tugas</Label><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TaskType, assigneeIds: [] })} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi</option><option value="team">Tugas Tim</option></select></div>
+              <div><Label>Prioritas</Label><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as TaskPriority })} className="h-10 w-full rounded-md border px-3"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select></div>
               <div><Label>Tanggal Mulai</Label><Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, dueDate: event.target.value > form.dueDate ? event.target.value : form.dueDate })} /></div>
-              <div><Label>Due Date</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></div>
+              <div><Label>Tanggal Selesai</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></div>
             </div>
             <div><div className="flex items-center justify-between"><Label>Sub-task / Checklist</Label><Button type="button" variant="outline" size="sm" onClick={() => setForm({ ...form, checklist: [...form.checklist, ""] })}><Plus className="mr-1 h-3 w-3" />Tambah</Button></div>
               <div className="mt-2 space-y-2">{form.checklist.map((item, index) => <div key={index} className="flex gap-2"><Input value={item} onChange={(event) => setForm({ ...form, checklist: form.checklist.map((value, itemIndex) => itemIndex === index ? event.target.value : value) })} placeholder={`Sub-task ${index + 1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => setForm({ ...form, checklist: form.checklist.filter((_, itemIndex) => itemIndex !== index) })}><X className="h-4 w-4" /></Button></div>)}</div>
@@ -310,9 +476,9 @@ export default function ToDoList() {
           </div>
           <aside className="border-t bg-slate-50 p-6 lg:border-l lg:border-t-0">
             <div className="space-y-5">
-              <div><p className="text-xs font-bold text-slate-400">Assignee</p><div className="mt-2 space-y-2">{selectedTask.assignees.length ? selectedTask.assignees.map((item) => <div key={item.userId} className="flex items-center gap-2 text-sm font-bold"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs">{initials(item.userName)}</span>{item.userName}</div>) : <p className="text-sm text-slate-500">Pribadi</p>}</div></div>
-              <div><p className="text-xs font-bold text-slate-400">Due date</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4" />{formatDate(selectedTask.dueDate)}</p></div>
-              <div><p className="text-xs font-bold text-slate-400">Priority</p><Badge className={cn("mt-1 border", priorityStyles[selectedTask.priority])}>{selectedTask.priority}</Badge></div>
+              <div><p className="text-xs font-bold text-slate-400">Karyawan Ditugaskan</p><div className="mt-2 space-y-2">{selectedTask.assignees.length ? selectedTask.assignees.map((item) => <div key={item.userId} className="flex items-center gap-2 text-sm font-bold"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs">{initials(item.userName)}</span>{item.userName}</div>) : <p className="text-sm text-slate-500">Pribadi</p>}</div></div>
+              <div><p className="text-xs font-bold text-slate-400">Tanggal Selesai</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4" />{formatDate(selectedTask.dueDate)}</p></div>
+              <div><p className="text-xs font-bold text-slate-400">Prioritas</p><Badge className={cn("mt-1 border", priorityStyles[selectedTask.priority])}>{selectedTask.priority}</Badge></div>
               <div><Label>Status tugas</Label><select value={selectedTask.status} onChange={(event) => updateStatus(event.target.value as TaskStatus)} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option>Belum Mulai</option><option>In Progress</option><option>Selesai</option></select></div>
               <div><p className="text-xs font-bold text-slate-400">Dibuat oleh</p><p className="mt-1 text-sm font-bold">{selectedTask.createdByName}</p></div>
             </div>

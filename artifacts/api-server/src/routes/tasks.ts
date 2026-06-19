@@ -63,6 +63,20 @@ function isTaskLockedByCount(editCount: number): boolean {
   return getRemainingActions(editCount) <= 0;
 }
 
+function canBypassTaskActionLimit(user?: {
+  role?: string | null;
+  departmentCode?: string | null;
+  departmentName?: string | null;
+}): boolean {
+  const role = String(user?.role ?? "").toLowerCase();
+  if (role === "admin") return true;
+
+  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  if (["AAF", "FIN"].includes(departmentCode)) return true;
+
+  return String(user?.departmentName ?? "").toLowerCase().includes("finance");
+}
+
 function isTaskDelay(deadline: string | null, status: string): boolean {
   if (!deadline) return false;
   if (["selesai", "delivered"].includes(status)) return false;
@@ -219,7 +233,16 @@ function getAddTaskError(report: typeof dailyReportsTable.$inferSelect): string 
 function getModifyTaskError(
   report: typeof dailyReportsTable.$inferSelect,
   task: typeof dailyTasksTable.$inferSelect,
+  user?: {
+    role?: string | null;
+    departmentCode?: string | null;
+    departmentName?: string | null;
+  },
 ): string | null {
+  if (String(user?.role ?? "").toLowerCase() === "admin") {
+    return null;
+  }
+
   if (report.date !== getTodayString() && task.reviewStatus !== "revisi") {
     return "Tugas dari tanggal sebelumnya sudah terkunci dan tidak bisa diedit atau dihapus.";
   }
@@ -228,7 +251,11 @@ function getModifyTaskError(
     return "Laporan sudah direview, tugas tidak bisa diedit atau dihapus.";
   }
 
-  if (task.reviewStatus !== "revisi" && isTaskLockedByCount(task.editCount ?? 0)) {
+  if (
+    task.reviewStatus !== "revisi" &&
+    !canBypassTaskActionLimit(user) &&
+    isTaskLockedByCount(task.editCount ?? 0)
+  ) {
     return "Batas edit/hapus tugas ini sudah mencapai 2x. Tugas sudah terkunci.";
   }
 
@@ -531,7 +558,7 @@ router.patch("/tasks/:taskId", async (req, res) => {
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, task[0].reportId)).limit(1);
   if (!report[0] || (report[0].userId !== user.id && user.role !== "admin")) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
-  const modifyTaskError = user.role === "admin" ? null : getModifyTaskError(report[0], task[0]);
+  const modifyTaskError = getModifyTaskError(report[0], task[0], user);
   if (modifyTaskError) {
     res.status(400).json({ error: modifyTaskError });
     return;
@@ -746,7 +773,7 @@ router.delete("/tasks/:taskId", async (req, res) => {
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, task[0].reportId)).limit(1);
   if (!report[0] || (report[0].userId !== user.id && user.role !== "admin")) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
 
-  const modifyTaskError = user.role === "admin" ? null : getModifyTaskError(report[0], task[0]);
+  const modifyTaskError = getModifyTaskError(report[0], task[0], user);
   if (modifyTaskError) {
     res.status(400).json({ error: modifyTaskError });
     return;
