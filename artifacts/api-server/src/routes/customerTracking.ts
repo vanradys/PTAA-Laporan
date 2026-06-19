@@ -72,12 +72,12 @@ function getInternalCommentDisplayName(user: {
 }) {
   const role = String(user.role ?? "").toLowerCase();
   if (role === "admin_marketing") return user.name ?? "Admin Marketing 2";
+  if (role === "marketing_specialist") return user.name ?? "Marketing Specialist";
   if (["direktur", "director", "dir"].includes(role)) return "Director";
   if (role === "admin") return "Admin";
 
   const code = String(user.departmentCode ?? "").toUpperCase();
   if (code === "MKT") return user.name ?? "Admin Marketing 1";
-  if (code === "MKS") return user.name ?? "Marketing Specialist";
   if (code === "ENG") return "ENG";
   if (code === "PUR") return "PUR";
   if (code === "GA") return "GA";

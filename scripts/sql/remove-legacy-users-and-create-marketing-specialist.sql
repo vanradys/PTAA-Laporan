@@ -137,7 +137,7 @@ DELETE FROM users
 WHERE id IN (SELECT id FROM users_to_remove);
 
 INSERT INTO departments (name, code)
-VALUES ('Marketing Specialist', 'MKS')
+VALUES ('Marketing', 'MKT')
 ON CONFLICT (code) DO UPDATE SET
   name = EXCLUDED.name;
 
@@ -152,6 +152,6 @@ SET
 FROM departments
 WHERE
   lower(users.email) = 'mkt.specialist@adiyasa.com'
-  AND departments.code = 'MKS';
+  AND departments.code = 'MKT';
 
 COMMIT;

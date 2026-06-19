@@ -56,13 +56,13 @@ function formatAssignerRole(user: {
 }) {
   const role = String(user.role ?? "").toLowerCase();
   if (role === "admin_marketing") return "Admin Marketing 2";
+  if (role === "marketing_specialist") return "Marketing Specialist";
   if (["direktur", "director", "dir"].includes(role)) return "Direktur";
   if (role === "admin") return "Admin";
   if (role === "hr") return "HR";
 
   const code = String(user.departmentCode ?? "").toUpperCase();
   if (code === "MKT") return "Admin Marketing 1";
-  if (code === "MKS") return "Marketing Specialist";
   if (code === "ENG") return "Engineering";
   if (code === "PUR") return "Purchasing";
   if (code === "GA") return "General Affairs";

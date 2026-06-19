@@ -152,7 +152,7 @@ router.patch("/users/:id", async (req, res) => {
   const requiredDepartmentCodeByRole: Record<string, string> = {
     direktur: "DIR",
     admin_marketing: "MKT",
-    marketing_specialist: "MKS",
+    marketing_specialist: "MKT",
     monitoring_dummy: "ADM",
   };
   const requiredDepartmentCode = requiredDepartmentCodeByRole[normalizedRole];

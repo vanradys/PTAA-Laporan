@@ -1,10 +1,10 @@
 -- Jalankan di PostgreSQL/Railway SQL editor setelah patch code.
 -- Tujuan:
--- 1) Menambahkan user Marketing Specialist dengan role/departemen khusus.
+-- 1) Menambahkan user Marketing Specialist dengan role khusus di departemen Marketing.
 -- 2) Menonaktifkan akun lama/demo yang tidak boleh muncul di dashboard/monitoring/reminder.
 
 INSERT INTO departments (name, code)
-VALUES ('Marketing Specialist', 'MKS')
+VALUES ('Marketing', 'MKT')
 ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO users (name, email, password, role, department_id, is_active, created_at, updated_at)
@@ -18,7 +18,7 @@ SELECT
   NOW(),
   NOW()
 FROM departments
-WHERE departments.code = 'MKS'
+WHERE departments.code = 'MKT'
 ON CONFLICT (email) DO UPDATE SET
   name = EXCLUDED.name,
   password = EXCLUDED.password,

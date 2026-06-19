@@ -8,10 +8,7 @@ export function getRoleDisplayName(
   const normalizedDepartmentName = String(departmentName ?? "").toLowerCase();
 
   if (normalizedRole === "admin_marketing") return "Admin Marketing 2";
-  if (
-    normalizedRole === "marketing_specialist" ||
-    normalizedDepartmentCode === "MKS"
-  )
+  if (normalizedRole === "marketing_specialist")
     return "Marketing Specialist";
   if (
     normalizedRole === "marketing" ||
