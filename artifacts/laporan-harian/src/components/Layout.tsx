@@ -29,6 +29,7 @@ const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/laporan-saya", label: "Laporan Harian", icon: FileText },
+  { href: "/to-do-list", label: "To Do List", icon: ClipboardList },
   { href: "/monitoring", label: "Monitoring Laporan", icon: BarChart2 },
   { href: "/jadwal-project", label: "Jadwal Project", icon: CalendarClock },
   { href: "/notifikasi", label: "Notifikasi", icon: Bell },
@@ -69,7 +70,7 @@ export default function Layout({ children }: LayoutProps) {
   const visibleNavItems =
     user?.role === "admin"
       ? [
-          ...navItems.slice(0, 4),
+          ...navItems.slice(0, 5),
           {
             href: "/monitoring-keseluruhan",
             label: "Monitoring Keseluruhan",
@@ -80,7 +81,7 @@ export default function Layout({ children }: LayoutProps) {
             label: "User Management",
             icon: UsersRound,
           },
-          ...navItems.slice(4),
+          ...navItems.slice(5),
         ]
       : navItems;
 
