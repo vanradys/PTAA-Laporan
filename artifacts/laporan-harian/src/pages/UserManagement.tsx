@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { getRoleDisplayName } from "@/lib/roleDisplay";
 import { getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 
 type UserRow = {
@@ -24,11 +23,19 @@ type UserRow = {
 };
 
 type Department = { id: number; name: string; code: string };
+type NameChangeRequest = {
+  id: number;
+  userId: number;
+  currentName: string;
+  requestedName: string;
+  status: string;
+  createdAt: string;
+};
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
   { value: "direktur", label: "Direktur" },
-  { value: "karyawan", label: "Karyawan / Admin Marketing 1 sesuai departemen" },
+  { value: "karyawan", label: "Karyawan" },
   { value: "admin_marketing", label: "Admin Marketing 2" },
   { value: "marketing_specialist", label: "Marketing Specialist" },
   { value: "monitoring_dummy", label: "Monitoring Laporan" },
@@ -49,6 +56,24 @@ export default function UserManagement() {
     queryFn: () => apiRequest<Department[]>("/api/user-management/departments"),
     enabled: user?.role === "admin",
   });
+  const { data: nameRequests } = useQuery({
+    queryKey: ["name-change-requests"],
+    queryFn: () => apiRequest<NameChangeRequest[]>("/api/name-change-requests"),
+    enabled: user?.role === "admin",
+  });
+
+  const reviewNameRequest = async (id: number, action: "approve" | "reject") => {
+    await apiRequest(`/api/name-change-requests/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["name-change-requests"] }),
+      queryClient.invalidateQueries({ queryKey: ["user-management"] }),
+    ]);
+    toast({ title: action === "approve" ? "Nama disetujui" : "Pengajuan ditolak" });
+  };
 
   const updateUser = async (id: number, changes: Partial<UserRow>) => {
     if (updatingUserId !== null) return false;
@@ -91,6 +116,28 @@ export default function UserManagement() {
           <h1 className="text-xl font-bold">User Management</h1>
           <p className="text-sm text-muted-foreground">Kelola nama, role, departemen, dan status akun.</p>
         </div>
+        {(nameRequests ?? []).some((item) => item.status === "pending") && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Pengajuan Perubahan Nama</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(nameRequests ?? []).filter((item) => item.status === "pending").map((item) => (
+                <div key={item.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
+                  <div className="flex-1 text-sm">
+                    <span className="font-semibold">{item.currentName}</span>
+                    <span className="mx-2 text-muted-foreground">→</span>
+                    <span className="font-semibold">{item.requestedName}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => reviewNameRequest(item.id, "approve")}>Setujui</Button>
+                    <Button size="sm" variant="outline" onClick={() => reviewNameRequest(item.id, "reject")}>Tolak</Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" />Daftar User</CardTitle>
@@ -138,9 +185,7 @@ export default function UserManagement() {
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>{ROLE_OPTIONS.map((role) => (
                               <SelectItem key={role.value} value={role.value}>
-                                {role.value === "karyawan" && item.departmentCode === "MKT"
-                                  ? getRoleDisplayName(role.value, item.departmentCode, item.departmentName)
-                                  : role.label}
+                                {role.label}
                               </SelectItem>
                             ))}</SelectContent>
                           </Select>

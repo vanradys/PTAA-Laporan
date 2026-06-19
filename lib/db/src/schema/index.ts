@@ -9,6 +9,9 @@ export * from "./projects_po";
 export * from "./po_change_logs";
 export * from "./customer_tracking_comments";
 export * from "./po_internal_comments";
+export * from "./po_notes";
+export * from "./name_change_requests";
+export * from "./company_holidays";
 export * from "./sessions";
 
 export * from "./device_tokens";

@@ -535,6 +535,15 @@ function isDateOnly(value: string) {
   );
 }
 
+interface PoNote {
+  id: number;
+  poId: number;
+  userName: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 function clampProgress(progress: number) {
   return Math.min(100, Math.max(0, Number.isFinite(progress) ? progress : 0));
 }
@@ -587,6 +596,12 @@ export default function JadwalProject() {
     departmentName.includes("general affairs");
   const canEditPoData = canManage || role === "monitoring_dummy";
   const canClosePo = canManage || role === "monitoring_dummy";
+  const canExportPo =
+    ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||
+    email === "marketing@adiyasa.com" ||
+    email === "finance@adiyasa.com" ||
+    ["AAF", "FIN"].includes(departmentCode) ||
+    departmentName.includes("finance");
   const canUpdateProjectProgress =
     canEditPoData ||
     ["PUR", "ENG"].includes(departmentCode) ||
@@ -753,6 +768,11 @@ export default function JadwalProject() {
 
   const { data: departments } = useListDepartments();
   const { data: employees } = useListEmployees();
+  const { data: formPoNotes, refetch: refetchFormPoNotes } = useQuery({
+    queryKey: ["po-notes", editingId],
+    queryFn: () => apiRequest<PoNote[]>(`/api/po/${editingId}/notes`),
+    enabled: Boolean(editingId && showForm),
+  });
   const createPo = useCreatePo();
   const updatePo = useUpdatePo();
   const closePo = useClosePo();
@@ -858,16 +878,25 @@ export default function JadwalProject() {
     name: string;
     code?: string | null;
   }[];
-  const picDepartments = depts.filter((department) => {
-    const name = department.name.toLowerCase();
-    const code = String(department.code ?? "").toUpperCase();
-    return ["MKT", "ENG"].includes(code) || name.includes("marketing") || name.includes("engineering");
-  });
   const emps = (Array.isArray(employees) ? employees : []) as {
     id: number;
     name: string;
+    email?: string;
     departmentId?: number | null;
   }[];
+  const picEmployees = emps.filter((employee) =>
+    ["marketing@adiyasa.com", "engineering1@adiyasa.com", "engineering2@adiyasa.com"]
+      .includes(String(employee.email ?? "").toLowerCase()),
+  );
+  const getPicEmployeeLabel = (employee: typeof picEmployees[number]) => {
+    const employeeEmail = String(employee.email ?? "").toLowerCase();
+    if (employeeEmail === "marketing@adiyasa.com") return "Admin Marketing 1";
+    if (employeeEmail === "engineering1@adiyasa.com") return "Engineering 1";
+    if (employeeEmail === "engineering2@adiyasa.com") return "Engineering 2";
+    return employee.name;
+  };
+  const normalizeCustomerName = (value: string) =>
+    value.trim().replace(/^PT\s*\.\s*/i, "PT ");
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getListPoQueryKey(poParams) });
@@ -923,7 +952,7 @@ export default function JadwalProject() {
       trackingTimeline: Array.isArray(po.trackingTimeline)
         ? po.trackingTimeline
         : [],
-      catatan: po.catatan ?? "",
+      catatan: "",
     });
     setShowForm(true);
   };
@@ -1079,7 +1108,7 @@ export default function JadwalProject() {
       !form.customer.trim() ||
       !form.tanggalPoMasuk ||
       !form.deadline ||
-      !form.departmentId
+      !form.picUserId
     )) {
       toast({
         title: "Validasi Gagal",
@@ -1126,7 +1155,7 @@ export default function JadwalProject() {
       const payload = canEditPoData ? {
         noPo: form.noPo,
         namaProject: form.namaProject,
-        customer: form.customer,
+        customer: normalizeCustomerName(form.customer),
         qty: form.qty,
         ...(canViewPoAmount
           ? { poAmount: form.poAmount ? Number(form.poAmount) : null }
@@ -1137,9 +1166,6 @@ export default function JadwalProject() {
         deadline: normalizedDeadline,
         picUserId: form.picUserId ? parseInt(form.picUserId) : null,
         picProject: form.picProject,
-        departmentId: form.departmentId
-          ? parseInt(form.departmentId)
-          : undefined,
         status: form.status,
         hasPainting: form.hasPainting,
         trackingStages: form.trackingStages,
@@ -1149,7 +1175,7 @@ export default function JadwalProject() {
             description: item.description.trim(),
           }))
           .filter((item) => item.date || item.description),
-        catatan: form.catatan,
+        ...(!editingId && form.catatan.trim() ? { catatan: form.catatan.trim() } : {}),
       } : {
         status: form.status,
         hasPainting: form.hasPainting,
@@ -1271,6 +1297,43 @@ export default function JadwalProject() {
 
     const items = await apiRequest<PoItem[]>(`/api/po?${params.toString()}`);
     return exportRows(Array.isArray(items) ? items : []);
+  };
+
+  const handleSendPoNote = async () => {
+    if (!editingId || !form.catatan.trim()) return;
+    try {
+      await apiRequest(`/api/po/${editingId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: form.catatan.trim() }),
+      });
+      setForm((current) => ({ ...current, catatan: "" }));
+      await refetchFormPoNotes();
+      toast({ title: "Berhasil", description: "Catatan PO ditambahkan" });
+    } catch (error) {
+      toast({
+        title: "Gagal",
+        description: error instanceof Error ? error.message : "Catatan gagal dikirim",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEditPoNote = async (note: PoNote) => {
+    const nextNote = window.prompt("Edit catatan PO", note.note)?.trim();
+    if (!editingId || !nextNote || nextNote === note.note) return;
+    await apiRequest(`/api/po/${editingId}/notes/${note.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: nextNote }),
+    });
+    await refetchFormPoNotes();
+  };
+
+  const handleDeletePoNote = async (note: PoNote) => {
+    if (!editingId || !window.confirm("Hapus catatan PO ini?")) return;
+    await apiRequest(`/api/po/${editingId}/notes/${note.id}`, { method: "DELETE" });
+    await refetchFormPoNotes();
   };
 
   const handleExportExcel = async () => {
@@ -1439,14 +1502,6 @@ export default function JadwalProject() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={handleExportExcel} disabled={exportLoading}>
-              <Download className="mr-2 h-4 w-4" />
-              Excel
-            </Button>
-            <Button variant="outline" onClick={handleExportPdf} disabled={exportLoading}>
-              <Printer className="mr-2 h-4 w-4" />
-              PDF
-            </Button>
             {canManage && (
               <Button onClick={openCreate}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -1922,7 +1977,7 @@ export default function JadwalProject() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="min-w-48 flex-1 space-y-1">
+              <div className="w-full min-w-48 space-y-1 sm:w-64">
                 <Label className="text-xs">Nama Customer untuk Export</Label>
                 <Input
                   value={exportCustomer}
@@ -1931,6 +1986,18 @@ export default function JadwalProject() {
                   className="h-8 text-sm"
                 />
               </div>
+              {canExportPo && (
+                <div className="flex items-end gap-2">
+                  <Button variant="outline" onClick={handleExportExcel} disabled={exportLoading}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Excel
+                  </Button>
+                  <Button variant="outline" onClick={handleExportPdf} disabled={exportLoading}>
+                    <Printer className="mr-2 h-4 w-4" />
+                    PDF
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -2155,6 +2222,8 @@ export default function JadwalProject() {
                                       size="icon"
                                       className="w-7 h-7 text-green-600 hover:text-green-700 hover:bg-green-50"
                                       title="Progress Selesai"
+                                      type="button"
+                                      disabled={closePo.isPending}
                                       onClick={() => handleClose(po)}
                                     >
                                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -2444,6 +2513,8 @@ export default function JadwalProject() {
                                       size="icon"
                                       className="w-7 h-7 text-green-600 hover:text-green-700 hover:bg-green-50"
                                       title="Progress Selesai"
+                                      type="button"
+                                      disabled={closePo.isPending}
                                       onClick={() => handleClose(po)}
                                     >
                                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -2887,9 +2958,18 @@ export default function JadwalProject() {
                     onChange={(e) =>
                       setForm((f) => ({ ...f, customer: e.target.value }))
                     }
+                    onBlur={() =>
+                      setForm((current) => ({
+                        ...current,
+                        customer: normalizeCustomerName(current.customer),
+                      }))
+                    }
                     placeholder="Nama customer..."
                     className="h-9 text-sm"
                   />
+                  <p className="text-[11px] text-slate-500">
+                    Gunakan format PT tanpa titik. Contoh: PT Sandmaster Asia
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">Qty</Label>
@@ -2930,23 +3010,28 @@ export default function JadwalProject() {
                     PIC Departemen <span className="text-red-500">*</span>
                   </Label>
                   <Select
-                    value={form.departmentId || NONE_VALUE}
+                    value={form.picUserId || NONE_VALUE}
                     disabled={!canEditPoData}
                     onValueChange={(v) =>
-                      setForm((f) => ({
-                        ...f,
-                        departmentId: v === NONE_VALUE ? "" : v,
-                      }))
+                      setForm((f) => {
+                        const picUserId = v === NONE_VALUE ? "" : v;
+                        const selected = picEmployees.find((employee) => String(employee.id) === picUserId);
+                        return {
+                          ...f,
+                          picUserId,
+                          departmentId: selected?.departmentId ? String(selected.departmentId) : "",
+                        };
+                      })
                     }
                   >
                     <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Pilih departemen..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE_VALUE}>Pilih Departemen</SelectItem>
-                      {picDepartments.map((department) => (
-                        <SelectItem key={department.id} value={String(department.id)}>
-                          {department.name}
+                      <SelectItem value={NONE_VALUE}>Pilih PIC Departemen</SelectItem>
+                      {picEmployees.map((employee) => (
+                        <SelectItem key={employee.id} value={String(employee.id)}>
+                          {getPicEmployeeLabel(employee)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -3209,16 +3294,54 @@ export default function JadwalProject() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Catatan</Label>
+                {editingId && Array.isArray(formPoNotes) && formPoNotes.length > 0 && (
+                  <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-border bg-slate-50 p-2">
+                    {formPoNotes.map((note) => (
+                      <div key={note.id} className="rounded-md bg-white p-2 text-xs shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="whitespace-pre-wrap text-slate-700">{note.note}</p>
+                            <p className="mt-1 text-[11px] text-slate-400">
+                              {note.userName} • {new Date(note.createdAt).toLocaleString("id-ID")}
+                            </p>
+                          </div>
+                          {role === "admin" && (
+                            <div className="flex">
+                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditPoNote(note)}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-600" onClick={() => handleDeletePoNote(note)}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <Textarea
                   value={form.catatan}
                   disabled={!canEditPoData}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, catatan: e.target.value }))
                   }
-                  placeholder="Catatan tambahan..."
+                  placeholder="Tulis catatan internal baru..."
                   rows={2}
                   className="resize-none text-sm"
                 />
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    {editingId
+                      ? "Catatan hanya dapat dilihat internal."
+                      : "Catatan pertama akan dikirim saat PO dibuat."}
+                  </p>
+                  {editingId && (
+                    <Button type="button" size="sm" variant="outline" onClick={handleSendPoNote} disabled={!form.catatan.trim()}>
+                      Kirim Catatan
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
             <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 rounded-b-xl border-t border-border bg-background px-4 py-4 sm:px-6">

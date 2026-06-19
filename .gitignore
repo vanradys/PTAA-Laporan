@@ -58,3 +58,9 @@ Thumbs.db
 *.backup
 *.tar
 *.gz
+# Local Python environment
+.venv/
+venv/
+
+# Env template should be allowed to commit
+!.env.example

@@ -85,7 +85,7 @@ function isTaskLockedByCount(editCount: number): boolean {
 
 function isTaskDelay(deadline: string | null, status: string): boolean {
   if (!deadline) return false;
-  if (status === "selesai") return false;
+  if (["selesai", "delivered"].includes(status)) return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
   return deadline < getTodayString();
 }
@@ -168,12 +168,12 @@ async function buildReportDetail(reportId: number) {
     tomorrowPlan: r.tomorrowPlan ?? null,
     status: getMonitoringReviewStatus(
       r.status,
-      tasks.filter((task) => task.reviewStatus === "revisi").length,
+      tasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length,
       tasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length,
       tasks.filter((task) => task.reviewStatus === "direview").length,
     ),
     storedStatus: r.status,
-    revisionCount: tasks.filter((task) => task.reviewStatus === "revisi").length,
+    revisionCount: tasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length,
     submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
     tasks: tasks.map(t => {
       const editCount = t.editCount ?? 0;
@@ -193,11 +193,14 @@ async function buildReportDetail(reportId: number) {
         reviewedByName: t.reviewedByName ?? null,
         reviewedAt: t.reviewedAt?.toISOString() ?? null,
         correctedAt: t.correctedAt?.toISOString() ?? null,
+        revisionSourceTaskId: t.revisionSourceTaskId ?? null,
+        revisionWorkTaskId: t.revisionWorkTaskId ?? null,
         editCount,
         remainingActions: getRemainingActions(editCount),
         isLocked: isTaskLockedByCount(editCount),
         isDelay: isTaskDelay(t.deadline, t.status),
         createdAt: t.createdAt.toISOString(),
+        updatedAt: t.updatedAt.toISOString(),
       };
     }),
     comments: comments.map(c => ({
@@ -282,7 +285,7 @@ router.get("/reports", async (req, res) => {
           reportId: dailyTasksTable.reportId,
           count: sql<number>`count(*)::int`,
           avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int`,
-          revisions: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'revisi')::int`,
+          revisions: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} in ('revisi', 'sedang_diperbaiki'))::int`,
           corrected: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} in ('sudah_diperbaiki', 'selesai'))::int`,
           reviewed: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'direview')::int`,
         })
@@ -385,7 +388,7 @@ router.get("/reports", async (req, res) => {
         reportId: dailyTasksTable.reportId,
         count: sql<number>`count(*)::int`,
         avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int`,
-        revisions: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'revisi')::int`,
+        revisions: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} in ('revisi', 'sedang_diperbaiki'))::int`,
         corrected: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} in ('sudah_diperbaiki', 'selesai'))::int`,
         reviewed: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'direview')::int`,
       })
@@ -647,23 +650,39 @@ router.post("/reports/:id/submit", async (req, res) => {
     return;
   }
 
-  await db
-    .update(dailyTasksTable)
-    .set({ reviewStatus: "sudah_diperbaiki" })
-    .where(
-      and(
-        eq(dailyTasksTable.reportId, id),
-        eq(dailyTasksTable.reviewStatus, "revisi"),
-        sql`${dailyTasksTable.correctedAt} is not null`,
-      ),
-    );
+  const revisionTasks = tasks.filter((task) => task.revisionSourceTaskId !== null);
+  for (const revisionTask of revisionTasks) {
+    await db.update(dailyTasksTable).set({
+      reviewStatus: "sudah_diperbaiki",
+      correctedAt: new Date(),
+    }).where(eq(dailyTasksTable.id, revisionTask.id));
+    await db.update(dailyTasksTable).set({
+      reviewStatus: "sudah_diperbaiki",
+      correctedAt: new Date(),
+    }).where(eq(dailyTasksTable.id, revisionTask.revisionSourceTaskId!));
+    const [sourceTask] = await db.select({ reportId: dailyTasksTable.reportId })
+      .from(dailyTasksTable)
+      .where(eq(dailyTasksTable.id, revisionTask.revisionSourceTaskId!))
+      .limit(1);
+    if (sourceTask) {
+      const sourceTasks = await db.select({ reviewStatus: dailyTasksTable.reviewStatus })
+        .from(dailyTasksTable)
+        .where(eq(dailyTasksTable.reportId, sourceTask.reportId));
+      const remaining = sourceTasks.filter((task) =>
+        ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? ""),
+      ).length;
+      await db.update(dailyReportsTable).set({
+        status: remaining > 0 ? "perlu_revisi" : "selesai",
+      }).where(eq(dailyReportsTable.id, sourceTask.reportId));
+    }
+  }
 
   const submittedTasks = await db
     .select({ reviewStatus: dailyTasksTable.reviewStatus })
     .from(dailyTasksTable)
     .where(eq(dailyTasksTable.reportId, id));
   const remainingRevisions = submittedTasks.filter(
-    (task) => task.reviewStatus === "revisi",
+    (task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? ""),
   ).length;
   const completedRevisions = submittedTasks.filter((task) =>
     ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? ""),

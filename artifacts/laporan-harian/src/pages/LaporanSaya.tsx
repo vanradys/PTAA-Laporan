@@ -26,10 +26,26 @@ import { apiRequest } from "@/lib/apiRequest";
 
 const TASK_STATUSES = [
   { value: "belum_mulai", label: "Belum Mulai", color: "bg-gray-100 text-gray-700 border-gray-200" },
-  { value: "proses", label: "Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  { value: "selesai", label: "Selesai", color: "bg-green-100 text-green-700 border-green-200" },
-  { value: "pending", label: "Pending", color: "bg-orange-100 text-orange-700 border-orange-200" },
+  { value: "menerima_permintaan", label: "Menerima Permintaan (Inquiry)", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  { value: "input_data_proses", label: "Input Data/Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  { value: "review_approval", label: "Review/Approval", color: "bg-violet-100 text-violet-700 border-violet-200" },
+  { value: "delivered", label: "Delivered", color: "bg-green-100 text-green-700 border-green-200" },
 ];
+
+const TASK_PROGRESS_BY_STATUS: Record<string, number> = {
+  belum_mulai: 0,
+  menerima_permintaan: 25,
+  inquiry: 25,
+  input_data_proses: 50,
+  proses: 50,
+  review_approval: 75,
+  delivered: 100,
+  selesai: 100,
+};
+
+function getTaskProgress(status: string) {
+  return TASK_PROGRESS_BY_STATUS[status] ?? 0;
+}
 
 const REPORT_STATUSES = [
   { value: "draf", label: "Draf", color: "bg-gray-100 text-gray-600 border-gray-200" },
@@ -547,13 +563,20 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
   const removeNewTask = (id: string) => setNewTasks(prev => prev.filter(t => t.id !== id));
 
   const updateNewTask = (id: string, field: keyof TaskForm, value: string | number) =>
-    setNewTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+    setNewTasks(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      if (field === "status") {
+        const status = String(value);
+        return { ...t, status, progress: getTaskProgress(status) };
+      }
+      return { ...t, [field]: value };
+    }));
 
   const copyYesterdayTasksToToday = (showToast = true) => {
   if (!Array.isArray(yesterdayTasks)) return;
 
   const copies = yesterdayTasks
-    .filter((task) => task.status !== "selesai" && task.title.trim().length > 0)
+    .filter((task) => !["selesai", "delivered"].includes(task.status) && task.title.trim().length > 0)
     .map((t) => ({
       id: Date.now().toString() + Math.random(),
       title: t.title,
@@ -740,7 +763,14 @@ useEffect(() => {
 
   const updateEditableTask = (taskId: number, field: keyof TaskForm, value: string | number) => {
     setEditableTasks((prev) =>
-      prev.map((task) => (task.id === taskId ? { ...task, [field]: value } : task)),
+      prev.map((task) => {
+        if (task.id !== taskId) return task;
+        if (field === "status") {
+          const status = String(value);
+          return { ...task, status, progress: getTaskProgress(status) };
+        }
+        return { ...task, [field]: value };
+      }),
     );
   };
 
@@ -1336,13 +1366,11 @@ useEffect(() => {
                                 <Label className="text-xs">Progress ({task.progress}%)</Label>
                                 <div className="pt-2">
                                   <Slider
-                                    disabled={taskLocked}
-                                    defaultValue={[task.progress]}
+                                    disabled
+                                    value={[task.progress]}
                                     min={0}
                                     max={100}
-                                    step={5}
-                                    onValueChange={v => isEditingSubmitted && updateEditableTask(task.id, "progress", v[0])}
-                                    onValueCommit={v => !isEditingSubmitted && handleUpdateExistingTask(task.id, "progress", v[0])}
+                                    step={25}
                                   /> 
                                  </div>
                               </div>
@@ -1428,7 +1456,7 @@ useEffect(() => {
                         <div className="space-y-1">
                           <Label className="text-xs">Progress ({task.progress}%)</Label>
                           <div className="pt-2">
-                            <Slider value={[task.progress]} min={0} max={100} step={5} onValueChange={v => updateNewTask(task.id, "progress", v[0])} />
+                            <Slider disabled value={[task.progress]} min={0} max={100} step={25} />
                           </div>
                         </div>
                       </div>

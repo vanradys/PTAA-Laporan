@@ -23,9 +23,13 @@ import { getRoleDisplayName } from "@/lib/roleDisplay";
 
 const TASK_STATUSES: Record<string, { label: string; color: string }> = {
   belum_mulai: { label: "Belum Mulai", color: "bg-gray-100 text-gray-700 border-gray-200" },
-  proses: { label: "Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  selesai: { label: "Selesai", color: "bg-green-100 text-green-700 border-green-200" },
-  pending: { label: "Pending", color: "bg-orange-100 text-orange-700 border-orange-200" },
+  menerima_permintaan: { label: "Menerima Permintaan (Inquiry)", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  inquiry: { label: "Menerima Permintaan (Inquiry)", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  input_data_proses: { label: "Input Data/Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  proses: { label: "Input Data/Proses", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  review_approval: { label: "Review/Approval", color: "bg-violet-100 text-violet-700 border-violet-200" },
+  delivered: { label: "Delivered", color: "bg-green-100 text-green-700 border-green-200" },
+  selesai: { label: "Delivered", color: "bg-green-100 text-green-700 border-green-200" },
 };
 
 const REPORT_STATUSES: Record<string, { label: string; color: string }> = {
@@ -45,6 +49,7 @@ interface Task {
   reviewStatus?: string | null;
   reviewComment?: string | null;
   reviewedByName?: string | null;
+  revisionWorkTaskId?: number | null;
 }
 
 interface Comment {
@@ -64,7 +69,6 @@ export default function DetailLaporan() {
   const { toast } = useToast();
   const [commentText, setCommentText] = useState("");
   const [taskReviewDrafts, setTaskReviewDrafts] = useState<Record<number, string>>({});
-  const [taskCorrectionDrafts, setTaskCorrectionDrafts] = useState<Record<number, { title: string; notes: string }>>({});
   const [reviewingTaskId, setReviewingTaskId] = useState<number | null>(null);
 
   const reportId = parseInt(id ?? "0");
@@ -123,20 +127,16 @@ export default function DetailLaporan() {
   };
 
   const handleTaskCorrection = async (task: Task) => {
-    const draft = taskCorrectionDrafts[task.id] ?? { title: task.title, notes: task.notes ?? "" };
+    if (!window.confirm("Anda hanya dapat melakukan revisi 1 kali. Lanjutkan dan salin tugas ini ke laporan hari ini?")) return;
     setReviewingTaskId(task.id);
     try {
-      await apiRequest(`/api/tasks/${task.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: draft.title, notes: draft.notes }),
-      });
-      await apiRequest(`/api/tasks/${task.id}/submit-correction`, {
+      await apiRequest(`/api/tasks/${task.id}/start-correction`, {
         method: "POST",
       });
       queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(reportId) });
       queryClient.invalidateQueries({ queryKey: getListReportsQueryKey() });
-      toast({ title: "Perbaikan dikirim", description: "Status tugas berubah menjadi Sudah Diperbaiki." });
+      toast({ title: "Tugas disalin", description: "Perbaiki tugas pada Laporan Harian hari ini, lalu submit laporan." });
+      navigate("/laporan-saya");
     } catch (error) {
       toast({ title: "Gagal", description: error instanceof Error ? error.message : "Gagal menyimpan perbaikan", variant: "destructive" });
     } finally {
@@ -342,27 +342,18 @@ export default function DetailLaporan() {
                           )}
                           {user?.id === r.userId && task.reviewStatus === "revisi" && (
                             <div className="mt-2 min-w-[270px] space-y-2 rounded-lg border border-orange-200 bg-orange-50 p-2">
-                              <p className="text-xs font-bold text-orange-800">Perbaiki tugas ini</p>
-                              <Input
-                                value={taskCorrectionDrafts[task.id]?.title ?? task.title}
-                                onChange={(event) => setTaskCorrectionDrafts((current) => ({
-                                  ...current,
-                                  [task.id]: { title: event.target.value, notes: current[task.id]?.notes ?? task.notes ?? "" },
-                                }))}
-                              />
-                              <Textarea
-                                value={taskCorrectionDrafts[task.id]?.notes ?? task.notes ?? ""}
-                                onChange={(event) => setTaskCorrectionDrafts((current) => ({
-                                  ...current,
-                                  [task.id]: { title: current[task.id]?.title ?? task.title, notes: event.target.value },
-                                }))}
-                                placeholder="Catatan hasil perbaikan"
-                                rows={2}
-                              />
+                              <p className="text-xs text-orange-800">
+                                {task.reviewComment || "Tugas ini perlu diperbaiki sesuai arahan reviewer."}
+                              </p>
                               <Button size="sm" className="bg-orange-600 hover:bg-orange-700" onClick={() => handleTaskCorrection(task)} disabled={reviewingTaskId === task.id}>
-                                Kirim Perbaikan
+                                Perbaiki
                               </Button>
                             </div>
+                          )}
+                          {user?.id === r.userId && task.reviewStatus === "sedang_diperbaiki" && (
+                            <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                              Sedang Diperbaiki
+                            </span>
                           )}
                         </td>
                       </tr>

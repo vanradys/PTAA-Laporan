@@ -1,286 +1,196 @@
 import {
-  db,
+  and,
   assignedDailyTasksTable,
+  companyHolidaysTable,
   dailyReportsTable,
   dailyTasksTable,
-  usersTable,
+  db,
   departmentsTable,
-  and,
   eq,
+  gte,
   inArray,
+  lte,
   sql,
+  usersTable,
 } from "@workspace/db";
-import { getUserFromToken } from "./auth";
 import { Router } from "express";
-import {
-  getJakartaDateString,
-  isWeekendReportDate,
-  reportingUserCondition,
-} from "../services/dailyReportReminder";
+import { getUserFromToken } from "./auth";
+import { getJakartaDateString, reportingUserCondition } from "../services/dailyReportReminder";
 
 const router = Router();
+const COMPANY_DASHBOARD_ROLES = new Set(["admin", "direktur", "director", "dir"]);
+const COMPLETED_TASK_STATUSES = new Set(["delivered", "selesai"]);
+const PENDING_TASK_STATUSES = new Set(["belum_mulai", "input_data_proses", "proses", "pending"]);
 
-function normalizeDashboardDate(value: unknown): string {
+function normalizeDate(value: unknown) {
   const date = typeof value === "string" ? value.trim() : "";
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getJakartaDateString();
 }
 
-function normalizeDashboardPeriod(value: unknown): "weekly" | "monthly" {
+function normalizePeriod(value: unknown): "weekly" | "monthly" {
   return value === "monthly" ? "monthly" : "weekly";
 }
 
-function addDateDays(dateString: string, amount: number): string {
+function addDays(dateString: string, amount: number) {
   const date = new Date(`${dateString}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + amount);
   return date.toISOString().slice(0, 10);
 }
 
-function getWeekStartDate(dateString: string): string {
+function getPeriodBounds(dateString: string, period: "weekly" | "monthly") {
   const date = new Date(`${dateString}T00:00:00.000Z`);
-  const day = date.getUTCDay();
-  const daysSinceMonday = day === 0 ? 6 : day - 1;
-  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
-  return date.toISOString().slice(0, 10);
-}
-
-function getActiveWeekDates(dateString: string): string[] {
-  const weekStartDate = getWeekStartDate(dateString);
-  const dates: string[] = [];
-  let current = weekStartDate;
-
-  while (current <= dateString) {
-    if (!isWeekendReportDate(current)) dates.push(current);
-    current = addDateDays(current, 1);
-  }
-
-  return dates;
-}
-
-function getActiveMonthDates(dateString: string): string[] {
-  const [year, month] = dateString.split("-");
-  const monthStartDate = `${year}-${month}-01`;
-  const dates: string[] = [];
-  let current = monthStartDate;
-
-  while (current <= dateString) {
-    if (!isWeekendReportDate(current)) dates.push(current);
-    current = addDateDays(current, 1);
-  }
-
-  return dates;
-}
-
-function getDashboardPeriodDates(dateString: string, period: "weekly" | "monthly") {
   if (period === "monthly") {
-    const dates = getActiveMonthDates(dateString);
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth();
     return {
-      dates,
-      periodStartDate: dates[0] ?? dateString,
-      periodEndDate: dateString,
+      start: `${year}-${String(month + 1).padStart(2, "0")}-01`,
+      end: new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10),
     };
   }
+  const day = date.getUTCDay();
+  const monday = addDays(dateString, -(day === 0 ? 6 : day - 1));
+  return { start: monday, end: addDays(monday, 4) };
+}
 
-  const dates = getActiveWeekDates(dateString);
-  return {
-    dates,
-    periodStartDate: getWeekStartDate(dateString),
-    periodEndDate: dateString,
-  };
+async function getWorkingDates(start: string, end: string) {
+  const holidays = await db.select({ date: companyHolidaysTable.date })
+    .from(companyHolidaysTable)
+    .where(and(gte(companyHolidaysTable.date, start), lte(companyHolidaysTable.date, end)));
+  const holidaySet = new Set(holidays.map((item) => item.date));
+  const dates: string[] = [];
+  for (let current = start; current <= end; current = addDays(current, 1)) {
+    const day = new Date(`${current}T00:00:00.000Z`).getUTCDay();
+    if (day !== 0 && day !== 6 && !holidaySet.has(current)) dates.push(current);
+  }
+  return dates;
 }
 
 router.get("/dashboard/summary", async (req, res) => {
   const token = req.cookies?.session_token;
-  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  const user = await getUserFromToken(token);
-  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  const user = token ? await getUserFromToken(token) : null;
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
-  const date = normalizeDashboardDate(req.query.date);
-  const period = normalizeDashboardPeriod(req.query.period);
-  const { dates: activePeriodDates, periodStartDate, periodEndDate } =
-    getDashboardPeriodDates(date, period);
-  const expectedReportCount = activePeriodDates.length;
+  const date = normalizeDate(req.query.date);
+  const period = normalizePeriod(req.query.period);
+  const { start, end } = getPeriodBounds(date, period);
+  const workingDates = await getWorkingDates(start, end);
+  const companyScope = COMPANY_DASHBOARD_ROLES.has(String(user.role).toLowerCase());
 
-  const reportingUsers = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
+  const reportingUsers = await db.select({ id: usersTable.id }).from(usersTable)
     .where(reportingUserCondition());
+  const allReportingIds = reportingUsers.map((item) => item.id);
+  const scopedUserIds = companyScope ? allReportingIds : [user.id];
+  const employeeCount = companyScope ? allReportingIds.length : 1;
+  const expectedSubmissions = workingDates.length * employeeCount;
 
-  const reportingUserIds = reportingUsers.map((item) => item.id);
-  const totalEmployees = reportingUserIds.length;
-
-  if (expectedReportCount === 0) {
-    res.json({
-      totalEmployees,
-      submittedToday: 0,
-      notSubmittedToday: 0,
-      totalTasksToday: 0,
-      tasksCompleted: 0,
-      tasksPending: 0,
-      submitRate: 0,
-      completionRate: 0,
-      pendingAssignedTasksCount: 0,
-      pendingAssignedTasksByAssigner: [],
-      period,
-      periodStartDate,
-      periodEndDate,
-      weekStartDate: periodStartDate,
-      weekEndDate: periodEndDate,
-    });
-    return;
-  }
-
-  const submittedReports = totalEmployees > 0
-    ? await db
-      .select({ id: dailyReportsTable.id, userId: dailyReportsTable.userId, date: dailyReportsTable.date })
-      .from(dailyReportsTable)
-      .where(and(
-        inArray(dailyReportsTable.date, activePeriodDates),
+  const submittedReports = scopedUserIds.length && workingDates.length
+    ? await db.select({
+        id: dailyReportsTable.id,
+        userId: dailyReportsTable.userId,
+        date: dailyReportsTable.date,
+      }).from(dailyReportsTable).where(and(
+        inArray(dailyReportsTable.userId, scopedUserIds),
+        inArray(dailyReportsTable.date, workingDates),
         sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
-        inArray(dailyReportsTable.userId, reportingUserIds),
       ))
     : [];
+  const submittedCount = new Set(submittedReports.map((item) => `${item.userId}:${item.date}`)).size;
 
-  const submittedToday = new Set(
-    submittedReports.map((report) => `${report.userId}:${report.date}`),
-  ).size;
-  const expectedSubmissions = totalEmployees * expectedReportCount;
-  const notSubmittedToday = Math.max(0, expectedSubmissions - submittedToday);
-
-  let totalTasksToday = 0;
-  let tasksCompleted = 0;
-  let tasksPending = 0;
-
-  if (submittedReports.length > 0) {
-    const reportIds = submittedReports.map((report) => report.id);
-    const taskStats = await db
-      .select({
+  const taskStats = scopedUserIds.length
+    ? await db.select({
         status: dailyTasksTable.status,
         count: sql<number>`count(*)::int`,
-      })
-      .from(dailyTasksTable)
-      .where(inArray(dailyTasksTable.reportId, reportIds))
-      .groupBy(dailyTasksTable.status);
+      }).from(dailyTasksTable)
+        .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+        .where(and(
+          inArray(dailyReportsTable.userId, scopedUserIds),
+          sql`(${dailyTasksTable.updatedAt} at time zone 'Asia/Jakarta')::date >= ${start}::date`,
+          sql`(${dailyTasksTable.updatedAt} at time zone 'Asia/Jakarta')::date <= ${end}::date`,
+        ))
+        .groupBy(dailyTasksTable.status)
+    : [];
 
-    for (const stat of taskStats) {
-      totalTasksToday += stat.count;
-      if (stat.status === "selesai") tasksCompleted += stat.count;
-      if (stat.status === "pending") tasksPending += stat.count;
-    }
+  let totalTasks = 0;
+  let completedTasks = 0;
+  let pendingTasks = 0;
+  for (const item of taskStats) {
+    totalTasks += item.count;
+    if (COMPLETED_TASK_STATUSES.has(item.status)) completedTasks += item.count;
+    if (PENDING_TASK_STATUSES.has(item.status)) pendingTasks += item.count;
   }
 
-  const submitRate = expectedSubmissions > 0 ? Math.round((submittedToday / expectedSubmissions) * 100) : 0;
-  const completionRate = totalTasksToday > 0 ? Math.round((tasksCompleted / totalTasksToday) * 100) : 0;
-  const pendingAssignedTaskStats = await db
-    .select({
-      assignedByName: assignedDailyTasksTable.assignedByName,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(assignedDailyTasksTable)
-    .where(and(
-      eq(assignedDailyTasksTable.assigneeUserId, user.id),
-      eq(assignedDailyTasksTable.status, "pending"),
-    ))
-    .groupBy(assignedDailyTasksTable.assignedByName);
-
-  const pendingAssignedTasksCount = pendingAssignedTaskStats.reduce(
-    (total, item) => total + item.count,
-    0,
-  );
+  const pendingAssignedTaskStats = await db.select({
+    assignedByName: assignedDailyTasksTable.assignedByName,
+    count: sql<number>`count(*)::int`,
+  }).from(assignedDailyTasksTable).where(and(
+    eq(assignedDailyTasksTable.assigneeUserId, user.id),
+    eq(assignedDailyTasksTable.status, "pending"),
+  )).groupBy(assignedDailyTasksTable.assignedByName);
 
   res.json({
-    totalEmployees,
-    submittedToday,
-    notSubmittedToday,
-    totalTasksToday,
-    tasksCompleted,
-    tasksPending,
-    submitRate,
-    completionRate,
-    pendingAssignedTasksCount,
-    pendingAssignedTasksByAssigner: pendingAssignedTaskStats.map((item) => ({
-      assignedByName: item.assignedByName,
-      count: item.count,
-    })),
+    totalEmployees: employeeCount,
+    expectedWorkDays: workingDates.length,
+    expectedSubmissions,
+    submittedToday: submittedCount,
+    notSubmittedToday: Math.max(0, expectedSubmissions - submittedCount),
+    totalTasksToday: totalTasks,
+    tasksCompleted: completedTasks,
+    tasksPending: pendingTasks,
+    submitRate: expectedSubmissions ? Math.round(submittedCount / expectedSubmissions * 100) : 0,
+    completionRate: totalTasks ? Math.round(completedTasks / totalTasks * 100) : 0,
+    pendingAssignedTasksCount: pendingAssignedTaskStats.reduce((sum, item) => sum + item.count, 0),
+    pendingAssignedTasksByAssigner: pendingAssignedTaskStats,
+    scope: companyScope ? "company" : "personal",
     period,
-    periodStartDate,
-    periodEndDate,
-    weekStartDate: periodStartDate,
-    weekEndDate: periodEndDate,
+    periodStartDate: start,
+    periodEndDate: end,
+    weekStartDate: start,
+    weekEndDate: end,
   });
 });
 
 router.get("/dashboard/department-productivity", async (req, res) => {
   const token = req.cookies?.session_token;
-  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  const user = await getUserFromToken(token);
-  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  const user = token ? await getUserFromToken(token) : null;
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
-  const date = normalizeDashboardDate(req.query.date);
-  const period = normalizeDashboardPeriod(req.query.period);
-  const { dates: activePeriodDates, periodStartDate, periodEndDate } =
-    getDashboardPeriodDates(date, period);
-  const expectedReportCount = activePeriodDates.length;
-
-  if (expectedReportCount === 0) {
-    res.json([]);
-    return;
-  }
-
+  const date = normalizeDate(req.query.date);
+  const period = normalizePeriod(req.query.period);
+  const { start, end } = getPeriodBounds(date, period);
+  const workingDates = await getWorkingDates(start, end);
   const departments = await db.select().from(departmentsTable).orderBy(departmentsTable.name);
 
-  const result = await Promise.all(departments.map(async (dept) => {
-    const [employeeCountResult] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(usersTable)
-      .where(and(eq(usersTable.departmentId, dept.id), reportingUserCondition()));
-
-    const employeeCount = employeeCountResult?.count ?? 0;
-
-    if (employeeCount === 0) {
-      return null;
-    }
-
-    const submittedReports = await db
-      .select({ id: dailyReportsTable.id })
-      .from(dailyReportsTable)
-      .leftJoin(usersTable, eq(dailyReportsTable.userId, usersTable.id))
-      .where(and(
-        eq(dailyReportsTable.departmentId, dept.id),
-        inArray(dailyReportsTable.date, activePeriodDates),
-        sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
-        reportingUserCondition(),
-      ));
-
-    const submittedCount = submittedReports.length;
-    const expectedSubmissions = employeeCount * expectedReportCount;
-
-    let avgProgress = 0;
-    if (submittedReports.length > 0) {
-      const ids = submittedReports.map((report) => report.id);
-      const [progressResult] = await db
-        .select({ avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int` })
-        .from(dailyTasksTable)
-        .where(inArray(dailyTasksTable.reportId, ids));
-      avgProgress = progressResult?.avg ?? 0;
-    }
-
-    return {
-      departmentId: dept.id,
-      departmentName: dept.name,
-      employeeCount,
+  const result = [];
+  for (const department of departments) {
+    const employees = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.departmentId, department.id), reportingUserCondition()));
+    if (!employees.length) continue;
+    const employeeIds = employees.map((item) => item.id);
+    const reports = workingDates.length
+      ? await db.select({
+          userId: dailyReportsTable.userId,
+          date: dailyReportsTable.date,
+        }).from(dailyReportsTable).where(and(
+          inArray(dailyReportsTable.userId, employeeIds),
+          inArray(dailyReportsTable.date, workingDates),
+          sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
+        ))
+      : [];
+    const submittedCount = new Set(reports.map((item) => `${item.userId}:${item.date}`)).size;
+    const expectedSubmissions = employees.length * workingDates.length;
+    result.push({
+      departmentId: department.id,
+      departmentName: department.name,
+      employeeCount: employees.length,
       submittedCount,
-      avgProgress,
       expectedSubmissions,
-      submitRate: expectedSubmissions > 0 ? Math.round((submittedCount / expectedSubmissions) * 100) : 0,
+      submitRate: expectedSubmissions ? Math.round(submittedCount / expectedSubmissions * 100) : 0,
       period,
-      periodStartDate,
-      periodEndDate,
-      weekStartDate: periodStartDate,
-      weekEndDate: periodEndDate,
-    };
-  }));
-
-  res.json(result.filter(Boolean));
+      periodStartDate: start,
+      periodEndDate: end,
+    });
+  }
+  res.json(result);
 });
 
 export default router;

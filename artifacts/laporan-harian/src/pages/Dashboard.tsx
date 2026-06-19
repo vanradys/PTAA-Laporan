@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetDashboardSummary,
   useGetDepartmentProductivity,
@@ -18,6 +19,8 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   BarChart,
   Bar,
@@ -37,6 +40,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { apiRequest } from "@/lib/apiRequest";
+import { useToast } from "@/hooks/use-toast";
 
 type StatCardProps = {
   title: string;
@@ -104,6 +109,9 @@ function DepartmentAxisTick(props: any) {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [requestedName, setRequestedName] = useState("");
   const today = getJakartaDateString();
   const [period, setPeriod] = useState<"weekly" | "monthly">("weekly");
   const periodLabel = period === "monthly" ? "Bulanan" : "Mingguan";
@@ -121,6 +129,30 @@ export default function Dashboard() {
       { query: { queryKey: ["dept-productivity", today, period] } },
     );
   const { data: notifications } = useListNotifications();
+  const { data: myNameRequests } = useQuery({
+    queryKey: ["name-change-requests", "mine"],
+    queryFn: () => apiRequest<Array<{ id: number; requestedName: string; status: string }>>("/api/name-change-requests/mine"),
+  });
+  const pendingNameRequest = myNameRequests?.find((item) => item.status === "pending");
+
+  const submitNameRequest = async () => {
+    try {
+      await apiRequest("/api/name-change-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestedName }),
+      });
+      setRequestedName("");
+      await queryClient.invalidateQueries({ queryKey: ["name-change-requests", "mine"] });
+      toast({ title: "Pengajuan dikirim", description: "Admin akan meninjau perubahan nama Anda." });
+    } catch (error) {
+      toast({
+        title: "Pengajuan gagal",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      });
+    }
+  };
   const revisionNotifications = Array.isArray(notifications)
     ? (notifications as Array<{
         id: number;
@@ -140,8 +172,9 @@ export default function Dashboard() {
   const chartData = Array.isArray(deptData)
     ? deptData.map((dept: any) => ({
         name: dept.departmentName,
-        Submit: dept.submitRate,
-        Progres: dept.avgProgress,
+        Submit: dept.submittedCount,
+        Target: dept.expectedSubmissions,
+        ringkasan: `${dept.submittedCount}/${dept.expectedSubmissions} Submit`,
       }))
     : [];
 
@@ -165,6 +198,29 @@ export default function Dashboard() {
             {todayFormatted}
           </div>
         </section>
+        <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <p className="text-sm font-bold text-slate-800">Ajukan perubahan nama tampilan</p>
+              <p className="text-xs text-slate-500">Email dan role tidak dapat diubah melalui pengajuan ini.</p>
+              {pendingNameRequest && (
+                <p className="mt-1 text-xs font-semibold text-amber-700">
+                  Menunggu persetujuan Admin: {pendingNameRequest.requestedName}
+                </p>
+              )}
+            </div>
+            <Input
+              value={requestedName}
+              onChange={(event) => setRequestedName(event.target.value)}
+              placeholder="Nama tampilan baru"
+              className="sm:w-72"
+              disabled={Boolean(pendingNameRequest)}
+            />
+            <Button onClick={submitNameRequest} disabled={Boolean(pendingNameRequest) || requestedName.trim().length < 2}>
+              Ajukan
+            </Button>
+          </CardContent>
+        </Card>
 
         {summaryLoading ? (
           <div className="flex items-center justify-center py-16">
@@ -174,11 +230,11 @@ export default function Dashboard() {
           <>
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <StatCard
-                title="Karyawan Office"
-                value={summary.totalEmployees}
+                title={(summary as any).scope === "personal" ? "Hari Kerja" : "Karyawan Office"}
+                value={(summary as any).scope === "personal" ? (summary as any).expectedWorkDays : summary.totalEmployees}
                 icon={Users}
                 iconClass="bg-blue-50 text-blue-600"
-                description="Wajib submit laporan"
+                description={(summary as any).scope === "personal" ? "Denominator periode aktif" : "Wajib submit laporan"}
               />
               <StatCard
                 title="Sudah Submit"
@@ -250,7 +306,8 @@ export default function Dashboard() {
                       <Loader2 className="h-6 w-6 animate-spin text-[#06258d]" />
                     </div>
                   ) : chartData.length > 0 ? (
-                    <div className="h-[285px] min-w-[560px] sm:min-w-0">
+                    <div className="min-w-[560px] sm:min-w-0">
+                    <div className="h-[250px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={chartData}
@@ -274,7 +331,7 @@ export default function Dashboard() {
                           tick={{ fontSize: 12, fill: "#94a3b8" }}
                           axisLine={false}
                           tickLine={false}
-                          domain={[0, 100]}
+                          allowDecimals={false}
                         />
                         <Tooltip
                           contentStyle={{
@@ -289,12 +346,20 @@ export default function Dashboard() {
                           radius={[5, 5, 0, 0]}
                         />
                         <Bar
-                          dataKey="Progres"
+                          dataKey="Target"
                           fill="#ef0012"
                           radius={[5, 5, 0, 0]}
                         />
                       </BarChart>
                     </ResponsiveContainer>
+                    </div>
+                    <div className="mt-2 flex flex-wrap justify-center gap-2">
+                      {chartData.map((item) => (
+                        <span key={item.name} className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                          {formatDepartmentChartLabel(item.name)}: {item.ringkasan}
+                        </span>
+                      ))}
+                    </div>
                     </div>
                   ) : (
                     <div className="flex h-[285px] items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
@@ -315,10 +380,10 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-bold text-slate-800">
-                          Belum Submit Laporan
+                          Laporan yang tidak di submit {period === "monthly" ? "bulan ini" : "minggu ini"}
                         </p>
                         <p className="text-xs text-slate-500">
-                          Karyawan yang belum mengirim laporan {period === "monthly" ? "bulan ini" : "minggu ini"}
+                          Jumlah kewajiban laporan yang belum terpenuhi
                         </p>
                       </div>
                       <Badge className="border-amber-300 bg-white text-amber-700">

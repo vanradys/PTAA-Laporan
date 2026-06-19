@@ -12,6 +12,7 @@ import {
   or,
   poChangeLogsTable,
   poInternalCommentsTable,
+  poNotesTable,
   projectsPoTable,
   sql,
   usersTable,
@@ -99,6 +100,17 @@ const MONTH_NAMES = [
   "November",
   "Desember",
 ];
+const ALLOWED_PIC_EMAILS = new Set([
+  "marketing@adiyasa.com",
+  "engineering1@adiyasa.com",
+  "engineering2@adiyasa.com",
+]);
+
+function normalizeCustomerName(value: unknown): string | null {
+  const customer = String(value ?? "").trim();
+  if (!customer) return null;
+  return customer.replace(/^PT\s*\.\s*/i, "PT ");
+}
 
 function canViewPoAmount(user?: {
   email?: string | null;
@@ -260,29 +272,23 @@ function stageAllowedForPainting(
   return stage !== "painting" || hasPainting;
 }
 
-async function getPicDepartment(id: unknown) {
-  const departmentId = Number(id);
-  if (!Number.isInteger(departmentId)) return null;
+async function getAllowedPicUser(id: unknown) {
+  const userId = Number(id);
+  if (!Number.isInteger(userId)) return null;
 
-  const [department] = await db
-    .select({ id: departmentsTable.id, code: departmentsTable.code, name: departmentsTable.name })
-    .from(departmentsTable)
-    .where(eq(departmentsTable.id, departmentId))
+  const [pic] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      departmentId: usersTable.departmentId,
+      isActive: usersTable.isActive,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
     .limit(1);
-
-  return department ?? null;
-}
-
-async function validatePicDepartment(id: unknown): Promise<string | null> {
-  const department = await getPicDepartment(id);
-  if (!department) return "PIC Departemen wajib dipilih";
-
-  const code = String(department.code ?? "").toUpperCase();
-  const name = String(department.name ?? "").toLowerCase();
-  if (code === "MKT" || code === "ENG") return null;
-  if (name.includes("marketing") || name.includes("engineering")) return null;
-
-  return "PIC Departemen hanya boleh Marketing atau Engineering";
+  if (!pic?.isActive || !ALLOWED_PIC_EMAILS.has(pic.email.toLowerCase())) return null;
+  return pic;
 }
 
 function isDateOnly(value: string | null | undefined): value is string {
@@ -910,16 +916,18 @@ router.post("/po", async (req, res) => {
     return;
   }
 
-  if (!noPo || !namaProject || !tanggalPoMasuk || !targetValue) {
+  if (!noPo || !namaProject || !normalizeCustomerName(customer) || !tanggalPoMasuk || !targetValue) {
     res.status(400).json({
-      error: "No PO, nama project, Tanggal Masuk PO, dan Target Pengiriman diperlukan",
+      error: "No PO, nama project, customer, Tanggal Masuk PO, dan Target Pengiriman diperlukan",
     });
     return;
   }
 
-  const picDepartmentError = await validatePicDepartment(departmentId);
-  if (picDepartmentError) {
-    res.status(400).json({ error: picDepartmentError });
+  const selectedPic = await getAllowedPicUser(picUserId);
+  if (!selectedPic || !selectedPic.departmentId) {
+    res.status(400).json({
+      error: "PIC Departemen hanya boleh Admin Marketing 1, Engineering 1, atau Engineering 2",
+    });
     return;
   }
 
@@ -935,7 +943,7 @@ router.post("/po", async (req, res) => {
     .values({
       noPo,
       namaProject,
-      customer: customer ?? null,
+      customer: normalizeCustomerName(customer),
       qty: qty ?? null,
       poAmount:
         canViewPoAmount(user) && poAmount !== undefined && poAmount !== ""
@@ -946,9 +954,9 @@ router.post("/po", async (req, res) => {
       deadline: String(targetValue).trim(),
       targetPengiriman: String(targetValue).trim(),
       aktualPengiriman: aktualPengiriman ? String(aktualPengiriman).trim() : null,
-      picUserId: picUserId ? parseInt(picUserId) : null,
+      picUserId: selectedPic.id,
       picProject: picProject ? String(picProject).trim() : null,
-      departmentId: departmentId ? parseInt(departmentId) : null,
+      departmentId: selectedPic.departmentId,
       status: parsedStatus,
       progress: parsedProgress,
       hasPainting: usesPainting,
@@ -961,6 +969,15 @@ router.post("/po", async (req, res) => {
       createdByUserId: user.id,
     })
     .returning();
+
+  if (String(catatan ?? "").trim()) {
+    await db.insert(poNotesTable).values({
+      poId: po.id,
+      userId: user.id,
+      userName: user.name ?? "User",
+      note: String(catatan).trim(),
+    });
+  }
 
   await sendDeadlineNotifications(po);
   await recordPoChange({
@@ -1096,6 +1113,73 @@ router.get("/po/:id", async (req, res) => {
   res.json(item);
 });
 
+router.get("/po/:id/notes", async (req, res) => {
+  const token = req.cookies?.session_token;
+  const user = token ? await getUserFromToken(token) : null;
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const poId = Number(req.params.id);
+  const notes = await db.select().from(poNotesTable)
+    .where(eq(poNotesTable.poId, poId))
+    .orderBy(poNotesTable.createdAt);
+  res.json(notes.map((note) => ({
+    ...note,
+    createdAt: note.createdAt.toISOString(),
+    updatedAt: note.updatedAt.toISOString(),
+  })));
+});
+
+router.post("/po/:id/notes", async (req, res) => {
+  const token = req.cookies?.session_token;
+  const user = token ? await getUserFromToken(token) : null;
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const poId = Number(req.params.id);
+  const note = String(req.body?.note ?? "").trim();
+  if (!note) { res.status(400).json({ error: "Isi catatan wajib diisi" }); return; }
+  const [po] = await db.select({ id: projectsPoTable.id }).from(projectsPoTable)
+    .where(eq(projectsPoTable.id, poId)).limit(1);
+  if (!po) { res.status(404).json({ error: "PO tidak ditemukan" }); return; }
+  const [created] = await db.insert(poNotesTable).values({
+    poId,
+    userId: user.id,
+    userName: user.name ?? "User",
+    note,
+  }).returning();
+  res.status(201).json(created);
+});
+
+router.patch("/po/:poId/notes/:noteId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  const user = token ? await getUserFromToken(token) : null;
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengedit catatan PO" }); return;
+  }
+  const note = String(req.body?.note ?? "").trim();
+  if (!note) { res.status(400).json({ error: "Isi catatan wajib diisi" }); return; }
+  const [updated] = await db.update(poNotesTable).set({ note, updatedAt: new Date() })
+    .where(and(
+      eq(poNotesTable.id, Number(req.params.noteId)),
+      eq(poNotesTable.poId, Number(req.params.poId)),
+    )).returning();
+  if (!updated) { res.status(404).json({ error: "Catatan tidak ditemukan" }); return; }
+  res.json(updated);
+});
+
+router.delete("/po/:poId/notes/:noteId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  const user = token ? await getUserFromToken(token) : null;
+  if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat menghapus catatan PO" }); return;
+  }
+  const [deleted] = await db.delete(poNotesTable).where(and(
+    eq(poNotesTable.id, Number(req.params.noteId)),
+    eq(poNotesTable.poId, Number(req.params.poId)),
+  )).returning();
+  if (!deleted) { res.status(404).json({ error: "Catatan tidak ditemukan" }); return; }
+  res.json({ success: true });
+});
+
 router.patch("/po/:id", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) {
@@ -1199,7 +1283,7 @@ router.patch("/po/:id", async (req, res) => {
   if (hasFullManagePermission) {
     if (noPo !== undefined) updates.noPo = noPo;
     if (namaProject !== undefined) updates.namaProject = namaProject;
-    if (customer !== undefined) updates.customer = customer;
+    if (customer !== undefined) updates.customer = normalizeCustomerName(customer);
     if (qty !== undefined) updates.qty = qty;
     if (poAmount !== undefined && canViewPoAmount(user)) {
       updates.poAmount =
@@ -1220,24 +1304,25 @@ router.patch("/po/:id", async (req, res) => {
       updates.aktualPengiriman = aktualPengiriman ? String(aktualPengiriman).trim() : null;
     if (picProject !== undefined)
       updates.picProject = picProject ? String(picProject).trim() : null;
-    if (departmentId !== undefined) {
-      const picDepartmentError = await validatePicDepartment(departmentId);
-      if (picDepartmentError) {
-        res.status(400).json({ error: picDepartmentError });
-        return;
-      }
-      updates.departmentId = departmentId ? parseInt(departmentId) : null;
-    }
     if (hasPainting !== undefined) updates.hasPainting = Boolean(hasPainting);
     if (trackingStages !== undefined)
       updates.trackingStages = normalizeTrackingStages(trackingStages);
     if (trackingTimeline !== undefined)
       updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
-    if (catatan !== undefined) updates.catatan = catatan;
+    // Catatan baru disimpan sebagai item terpisah melalui endpoint /po/:id/notes.
   }
 
-  if (hasFullManagePermission && picUserId !== undefined)
-    updates.picUserId = picUserId ? parseInt(picUserId) : null;
+  if (hasFullManagePermission && picUserId !== undefined) {
+    const selectedPic = await getAllowedPicUser(picUserId);
+    if (!selectedPic?.departmentId) {
+      res.status(400).json({
+        error: "PIC Departemen hanya boleh Admin Marketing 1, Engineering 1, atau Engineering 2",
+      });
+      return;
+    }
+    updates.picUserId = selectedPic.id;
+    updates.departmentId = selectedPic.departmentId;
+  }
 
   if (!hasFullManagePermission && isPurchasingOrEngineering(user)) {
     if (hasPainting !== undefined) updates.hasPainting = Boolean(hasPainting);

@@ -18,6 +18,27 @@ import { getUserFromToken } from "./auth";
 const router = Router();
 
 const MAX_TASK_ACTIONS = 2;
+const TASK_PROGRESS_BY_STATUS: Record<string, number> = {
+  belum_mulai: 0,
+  menerima_permintaan: 25,
+  inquiry: 25,
+  input_data_proses: 50,
+  proses: 50,
+  review_approval: 75,
+  delivered: 100,
+  selesai: 100,
+};
+
+function normalizeTaskStatus(value: unknown): string {
+  const status = String(value ?? "belum_mulai").trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(TASK_PROGRESS_BY_STATUS, status)
+    ? status
+    : "belum_mulai";
+}
+
+function getTaskProgress(status: unknown): number {
+  return TASK_PROGRESS_BY_STATUS[normalizeTaskStatus(status)] ?? 0;
+}
 
 function getTodayString(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -44,7 +65,7 @@ function isTaskLockedByCount(editCount: number): boolean {
 
 function isTaskDelay(deadline: string | null, status: string): boolean {
   if (!deadline) return false;
-  if (status === "selesai") return false;
+  if (["selesai", "delivered"].includes(status)) return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
   return deadline < getTodayString();
 }
@@ -172,11 +193,14 @@ function buildTaskResponse(task: typeof dailyTasksTable.$inferSelect) {
     reviewedByName: task.reviewedByName ?? null,
     reviewedAt: task.reviewedAt?.toISOString() ?? null,
     correctedAt: task.correctedAt?.toISOString() ?? null,
+    revisionSourceTaskId: task.revisionSourceTaskId ?? null,
+    revisionWorkTaskId: task.revisionWorkTaskId ?? null,
     editCount,
     remainingActions: getRemainingActions(editCount),
     isLocked: isTaskLockedByCount(editCount),
     isDelay: isTaskDelay(task.deadline, task.status),
     createdAt: task.createdAt.toISOString(),
+    updatedAt: task.updatedAt.toISOString(),
   };
 }
 
@@ -217,7 +241,9 @@ async function refreshReportReviewStatus(reportId: number) {
     .from(dailyTasksTable)
     .where(eq(dailyTasksTable.reportId, reportId));
 
-  const revisionCount = tasks.filter((task) => task.reviewStatus === "revisi").length;
+  const revisionCount = tasks.filter((task) =>
+    ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? ""),
+  ).length;
   const correctedCount = tasks.filter((task) =>
     ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? ""),
   ).length;
@@ -474,7 +500,7 @@ router.post("/reports/:id/tasks", async (req, res) => {
     return;
   }
 
-  const { title, project, deadline, progress, status, notes } = req.body;
+  const { title, project, deadline, status, notes } = req.body;
   if (!title || !title.trim()) { res.status(400).json({ error: "Nama tugas diperlukan" }); return; }
 
   const [task] = await db.insert(dailyTasksTable).values({
@@ -482,8 +508,8 @@ router.post("/reports/:id/tasks", async (req, res) => {
     title,
     project: project ?? null,
     deadline: deadline || null,
-    progress: progress ?? 0,
-    status: status ?? "belum_mulai",
+    progress: getTaskProgress(status),
+    status: normalizeTaskStatus(status),
     notes: notes ?? null,
   }).returning();
 
@@ -511,7 +537,7 @@ router.patch("/tasks/:taskId", async (req, res) => {
     return;
   }
 
-  const { title, project, deadline, progress, status, notes } = req.body;
+  const { title, project, deadline, status, notes } = req.body;
 
   if (title !== undefined && !String(title).trim()) {
     res.status(400).json({ error: "Nama tugas tidak boleh kosong" });
@@ -522,7 +548,6 @@ router.patch("/tasks/:taskId", async (req, res) => {
     title !== undefined ||
     project !== undefined ||
     deadline !== undefined ||
-    progress !== undefined ||
     status !== undefined ||
     notes !== undefined;
 
@@ -536,13 +561,13 @@ router.patch("/tasks/:taskId", async (req, res) => {
       ...(title !== undefined && { title }),
       ...(project !== undefined && { project }),
       ...(deadline !== undefined && { deadline: deadline || null }),
-      ...(progress !== undefined && { progress }),
-      ...(status !== undefined && { status }),
+      ...(status !== undefined && {
+        status: normalizeTaskStatus(status),
+        progress: getTaskProgress(status),
+      }),
       ...(notes !== undefined && { notes }),
-      ...(task[0].reviewStatus === "revisi"
-        ? { correctedAt: new Date() }
-        : {}),
       editCount: sql`${dailyTasksTable.editCount} + 1`,
+      updatedAt: new Date(),
     })
     .where(eq(dailyTasksTable.id, taskId))
     .returning();
@@ -550,7 +575,7 @@ router.patch("/tasks/:taskId", async (req, res) => {
   res.json(buildTaskResponse(updated));
 });
 
-router.post("/tasks/:taskId/submit-correction", async (req, res) => {
+router.post("/tasks/:taskId/start-correction", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
@@ -572,30 +597,51 @@ router.post("/tasks/:taskId/submit-correction", async (req, res) => {
     .where(eq(dailyReportsTable.id, task.reportId))
     .limit(1);
 
-  if (!report || (report.userId !== user.id && user.role !== "admin")) {
+  if (!report || report.userId !== user.id) {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }
-  if (task.reviewStatus !== "revisi") {
-    res.status(400).json({ error: "Tugas ini tidak sedang dalam status revisi" });
-    return;
-  }
-  if (!task.correctedAt) {
-    res.status(400).json({ error: "Simpan perubahan tugas sebelum mengirim perbaikan" });
+  if (task.reviewStatus !== "revisi" || task.revisionWorkTaskId) {
+    res.status(400).json({ error: "Anda hanya dapat melakukan revisi 1 kali." });
     return;
   }
 
-  const [updated] = await db
-    .update(dailyTasksTable)
-    .set({ reviewStatus: "sudah_diperbaiki" })
-    .where(eq(dailyTasksTable.id, taskId))
+  const todayReport = await getOrCreateTodayReport(user);
+  const [revisionTask] = await db.insert(dailyTasksTable).values({
+    reportId: todayReport.id,
+    title: task.title,
+    project: task.project,
+    deadline: task.deadline,
+    progress: task.progress,
+    status: task.status,
+    notes: task.notes,
+    reviewStatus: "sedang_diperbaiki",
+    reviewComment: task.reviewComment,
+    reviewedByUserId: task.reviewedByUserId,
+    reviewedByName: task.reviewedByName,
+    reviewedAt: task.reviewedAt,
+    revisionSourceTaskId: task.id,
+  }).returning();
+
+  const [updated] = await db.update(dailyTasksTable).set({
+    reviewStatus: "sedang_diperbaiki",
+    revisionWorkTaskId: revisionTask.id,
+  }).where(eq(dailyTasksTable.id, taskId))
     .returning();
 
   const reviewSummary = await refreshReportReviewStatus(task.reportId);
   res.json({
     task: buildTaskResponse(updated),
+    revisionTask: buildTaskResponse(revisionTask),
+    todayReportId: todayReport.id,
     reportStatus: reviewSummary.status,
     revisionCount: reviewSummary.revisionCount,
+  });
+});
+
+router.post("/tasks/:taskId/submit-correction", async (_req, res) => {
+  res.status(410).json({
+    error: "Gunakan tombol Perbaiki, lalu submit Laporan Harian hari ini.",
   });
 });
 
@@ -615,6 +661,11 @@ router.post("/tasks/:taskId/review", async (req, res) => {
   const [task] = await db.select().from(dailyTasksTable).where(eq(dailyTasksTable.id, taskId)).limit(1);
   if (!task) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
 
+  if (action === "revision" && ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")) {
+    res.status(400).json({ error: "Tugas ini sudah memiliki revisi aktif" });
+    return;
+  }
+
   const reviewStatus =
     action === "review"
       ? task.reviewStatus === "sudah_diperbaiki" ? "selesai" : "direview" :
@@ -630,7 +681,9 @@ router.post("/tasks/:taskId/review", async (req, res) => {
     reviewedByUserId: user.id,
     reviewedByName: user.name,
     reviewedAt: new Date(),
-    ...(action === "revision" ? { correctedAt: null } : {}),
+    ...(action === "revision"
+      ? { correctedAt: null, revisionWorkTaskId: null }
+      : {}),
   }).where(eq(dailyTasksTable.id, taskId)).returning();
 
   const [report] = await db.select().from(dailyReportsTable)
