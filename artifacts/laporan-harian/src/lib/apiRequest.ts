@@ -8,11 +8,9 @@ function getApiBaseUrl(): string {
     return envValue || "http://localhost:5000";
   }
 
-  if (typeof window !== "undefined" && window.location.hostname.endsWith("vercel.app")) {
-    return "";
-  }
-
-  return envValue;
+  // Production memakai proxy /api same-origin agar session cookie tidak
+  // berubah menjadi third-party cookie pada custom domain.
+  return "";
 }
 
 function buildApiUrl(input: RequestInfo | URL): RequestInfo | URL {
