@@ -1,4 +1,17 @@
 {
+  "redirects": [
+    {
+      "source": "/:path*",
+      "destination": "https://www.adiyasawork.com/:path*",
+      "permanent": true,
+      "has": [
+        {
+          "type": "host",
+          "value": "ptaa-laporan.vercel.app"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
