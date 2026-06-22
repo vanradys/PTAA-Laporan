@@ -17,3 +17,4 @@ export * from "./sessions";
 
 export * from "./device_tokens";
 export * from "./daily_report_reminder_logs";
+export * from "./attendance";

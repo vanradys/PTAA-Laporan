@@ -13,6 +13,7 @@ import dailyReportsReminderRouter from "./dailyReportsReminder";
 import overallMonitoringRouter from "./overallMonitoring";
 import nameChangeRequestsRouter from "./nameChangeRequests";
 import todoRouter from "./todo";
+import attendanceRouter from "./attendance";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use(dailyReportsReminderRouter);
 router.use(overallMonitoringRouter);
 router.use(nameChangeRequestsRouter);
 router.use(todoRouter);
+router.use(attendanceRouter);
 
 export default router;

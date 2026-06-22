@@ -226,20 +226,24 @@ export default function ToDoList() {
   const openPersonal = personal.filter((task) => task.status !== "Selesai");
   const openTeam = team.filter((task) => task.status !== "Selesai");
 
-  const weekDays = useMemo(() => {
+  const calendarDays = useMemo(() => {
     const anchor = parseDate(selectedDate);
-    const offset = anchor.getDay() === 0 ? -6 : 1 - anchor.getDay();
-    const monday = new Date(anchor); monday.setDate(anchor.getDate() + offset);
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(monday); date.setDate(monday.getDate() + index); return date;
+    const firstOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    const offset = firstOfMonth.getDay() === 0 ? -6 : 1 - firstOfMonth.getDay();
+    const calendarStart = new Date(firstOfMonth);
+    calendarStart.setDate(firstOfMonth.getDate() + offset);
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(calendarStart);
+      date.setDate(calendarStart.getDate() + index);
+      return date;
     });
   }, [selectedDate]);
   const selected = parseDate(selectedDate);
   const years = Array.from({ length: 7 }, (_, index) => selected.getFullYear() - 3 + index);
-  const weekLabel = new Intl.DateTimeFormat("id-ID", {
+  const calendarLabel = new Intl.DateTimeFormat("id-ID", {
     month: "long",
     year: "numeric",
-  }).format(weekDays[0]);
+  }).format(selected);
   const periodLabel =
     filterMode === "year"
       ? selectedYear
@@ -253,6 +257,16 @@ export default function ToDoList() {
     else if (filterMode === "month") date.setMonth(date.getMonth() + direction, 1);
     else date.setDate(date.getDate() + direction);
     setSelectedDate(dateValue(date));
+  };
+
+  const moveCalendarMonth = (direction: number) => {
+    const next = parseDate(selectedDate);
+    const originalDay = next.getDate();
+    next.setDate(1);
+    next.setMonth(next.getMonth() + direction);
+    const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    next.setDate(Math.min(originalDay, lastDay));
+    setSelectedDate(dateValue(next));
   };
   const changeMonth = (month: number) => {
     const date = parseDate(selectedDate); date.setMonth(month, 1); setSelectedDate(dateValue(date));
@@ -392,24 +406,80 @@ export default function ToDoList() {
             </p>
           ) : viewMode === "calendar" ? (
             <section className="space-y-3">
-              <div>
-                <h2 className="text-xl font-black text-slate-950">Kalender Tugas</h2>
-                <p className="text-sm font-semibold text-slate-500">
-                  Tampilan mingguan untuk melihat jadwal tugas pribadi dan tim.
-                </p>
-                <p className="mt-1 text-sm font-black text-[#06258d]">{weekLabel}</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-black text-slate-950">Kalender Tugas</h2>
+                  <p className="text-sm font-semibold text-slate-500">
+                    Tampilan bulanan untuk melihat jadwal tugas pribadi dan tim.
+                  </p>
+                  <p className="mt-1 text-sm font-black text-[#06258d]">{calendarLabel}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" onClick={() => moveCalendarMonth(-1)} title="Bulan sebelumnya">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={() => setSelectedDate(today)}>Bulan ini</Button>
+                  <Button variant="outline" size="icon" onClick={() => moveCalendarMonth(1)} title="Bulan berikutnya">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             <div className="overflow-x-auto rounded-xl border bg-white">
-              <div className="grid min-w-[900px] grid-cols-7">
-                {weekDays.map((date) => {
+              <div className="grid min-w-[840px] grid-cols-7 border-b bg-slate-50">
+                {["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"].map((day) => (
+                  <div key={day} className="border-r px-3 py-2 text-center text-xs font-black text-slate-500 last:border-r-0">
+                    {day}
+                  </div>
+                ))}
+              </div>
+              <div className="grid min-w-[840px] grid-cols-7">
+                {calendarDays.map((date, index) => {
                   const value = dateValue(date);
                   const dayTasks = tasks.filter((task) => inRange(value, task));
-                  return <div key={value} className="min-h-[420px] border-r last:border-r-0">
-                    <button type="button" onClick={() => { setSelectedDate(value); setFilterMode("date"); }} className={cn("w-full border-b p-3 text-left", value === selectedDate && "bg-blue-50")}>
-                      <p className="text-xs font-bold text-slate-500">{new Intl.DateTimeFormat("id-ID", { weekday: "short" }).format(date)}</p>
-                      <p className="text-lg font-black">{date.getDate()}</p>
+                  const inSelectedMonth = date.getMonth() === selected.getMonth() && date.getFullYear() === selected.getFullYear();
+                  return <div key={value} className={cn(
+                    "min-h-[150px] border-b border-r p-2",
+                    index % 7 === 6 && "border-r-0",
+                    index >= 35 && "border-b-0",
+                    !inSelectedMonth && "bg-slate-50/70",
+                  )}>
+                    <button type="button" onClick={() => { setSelectedDate(value); setFilterMode("date"); }} className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-full text-sm font-black",
+                      !inSelectedMonth && "text-slate-400",
+                      value === today && "bg-[#ef0012] text-white",
+                      value === selectedDate && value !== today && "bg-blue-100 text-[#06258d]",
+                    )}>
+                      {date.getDate()}
                     </button>
-                    <div className="space-y-2 p-2">{dayTasks.map((task) => <TaskCard key={task.id} task={task} onOpen={openTask} />)}</div>
+                    <div className="mt-2 space-y-1">
+                      {dayTasks.slice(0, 3).map((task) => (
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={() => void openTask(task)}
+                          title={task.title}
+                          className={cn(
+                            "block w-full truncate rounded px-2 py-1 text-left text-[11px] font-bold",
+                            task.status === "Selesai"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : task.type === "team"
+                                ? "bg-violet-100 text-violet-800"
+                                : "bg-blue-100 text-blue-800",
+                          )}
+                        >
+                          {task.title}
+                        </button>
+                      ))}
+                      {dayTasks.length > 3 && (
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedDate(value); setFilterMode("date"); setViewMode("today"); }}
+                          className="text-[11px] font-bold text-slate-500 hover:text-[#06258d]"
+                        >
+                          +{dayTasks.length - 3} tugas lainnya
+                        </button>
+                      )}
+                    </div>
                   </div>;
                 })}
               </div>

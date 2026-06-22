@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   UsersRound,
+  Fingerprint,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/to-do-list", label: "To Do List", icon: ClipboardList },
   { href: "/monitoring", label: "Monitoring Laporan", icon: BarChart2 },
   { href: "/jadwal-project", label: "Jadwal Project", icon: CalendarClock },
+  { href: "/absensi", label: "Absensi", icon: Fingerprint },
   { href: "/notifikasi", label: "Notifikasi", icon: Bell },
 ];
 

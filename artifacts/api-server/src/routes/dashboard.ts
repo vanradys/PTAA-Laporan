@@ -76,7 +76,10 @@ router.get("/dashboard/summary", async (req, res) => {
   const workingDates = await getWorkingDates(start, end);
   const companyScope = COMPANY_DASHBOARD_ROLES.has(String(user.role).toLowerCase());
 
-  const reportingUsers = await db.select({ id: usersTable.id }).from(usersTable)
+  const reportingUsers = await db.select({
+    id: usersTable.id,
+    name: usersTable.name,
+  }).from(usersTable)
     .where(reportingUserCondition());
   const allReportingIds = reportingUsers.map((item) => item.id);
   const scopedUserIds = companyScope ? allReportingIds : [user.id];
@@ -95,6 +98,14 @@ router.get("/dashboard/summary", async (req, res) => {
       ))
     : [];
   const submittedCount = new Set(submittedReports.map((item) => `${item.userId}:${item.date}`)).size;
+  const submittedKeys = new Set(submittedReports.map((item) => `${item.userId}:${item.date}`));
+  const selectedDateIsWorkingDay = workingDates.includes(date);
+  const missingEmployees = companyScope && selectedDateIsWorkingDay
+    ? reportingUsers
+      .filter((employee) => !submittedKeys.has(`${employee.id}:${date}`))
+      .map((employee) => ({ id: employee.id, name: employee.name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "id"))
+    : [];
 
   const taskStats = scopedUserIds.length
     ? await db.select({
@@ -140,6 +151,8 @@ router.get("/dashboard/summary", async (req, res) => {
     completionRate: totalTasks ? Math.round(completedTasks / totalTasks * 100) : 0,
     pendingAssignedTasksCount: pendingAssignedTaskStats.reduce((sum, item) => sum + item.count, 0),
     pendingAssignedTasksByAssigner: pendingAssignedTaskStats,
+    missingEmployees,
+    missingEmployeeCount: missingEmployees.length,
     scope: companyScope ? "company" : "personal",
     period,
     periodStartDate: start,

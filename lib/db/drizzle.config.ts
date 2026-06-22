@@ -35,6 +35,7 @@ export default defineConfig({
     "./src/schema/sessions.ts",
     "./src/schema/device_tokens.ts",
     "./src/schema/daily_report_reminder_logs.ts",
+    "./src/schema/attendance.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",

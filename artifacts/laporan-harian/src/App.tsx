@@ -14,6 +14,7 @@ import ToDoList from "@/pages/ToDoList";
 import CustomerTracking from "@/pages/CustomerTracking";
 import MonitoringKeseluruhan from "@/pages/MonitoringKeseluruhan";
 import UserManagement from "@/pages/UserManagement";
+import Attendance from "@/pages/Attendance";
 import { Loader2 } from "lucide-react";
 import NotificationPermissionPrompt from "@/components/NotificationPermissionPrompt";
 
@@ -59,6 +60,7 @@ function AppRoutes() {
       <Route path="/monitoring" component={Monitoring} />
       <Route path="/monitoring-keseluruhan" component={MonitoringKeseluruhan} />
       <Route path="/user-management" component={UserManagement} />
+      <Route path="/absensi" component={Attendance} />
       <Route path="/laporan/:id" component={DetailLaporan} />
       <Route path="/jadwal-project" component={JadwalProject} />
       <Route path="/notifikasi" component={Notifikasi} />

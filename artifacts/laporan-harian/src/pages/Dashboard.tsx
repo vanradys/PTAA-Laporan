@@ -16,6 +16,7 @@ import {
   FileCheck2,
   CalendarDays,
   Filter,
+  Copy,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -169,6 +170,65 @@ export default function Dashboard() {
     summary && "periodStartDate" in summary && "periodEndDate" in summary
       ? `${String((summary as any).periodStartDate)} s/d ${String((summary as any).periodEndDate)}`
       : today;
+  const missingEmployees = summary && Array.isArray((summary as any).missingEmployees)
+    ? (summary as any).missingEmployees as Array<{ id: number; name: string }>
+    : [];
+  const isDirector = ["direktur", "director", "dir"].includes(String(user?.role ?? "").toLowerCase());
+
+  const copyMissingReportTemplate = async () => {
+    const referenceDate = today;
+    const formattedDate = new Intl.DateTimeFormat("id-ID", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "Asia/Jakarta",
+    }).format(new Date(`${referenceDate}T12:00:00+07:00`));
+    const formattedDay = new Intl.DateTimeFormat("id-ID", {
+      weekday: "long",
+      timeZone: "Asia/Jakarta",
+    }).format(new Date(`${referenceDate}T12:00:00+07:00`));
+    const numberedNames = missingEmployees
+      .map((employee, index) => `${index + 1}. ${employee.name}`)
+      .join("\n");
+    const template = `📌 REMINDER LAPORAN HARIAN
+${formattedDay}, ${formattedDate}
+
+Karyawan yang belum mengirim laporan:
+❌ Belum Submit (${missingEmployees.length}) karyawan
+${numberedNames}
+
+Mohon segera mengisi laporan harian melalui Website Pelaporan PTAA:
+https://www.adiyasawork.com/
+atau
+https://ptaa-laporan.vercel.app/
+
+Terima kasih.`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(template);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = template;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand("copy");
+        textarea.remove();
+        if (!copied) throw new Error("Clipboard tidak tersedia");
+      }
+      toast({
+        title: "Template berhasil disalin",
+        description: "Teks reminder siap ditempel ke WhatsApp.",
+      });
+    } catch {
+      toast({
+        title: "Gagal menyalin template",
+        description: "Browser tidak memberikan izin clipboard.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const chartData = Array.isArray(deptData)
     ? deptData.map((dept: any) => ({
@@ -419,6 +479,23 @@ export default function Dashboard() {
                         {summary.notSubmittedToday}
                       </Badge>
                     </div>
+                    {isDirector && missingEmployees.length > 0 && (
+                      <div className="mt-3 border-t border-amber-200 pt-3">
+                        <p className="mb-2 text-xs font-semibold text-amber-900">
+                          Belum submit hari ini:{" "}
+                          {missingEmployees.map((employee) => employee.name).join(", ")}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                          onClick={copyMissingReportTemplate}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Salin Teks Template
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
