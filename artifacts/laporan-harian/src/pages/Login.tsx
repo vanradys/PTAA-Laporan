@@ -28,8 +28,22 @@ export default function Login() {
       await login.mutateAsync({ data });
       refetchUser();
     } catch (e: unknown) {
-      const err = e as { data?: { error?: string } };
-      setError(err?.data?.error ?? "Email atau password salah");
+      const err = e as {
+        data?: { error?: string; message?: string; detail?: string };
+        message?: string;
+        status?: number;
+      };
+      const backendMessage =
+        err.data?.error ??
+        err.data?.message ??
+        err.data?.detail ??
+        err.message;
+      setError(
+        backendMessage ||
+          (err.status === 401
+            ? "Email atau password salah"
+            : "Tidak dapat terhubung ke server. Silakan coba lagi."),
+      );
     }
   };
 
