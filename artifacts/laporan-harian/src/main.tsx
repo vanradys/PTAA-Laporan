@@ -10,9 +10,8 @@ function getApiBaseUrl() {
     return envUrl || "http://localhost:5000";
   }
 
-  // Production selalu memakai /api pada origin frontend. Vercel meneruskan
-  // request tersebut ke Railway melalui rewrite sehingga cookie login tetap
-  // first-party pada vercel.app maupun custom domain.
+  // Production memakai /api pada origin frontend. Vercel meneruskan request
+  // ke backend melalui Cloudflare Tunnel sehingga cookie login tetap first-party.
   return "";
 }
 

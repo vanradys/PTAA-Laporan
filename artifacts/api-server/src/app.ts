@@ -7,13 +7,25 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
-const allowedOrigins = [
+const defaultAllowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
   "https://ptaa-laporan.vercel.app",
   "https://adiyasawork.com",
   "https://www.adiyasawork.com",
 ];
+const configuredAllowedOrigins = String(process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+const allowedOrigins = new Set([
+  ...defaultAllowedOrigins,
+  ...configuredAllowedOrigins,
+]);
+
+function normalizeOrigin(origin: string) {
+  return origin.trim().replace(/\/$/, "");
+}
 
 app.use(
   pinoHttp({
@@ -38,7 +50,7 @@ app.use(
 app.use(
   cors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.has(normalizeOrigin(origin))) {
         callback(null, true);
         return;
       }

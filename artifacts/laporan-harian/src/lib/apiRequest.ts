@@ -8,8 +8,8 @@ function getApiBaseUrl(): string {
     return envValue || "http://localhost:5000";
   }
 
-  // Production memakai proxy /api same-origin agar session cookie tidak
-  // berubah menjadi third-party cookie pada custom domain.
+  // Production memakai rewrite /api same-origin ke backend Cloudflare Tunnel
+  // agar session cookie tetap first-party pada custom domain.
   return "";
 }
 
