@@ -8,4 +8,5 @@
 
 export type GetDashboardSummaryParams = {
   date?: string;
+  period?: "daily" | "weekly" | "monthly" | "yearly";
 };

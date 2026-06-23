@@ -30,10 +30,50 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
 });
+const INSERT_CHUNK_SIZE = 500;
 
-const OFFICE_DEFAULTS = new Set(["rais", "hafidz diinul", "alya", "ita", "ines", "dikri"]);
-const FULL_ACCESS_ROLES = new Set(["admin", "direktur", "director", "dir"]);
-const ADMIN_ROLE = "admin";
+const OFFICE_DEFAULTS = new Set(["rais", "hafidz", "hafidz diinul", "alya", "aliya", "ita", "ines", "dikri"]);
+const FULL_ACCESS_ROLES = new Set([
+  "admin",
+  "direktur",
+  "director",
+  "dir",
+  "monitoring_dummy",
+  "monitoring",
+  "monitor",
+]);
+const WEBSITE_ATTENDANCE_MAPPINGS = [
+  {
+    aliases: ["hafidz", "hafidz diinul"],
+    email: "engineering2@adiyasa.com",
+    department: "Engineering 2",
+  },
+  {
+    aliases: ["rais"],
+    email: "engineering1@adiyasa.com",
+    department: "Engineering 1",
+  },
+  {
+    aliases: ["ines"],
+    email: "marketing@adiyasa.com",
+    department: "Admin Marketing 1",
+  },
+  {
+    aliases: ["alya", "aliya"],
+    email: "admarketing@adiyasa.com",
+    department: "Admin Marketing 2",
+  },
+  {
+    aliases: ["dikri"],
+    email: "purchasing@adiyasa.com",
+    department: "Purchasing",
+  },
+  {
+    aliases: ["ita"],
+    email: "finance@adiyasa.com",
+    department: "Finance & Accounting",
+  },
+] as const;
 
 type AuthUser = NonNullable<Awaited<ReturnType<typeof getUserFromToken>>>;
 type ParsedRow = {
@@ -62,12 +102,30 @@ function normalizeHeader(value: unknown) {
   return normalize(value).toLowerCase().replace(/\s+/g, " ");
 }
 
+function attendanceAccountRule(machineName: string) {
+  const normalizedName = machineName.trim().toLowerCase();
+  return WEBSITE_ATTENDANCE_MAPPINGS.find((rule) =>
+    (rule.aliases as readonly string[]).includes(normalizedName),
+  );
+}
+
+function chunksOf<T>(items: T[], size = INSERT_CHUNK_SIZE) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function parseDate(value: unknown): string | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);
   }
   const text = normalize(value);
-  const match = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  const isoMatch = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  const match = isoMatch
+    ? [isoMatch[0], isoMatch[3], isoMatch[2], isoMatch[1]]
+    : text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
   if (!match) return null;
   const [, day, month, year] = match;
   const iso = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
@@ -109,6 +167,49 @@ function isWeekend(iso: string) {
 function timeHours(time: string) {
   const [hour, minute, second] = time.split(":").map(Number);
   return hour + minute / 60 + second / 3600;
+}
+
+type WorkDateRow = {
+  machineName: string | null;
+  scanDate: string | null;
+  scanTime: string | null;
+  ioType: string | null;
+};
+
+function createWorkDateResolver(rows: WorkDateRow[]) {
+  const lastIoByDate = new Map<string, { scanTime: string; ioType: string }>();
+  const noIoScansByDate = new Map<string, string[]>();
+  for (const row of rows) {
+    if (!row.machineName || !row.scanDate || !row.scanTime) continue;
+    const key = `${row.machineName.trim().toLowerCase()}|${row.scanDate}`;
+    if (row.ioType === "1" || row.ioType === "2") {
+      const current = lastIoByDate.get(key);
+      if (!current || row.scanTime >= current.scanTime) {
+        lastIoByDate.set(key, { scanTime: row.scanTime, ioType: row.ioType });
+      }
+    }
+    if (!row.ioType) {
+      noIoScansByDate.set(key, [...(noIoScansByDate.get(key) ?? []), row.scanTime]);
+    }
+  }
+  return (row: WorkDateRow) => {
+    if (!row.machineName || !row.scanDate || !row.scanTime) return row.scanDate;
+    const previousDate = addDays(row.scanDate, -1);
+    const previousKey = `${row.machineName.trim().toLowerCase()}|${previousDate}`;
+    const previousNoIoScans = noIoScansByDate.get(previousKey) ?? [];
+    const explicitOvernightCheckout =
+      row.ioType === "2"
+      && row.scanTime < "12:00:00"
+      && lastIoByDate.get(previousKey)?.ioType === "1";
+    const unlabelledOvernightCheckout =
+      !row.ioType
+      && row.scanTime < "12:00:00"
+      && previousNoIoScans.length === 1
+      && previousNoIoScans[0] >= "16:00:00";
+    return explicitOvernightCheckout || unlabelledOvernightCheckout
+      ? previousDate
+      : row.scanDate;
+  };
 }
 
 function payrollPeriod(reference = new Date()) {
@@ -167,24 +268,61 @@ async function authenticate(req: any, res: any): Promise<AuthUser | null> {
   return user;
 }
 
-function requireAdmin(user: AuthUser, res: any) {
-  if (String(user.role).toLowerCase() !== ADMIN_ROLE) {
-    res.status(403).json({ error: "Aksi ini hanya dapat dilakukan Admin" });
+function isAttendanceManager(user: AuthUser) {
+  const role = String(user.role ?? "").toLowerCase();
+  const departmentCode = String(user.departmentCode ?? "").toUpperCase();
+  const departmentName = String(user.departmentName ?? "").toLowerCase();
+  const email = String(user.email ?? "").toLowerCase();
+  return role === "admin"
+    || role === "finance"
+    || ["AAF", "FIN"].includes(departmentCode)
+    || departmentName.includes("finance")
+    || email === "finance@adiyasa.com";
+}
+
+function hasFullAttendanceAccess(user: AuthUser) {
+  return isAttendanceManager(user) || FULL_ACCESS_ROLES.has(String(user.role).toLowerCase());
+}
+
+function requireAttendanceManager(user: AuthUser, res: any) {
+  if (!isAttendanceManager(user)) {
+    res.status(403).json({ error: "Aksi ini hanya dapat dilakukan Admin atau Finance" });
     return false;
   }
   return true;
 }
 
+function attendanceUpload(req: any, res: any, next: (error?: unknown) => void) {
+  upload.single("file")(req, res, (error: unknown) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({ error: "Ukuran file maksimal 20 MB" });
+      return;
+    }
+    res.status(400).json({ error: error instanceof Error ? error.message : "Upload file gagal" });
+  });
+}
+
 function parseWorkbook(buffer: Buffer) {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true, dense: false });
+  let workbook: XLSX.WorkBook;
+  try {
+    workbook = XLSX.read(buffer, { type: "buffer", cellDates: true, dense: false });
+  } catch {
+    throw new Error("Isi file bukan Excel/CSV yang valid atau file rusak");
+  }
   if (workbook.SheetNames.length > 20) throw new Error("File memiliki terlalu banyak sheet");
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
-    const cellAddresses = Object.keys(sheet).filter((key) => !key.startsWith("!"));
-    if (cellAddresses.length > 100_000) throw new Error(`Sheet ${sheetName} memiliki terlalu banyak sel`);
+    const populatedCells = Object.entries(sheet).filter(([key, cell]) =>
+      !key.startsWith("!") && normalize((cell as XLSX.CellObject)?.v),
+    );
+    if (populatedCells.length > 100_000) throw new Error(`Sheet ${sheetName} memiliki terlalu banyak data`);
     let maxRow = 0;
     let maxColumn = 0;
-    for (const address of cellAddresses) {
+    for (const [address] of populatedCells) {
       const decoded = XLSX.utils.decode_cell(address);
       maxRow = Math.max(maxRow, decoded.r);
       maxColumn = Math.max(maxColumn, decoded.c);
@@ -205,7 +343,11 @@ function parseWorkbook(buffer: Buffer) {
     });
     if (headerIndex < 0) continue;
 
-    const headers = rows[headerIndex].map(normalize);
+    const lastHeaderColumn = rows[headerIndex].reduce<number>(
+      (last, value, column) => normalize(value) ? column : last,
+      0,
+    );
+    const headers = rows[headerIndex].slice(0, lastHeaderColumn + 1).map(normalize);
     const index = new Map(headers.map((header, column) => [normalizeHeader(header), column]));
     const get = (row: unknown[], ...names: string[]) => {
       const name = names.find((candidate) => index.has(candidate));
@@ -213,7 +355,7 @@ function parseWorkbook(buffer: Buffer) {
     };
     const parsedRows: ParsedRow[] = rows
       .slice(headerIndex + 1)
-      .filter((row) => row.some((value) => normalize(value)))
+      .filter((row) => row.slice(0, headers.length).some((value) => normalize(value)))
       .map((row, offset) => {
         const rawData = Object.fromEntries(headers.map((header, column) => [header || `Kolom ${column + 1}`, row[column] ?? ""]));
         const machineName = normalize(get(row, "nama")) || null;
@@ -253,20 +395,103 @@ function parseWorkbook(buffer: Buffer) {
 async function ensureAutomaticMappings(names: string[]) {
   if (names.length === 0) return;
   const existing = await db.select().from(attendanceMappingsTable);
-  const existingNames = new Set(existing.map((item) => item.machineName.toLowerCase()));
-  const users = await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.isActive, true));
+  const existingByName = new Map(existing.map((item) => [item.machineName.trim().toLowerCase(), item]));
+  const existingByUserId = new Map(existing.filter((item) => item.userId).map((item) => [item.userId!, item]));
+  const users = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.isActive, true));
   const usersByName = new Map(users.map((user) => [user.name.trim().toLowerCase(), user]));
+  const usersByEmail = new Map(users.map((user) => [user.email.trim().toLowerCase(), user]));
   for (const name of names) {
-    if (existingNames.has(name.toLowerCase())) continue;
-    const matchedUser = usersByName.get(name.toLowerCase());
+    const normalizedName = name.trim().toLowerCase();
+    const rule = attendanceAccountRule(name);
+    const matchedUser = rule
+      ? usersByEmail.get(rule.email)
+      : usersByName.get(normalizedName);
     if (!matchedUser) continue;
+    const existingForName = existingByName.get(normalizedName);
+    const existingForUser = existingByUserId.get(matchedUser.id);
+    if (existingForName) {
+      if (existingForName.userId !== matchedUser.id || !existingForName.isActive) {
+        await db.update(attendanceMappingsTable).set({
+          userId: matchedUser.id,
+          displayName: name,
+          isActive: true,
+          updatedAt: new Date(),
+        }).where(eq(attendanceMappingsTable.id, existingForName.id));
+      }
+      continue;
+    }
+    if (existingForUser) {
+      await db.update(attendanceMappingsTable).set({
+        machineName: name,
+        displayName: name,
+        isActive: true,
+        updatedAt: new Date(),
+      }).where(eq(attendanceMappingsTable.id, existingForUser.id));
+      continue;
+    }
     await db.insert(attendanceMappingsTable).values({
       machineName: name,
-      displayName: matchedUser.name,
+      displayName: name,
       userId: matchedUser.id,
-      employeeType: OFFICE_DEFAULTS.has(name.toLowerCase()) ? "Office" : "Produksi",
+      employeeType: OFFICE_DEFAULTS.has(normalizedName) ? "Office" : "Produksi",
     }).onConflictDoNothing();
   }
+}
+
+async function getPendingMappingNames(executor: any = db) {
+  const [previewNames, activeMappings] = await Promise.all([
+    executor.selectDistinct({ machineName: attendanceImportRowsTable.machineName })
+      .from(attendanceImportRowsTable)
+      .innerJoin(attendanceImportBatchesTable, eq(attendanceImportRowsTable.batchId, attendanceImportBatchesTable.id))
+      .where(and(
+        eq(attendanceImportRowsTable.isValid, true),
+        eq(attendanceImportBatchesTable.status, "preview"),
+      )),
+    executor.select({ machineName: attendanceMappingsTable.machineName })
+      .from(attendanceMappingsTable)
+      .where(eq(attendanceMappingsTable.isActive, true)),
+  ]);
+  const mappedNames = new Set(activeMappings.map(
+    (item: { machineName: string }) => item.machineName.trim().toLowerCase(),
+  ));
+  return previewNames
+    .map((item: { machineName: string | null }) => item.machineName)
+    .filter((name: string | null): name is string => Boolean(name))
+    .filter((name: string) => !mappedNames.has(name.trim().toLowerCase()))
+    .sort((a: string, b: string) => a.localeCompare(b, "id"));
+}
+
+function calculateOvertime(
+  employeeType: string,
+  holiday: boolean,
+  clockIn: string | null,
+  clockOut: string | null,
+  totalScans: number,
+) {
+  let overtimeProduction = 0;
+  let overtimeOffice = 0;
+  if (employeeType === "Produksi" && clockIn && clockOut) {
+    const clockInHours = timeHours(clockIn);
+    let clockOutHours = timeHours(clockOut);
+    const overnight = clockOutHours < clockInHours;
+    if (overnight) clockOutHours += 24;
+    const duration = Math.max(0, Math.min(24, clockOutHours - clockInHours));
+    if (holiday) {
+      overtimeProduction = duration * 1.5;
+    } else if (overnight && clockInHours >= 17) {
+      overtimeProduction = duration * 1.5;
+    } else {
+      overtimeProduction = Math.max(0, clockOutHours - 17) * 1.5;
+    }
+  } else if (employeeType === "Office" && holiday && totalScans > 0) {
+    overtimeOffice = 1;
+  } else if (employeeType === "Office" && !holiday && clockIn && clockOut) {
+    const adjustedOut = timeHours(clockOut) + (clockOut < clockIn ? 24 : 0);
+    if (adjustedOut > 18) overtimeOffice = 1;
+  }
+  return { overtimeProduction, overtimeOffice };
 }
 
 async function getSettings(executor: any = db) {
@@ -287,6 +512,18 @@ async function notifyAttendanceStatus(
   executor: any = db,
 ) {
   const settings = await getSettings(executor);
+  const currentUserIds = new Set(rows.flatMap((row) => row.userId ? [row.userId] : []));
+  const obsoleteLogs = await executor.select().from(attendanceNotificationLogsTable).where(and(
+    eq(attendanceNotificationLogsTable.periodStart, periodStart),
+    eq(attendanceNotificationLogsTable.periodEnd, periodEnd),
+  ));
+  for (const log of obsoleteLogs) {
+    if (currentUserIds.has(log.userId)) continue;
+    if (log.notificationId) {
+      await executor.delete(notificationsTable).where(eq(notificationsTable.id, log.notificationId));
+    }
+    await executor.delete(attendanceNotificationLogsTable).where(eq(attendanceNotificationLogsTable.id, log.id));
+  }
   for (const row of rows) {
     if (!row.userId) continue;
     const status = statusFromLate(row.totalLate, settings);
@@ -386,22 +623,13 @@ async function recalculateAttendanceDate(workDate: string) {
     const clockOut = row.clockOut;
     const overnight = Boolean(clockIn && clockOut && clockOut < clockIn);
     const late = !holiday && Boolean(clockIn && !overnight && clockIn.slice(0, 5) > "07:00");
-    let overtimeProduction = 0;
-    let overtimeOffice = 0;
-    if (row.employeeType === "Produksi") {
-      if (holiday && clockIn && clockOut) {
-        let duration = timeHours(clockOut) - timeHours(clockIn);
-        if (duration < 0) duration += 24;
-        overtimeProduction = Math.max(0, duration) * 1.5;
-      } else if (!holiday && clockIn && clockOut) {
-        const adjustedOut = timeHours(clockOut) + (overnight ? 24 : 0);
-        overtimeProduction = Math.max(0, adjustedOut - 17) * 1.5;
-      }
-    } else if (holiday && row.totalScans > 0) {
-      overtimeOffice = 1;
-    } else if (!holiday && clockIn && clockOut && timeHours(clockOut) + (overnight ? 24 : 0) > 18) {
-      overtimeOffice = 1;
-    }
+    const { overtimeProduction, overtimeOffice } = calculateOvertime(
+      row.employeeType,
+      holiday,
+      clockIn,
+      clockOut,
+      row.totalScans,
+    );
     const noScan = row.totalScans === 0;
     await db.update(attendanceDailyTable).set({
       isHoliday: holiday,
@@ -433,22 +661,31 @@ async function processBatch(batchId: number) {
   await tx.execute(sql`select pg_advisory_xact_lock(772026)`);
   const batch = (await tx.select().from(attendanceImportBatchesTable).where(eq(attendanceImportBatchesTable.id, batchId)).limit(1))[0];
   if (!batch) throw new Error("Batch import tidak ditemukan");
-  if (batch.status === "processed") throw new Error("Batch ini sudah pernah diproses");
+  if (batch.status !== "preview") throw new Error("Batch import sudah dibatalkan, diganti, atau pernah diproses");
   const rows = await tx.select().from(attendanceImportRowsTable).where(eq(attendanceImportRowsTable.batchId, batchId)).orderBy(asc(attendanceImportRowsTable.rowNumber));
   const validRows = rows.filter((row) => row.isValid && row.machineName && row.scanDate && row.scanTime);
   if (validRows.length === 0) throw new Error("Tidak ada baris valid untuk diproses");
   const names = [...new Set(validRows.map((row) => row.machineName!))];
-  const mappings = await tx.select().from(attendanceMappingsTable).where(inArray(attendanceMappingsTable.machineName, names));
-  const mappingByName = new Map(mappings.filter((item) => item.isActive).map((item) => [item.machineName, item]));
-  const unmapped = names.filter((name) => !mappingByName.has(name));
+  const mappings = await tx.select().from(attendanceMappingsTable);
+  const mappingByName = new Map(mappings
+    .filter((item) => item.isActive)
+    .map((item) => [item.machineName.trim().toLowerCase(), item]));
+  const unmapped = names.filter((name) => !mappingByName.has(name.trim().toLowerCase()));
   if (unmapped.length > 0) {
     throw new Error(`Masih ada ${unmapped.length} nama belum mapping: ${unmapped.slice(0, 5).join(", ")}`);
   }
-  const activeMappings = await tx.select().from(attendanceMappingsTable)
-    .where(eq(attendanceMappingsTable.isActive, true));
-  const dates = validRows.map((row) => row.scanDate!).sort();
-  const periodStart = batch.periodStart ?? dates[0];
-  const periodEnd = batch.periodEnd ?? dates.at(-1)!;
+  const activeMappings = [...new Map(names.map((name) => {
+    const mapping = mappingByName.get(name.trim().toLowerCase())!;
+    return [mapping.id, mapping] as const;
+  })).values()];
+  const resolveWorkDate = createWorkDateResolver(validRows);
+  const workDates = validRows.map(resolveWorkDate).filter((date): date is string => Boolean(date)).sort();
+  const firstPayroll = payrollPeriodForDate(workDates[0]);
+  const lastPayroll = payrollPeriodForDate(workDates.at(-1)!);
+  const periodStart = firstPayroll.start;
+  const periodEnd = lastPayroll.end;
+  const periodDuration = (new Date(`${periodEnd}T00:00:00Z`).getTime() - new Date(`${periodStart}T00:00:00Z`).getTime()) / 86_400_000;
+  if (periodDuration > 370) throw new Error("Periode data maksimal 370 hari");
 
   const previousBatches = await tx.select({ id: attendanceImportBatchesTable.id })
     .from(attendanceImportBatchesTable)
@@ -461,16 +698,9 @@ async function processBatch(batchId: number) {
   await tx.delete(attendanceDailyTable).where(eq(attendanceDailyTable.batchId, batchId));
   await tx.delete(attendanceScansTable).where(eq(attendanceScansTable.batchId, batchId));
 
-  const entryKeys = new Set(validRows
-    .filter((row) => row.ioType === "1")
-    .map((row) => `${row.machineName}|${row.scanDate}`));
   const scanValues = validRows.map((row) => {
-    const mapping = mappingByName.get(row.machineName!)!;
-    const previousDate = addDays(row.scanDate!, -1);
-    const earlyCheckout =
-      row.ioType === "2" &&
-      row.scanTime! < "12:00:00" &&
-      entryKeys.has(`${row.machineName}|${previousDate}`);
+    const normalizedName = row.machineName!.trim().toLowerCase();
+    const mapping = mappingByName.get(normalizedName)!;
     return {
       batchId,
       importRowId: row.id,
@@ -479,14 +709,16 @@ async function processBatch(batchId: number) {
       machineName: row.machineName!,
       displayName: mapping.displayName,
       employeeType: mapping.employeeType,
-      department: row.department,
+      department: attendanceAccountRule(row.machineName!)?.department || row.department,
       scanDate: row.scanDate!,
       scanTime: row.scanTime!,
-      workDate: earlyCheckout ? addDays(row.scanDate!, -1) : row.scanDate!,
+      workDate: resolveWorkDate(row)!,
       ioType: row.ioType,
     };
   });
-  if (scanValues.length > 0) await tx.insert(attendanceScansTable).values(scanValues);
+  for (const chunk of chunksOf(scanValues)) {
+    await tx.insert(attendanceScansTable).values(chunk);
+  }
 
   const holidaySet = await getHolidayDates(periodStart, periodEnd, tx);
   const scansByPersonDate = new Map<string, typeof scanValues>();
@@ -499,7 +731,9 @@ async function processBatch(batchId: number) {
   const dailyValues: Array<typeof attendanceDailyTable.$inferInsert> = [];
   for (const mapping of activeMappings) {
     for (const workDate of eachDate(periodStart, periodEnd)) {
-      const scans = (scansByPersonDate.get(`${mapping.id}|${workDate}`) ?? []).sort((a, b) => a.scanTime.localeCompare(b.scanTime));
+      const scans = (scansByPersonDate.get(`${mapping.id}|${workDate}`) ?? []).sort((a, b) =>
+        a.scanDate.localeCompare(b.scanDate) || a.scanTime.localeCompare(b.scanTime),
+      );
       const inScans = scans.filter((scan) => scan.ioType === "1");
       const outScans = scans.filter((scan) => scan.ioType === "2");
       let clockIn: string | null = inScans[0]?.scanTime ?? null;
@@ -515,22 +749,13 @@ async function processBatch(batchId: number) {
       const holiday = isWeekend(workDate) || holidaySet.has(workDate);
       const overnight = Boolean(clockIn && clockOut && clockOut < clockIn);
       const late = !holiday && Boolean(clockIn && !overnight && clockIn.slice(0, 5) > "07:00");
-      let overtimeProduction = 0;
-      let overtimeOffice = 0;
-      if (mapping.employeeType === "Produksi") {
-        if (holiday && clockIn && clockOut) {
-          let duration = timeHours(clockOut) - timeHours(clockIn);
-          if (duration < 0) duration += 24;
-          overtimeProduction = Math.max(0, duration) * 1.5;
-        } else if (!holiday && clockIn && clockOut) {
-          const adjustedOut = timeHours(clockOut) + (overnight ? 24 : 0);
-          overtimeProduction = Math.max(0, adjustedOut - 17) * 1.5;
-        }
-      } else if (holiday && scans.length > 0) {
-        overtimeOffice = 1;
-      } else if (!holiday && clockIn && clockOut && timeHours(clockOut) + (overnight ? 24 : 0) > 18) {
-        overtimeOffice = 1;
-      }
+      const { overtimeProduction, overtimeOffice } = calculateOvertime(
+        mapping.employeeType,
+        holiday,
+        clockIn,
+        clockOut,
+        scans.length,
+      );
       const noScan = scans.length === 0;
       dailyValues.push({
         batchId,
@@ -555,7 +780,9 @@ async function processBatch(batchId: number) {
       });
     }
   }
-  if (dailyValues.length > 0) await tx.insert(attendanceDailyTable).values(dailyValues);
+  for (const chunk of chunksOf(dailyValues)) {
+    await tx.insert(attendanceDailyTable).values(chunk);
+  }
   await tx.update(attendanceImportBatchesTable).set({
     status: "processed",
     periodStart,
@@ -579,10 +806,10 @@ async function processBatch(batchId: number) {
   });
 }
 
-router.post("/attendance/import/preview", upload.single("file"), async (req: any, res) => {
+router.post("/attendance/import/preview", attendanceUpload, async (req: any, res) => {
   try {
     const user = await authenticate(req, res);
-    if (!user || !requireAdmin(user, res)) return;
+    if (!user || !requireAttendanceManager(user, res)) return;
     if (!req.file) {
       res.status(400).json({ error: "Pilih file Excel atau CSV" });
       return;
@@ -596,37 +823,47 @@ router.post("/attendance/import/preview", upload.single("file"), async (req: any
     const valid = parsed.rows.filter((row) => row.isValid);
     const names = [...new Set(valid.map((row) => row.machineName!).filter(Boolean))];
     await ensureAutomaticMappings(names);
-    const mappings = await db.select().from(attendanceMappingsTable).where(inArray(attendanceMappingsTable.machineName, names));
-    const mappedSet = new Set(mappings.filter((item) => item.isActive).map((item) => item.machineName));
-    const dates = valid.map((row) => row.scanDate!).filter(Boolean).sort();
+    const mappings = await db.select().from(attendanceMappingsTable);
+    const mappedSet = new Set(mappings
+      .filter((item) => item.isActive)
+      .map((item) => item.machineName.trim().toLowerCase()));
+    const isMapped = (name: string) => mappedSet.has(name.trim().toLowerCase());
+    const resolveWorkDate = createWorkDateResolver(valid);
+    const dates = valid.map(resolveWorkDate).filter((date): date is string => Boolean(date)).sort();
     const firstPayroll = dates[0] ? payrollPeriodForDate(dates[0]) : null;
     const lastPayroll = dates.at(-1) ? payrollPeriodForDate(dates.at(-1)!) : null;
     if (firstPayroll && lastPayroll) {
       const duration = (new Date(`${lastPayroll.end}T00:00:00Z`).getTime() - new Date(`${firstPayroll.start}T00:00:00Z`).getTime()) / 86_400_000;
       if (duration > 370) throw new Error("Periode data maksimal 370 hari");
     }
-    await db.update(attendanceImportBatchesTable).set({ status: "cancelled" }).where(and(
-      eq(attendanceImportBatchesTable.uploadedBy, user.id),
-      eq(attendanceImportBatchesTable.status, "preview"),
-    ));
-    const [batch] = await db.insert(attendanceImportBatchesTable).values({
-      fileName: req.file.originalname,
-      sheetName: parsed.sheetName,
-      periodStart: firstPayroll?.start ?? null,
-      periodEnd: lastPayroll?.end ?? null,
-      totalRows: parsed.rows.length,
-      validRows: valid.length,
-      invalidRows: parsed.rows.length - valid.length,
-      mappedNames: names.filter((name) => mappedSet.has(name)).length,
-      unmappedNames: names.filter((name) => !mappedSet.has(name)).length,
-      uploadedBy: user.id,
-    }).returning();
-    if (parsed.rows.length > 0) {
-      await db.insert(attendanceImportRowsTable).values(parsed.rows.map((row) => ({
-        batchId: batch.id,
-        ...row,
-      })));
-    }
+    const batch = await db.transaction(async (tx) => {
+      await tx.update(attendanceImportBatchesTable).set({ status: "cancelled" }).where(and(
+        eq(attendanceImportBatchesTable.uploadedBy, user.id),
+        eq(attendanceImportBatchesTable.status, "preview"),
+      ));
+      const [created] = await tx.insert(attendanceImportBatchesTable).values({
+        fileName: req.file.originalname,
+        sheetName: parsed.sheetName,
+        periodStart: firstPayroll?.start ?? null,
+        periodEnd: lastPayroll?.end ?? null,
+        totalRows: parsed.rows.length,
+        validRows: valid.length,
+        invalidRows: parsed.rows.length - valid.length,
+        mappedNames: names.filter(isMapped).length,
+        unmappedNames: names.filter((name) => !isMapped(name)).length,
+        uploadedBy: user.id,
+      }).returning();
+      if (parsed.rows.length > 0) {
+        const importRows = parsed.rows.map((row) => ({
+          batchId: created.id,
+          ...row,
+        }));
+        for (const chunk of chunksOf(importRows)) {
+          await tx.insert(attendanceImportRowsTable).values(chunk);
+        }
+      }
+      return created;
+    });
     res.json({
       batchId: batch.id,
       fileName: batch.fileName,
@@ -636,8 +873,8 @@ router.post("/attendance/import/preview", upload.single("file"), async (req: any
       totalRows: batch.totalRows,
       validRows: batch.validRows,
       invalidRows: batch.invalidRows,
-      mappedNames: names.filter((name) => mappedSet.has(name)),
-      unmappedNames: names.filter((name) => !mappedSet.has(name)),
+      mappedNames: names.filter(isMapped),
+      unmappedNames: names.filter((name) => !isMapped(name)),
       invalidDetails: parsed.rows.filter((row) => !row.isValid).slice(0, 100).map((row) => ({
         rowNumber: row.rowNumber,
         errors: row.validationErrors,
@@ -651,7 +888,7 @@ router.post("/attendance/import/preview", upload.single("file"), async (req: any
 
 router.post("/attendance/import/:batchId/cancel", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
+  if (!user || !requireAttendanceManager(user, res)) return;
   await db.update(attendanceImportBatchesTable).set({ status: "cancelled" }).where(and(
     eq(attendanceImportBatchesTable.id, Number(req.params.batchId)),
     eq(attendanceImportBatchesTable.status, "preview"),
@@ -662,7 +899,7 @@ router.post("/attendance/import/:batchId/cancel", async (req: any, res) => {
 router.post("/attendance/import/:batchId/process", async (req: any, res) => {
   try {
     const user = await authenticate(req, res);
-    if (!user || !requireAdmin(user, res)) return;
+    if (!user || !requireAttendanceManager(user, res)) return;
     res.json(await processBatch(Number(req.params.batchId)));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Gagal memproses import" });
@@ -672,7 +909,7 @@ router.post("/attendance/import/:batchId/process", async (req: any, res) => {
 router.get("/attendance/imports", async (req: any, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!FULL_ACCESS_ROLES.has(String(user.role).toLowerCase())) {
+  if (!hasFullAttendanceAccess(user)) {
     res.status(403).json({ error: "Akses ditolak" });
     return;
   }
@@ -681,7 +918,7 @@ router.get("/attendance/imports", async (req: any, res) => {
 
 router.get("/attendance/import/:batchId/preview", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
+  if (!user || !requireAttendanceManager(user, res)) return;
   const batchId = Number(req.params.batchId);
   if (!Number.isInteger(batchId)) {
     res.status(400).json({ error: "ID batch tidak valid" });
@@ -700,12 +937,10 @@ router.get("/attendance/import/:batchId/preview", async (req: any, res) => {
     .orderBy(asc(attendanceImportRowsTable.rowNumber));
   const names = [...new Set(rows.filter((row) => row.isValid && row.machineName).map((row) => row.machineName!))];
   const mappings = names.length
-    ? await db.select().from(attendanceMappingsTable).where(and(
-      inArray(attendanceMappingsTable.machineName, names),
-      eq(attendanceMappingsTable.isActive, true),
-    ))
+    ? await db.select().from(attendanceMappingsTable).where(eq(attendanceMappingsTable.isActive, true))
     : [];
-  const mappedSet = new Set(mappings.map((item) => item.machineName));
+  const mappedSet = new Set(mappings.map((item) => item.machineName.trim().toLowerCase()));
+  const isMapped = (name: string) => mappedSet.has(name.trim().toLowerCase());
   res.json({
     batchId: batch.id,
     fileName: batch.fileName,
@@ -715,8 +950,8 @@ router.get("/attendance/import/:batchId/preview", async (req: any, res) => {
     totalRows: batch.totalRows,
     validRows: batch.validRows,
     invalidRows: batch.invalidRows,
-    mappedNames: names.filter((name) => mappedSet.has(name)),
-    unmappedNames: names.filter((name) => !mappedSet.has(name)),
+    mappedNames: names.filter(isMapped),
+    unmappedNames: names.filter((name) => !isMapped(name)),
     invalidDetails: rows.filter((row) => !row.isValid).slice(0, 100).map((row) => ({
       rowNumber: row.rowNumber,
       errors: row.validationErrors,
@@ -728,7 +963,7 @@ router.get("/attendance/import/:batchId/preview", async (req: any, res) => {
 router.get("/attendance/mappings", async (req: any, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!FULL_ACCESS_ROLES.has(String(user.role).toLowerCase())) {
+  if (!hasFullAttendanceAccess(user)) {
     res.status(403).json({ error: "Akses ditolak" });
     return;
   }
@@ -741,31 +976,19 @@ router.get("/attendance/mappings", async (req: any, res) => {
     isActive: attendanceMappingsTable.isActive,
     userName: usersTable.name,
   }).from(attendanceMappingsTable).leftJoin(usersTable, eq(attendanceMappingsTable.userId, usersTable.id)).orderBy(asc(attendanceMappingsTable.machineName));
-  const pendingNames = await db.selectDistinct({ machineName: attendanceImportRowsTable.machineName })
-    .from(attendanceImportRowsTable)
-    .innerJoin(attendanceImportBatchesTable, eq(attendanceImportRowsTable.batchId, attendanceImportBatchesTable.id))
-    .leftJoin(attendanceMappingsTable, and(
-      eq(attendanceImportRowsTable.machineName, attendanceMappingsTable.machineName),
-      eq(attendanceMappingsTable.isActive, true),
-    ))
-    .where(and(
-      eq(attendanceImportRowsTable.isValid, true),
-      eq(attendanceImportBatchesTable.status, "preview"),
-      sql`${attendanceMappingsTable.id} is null`,
-    ));
-  res.json({ mappings, pendingNames: pendingNames.map((item) => item.machineName).filter(Boolean) });
+  res.json({ mappings, pendingNames: await getPendingMappingNames() });
 });
 
 router.get("/attendance/users", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
+  if (!user || !requireAttendanceManager(user, res)) return;
   res.json(await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.isActive, true)).orderBy(asc(usersTable.name)));
 });
 
 router.post("/attendance/mappings", async (req: any, res) => {
   try {
     const user = await authenticate(req, res);
-    if (!user || !requireAdmin(user, res)) return;
+    if (!user || !requireAttendanceManager(user, res)) return;
     const machineName = normalize(req.body.machineName);
     const displayName = normalize(req.body.displayName) || machineName;
     const employeeType = req.body.employeeType === "Office" ? "Office" : "Produksi";
@@ -774,16 +997,28 @@ router.post("/attendance/mappings", async (req: any, res) => {
       res.status(400).json({ error: "Nama di mesin wajib diisi" });
       return;
     }
-    const [mapping] = await db.insert(attendanceMappingsTable).values({
-      machineName,
-      displayName,
-      employeeType,
-      userId,
-      isActive: req.body.isActive !== false,
-    }).onConflictDoUpdate({
-      target: attendanceMappingsTable.machineName,
-      set: { displayName, employeeType, userId, isActive: req.body.isActive !== false, updatedAt: new Date() },
-    }).returning();
+    if (userId && !Number.isInteger(userId)) {
+      res.status(400).json({ error: "User website tidak valid" });
+      return;
+    }
+    const existing = (await db.select().from(attendanceMappingsTable)
+      .where(sql`lower(trim(${attendanceMappingsTable.machineName})) = ${machineName.trim().toLowerCase()}`)
+      .limit(1))[0];
+    const [mapping] = existing
+      ? await db.update(attendanceMappingsTable).set({
+          displayName,
+          employeeType,
+          userId,
+          isActive: req.body.isActive !== false,
+          updatedAt: new Date(),
+        }).where(eq(attendanceMappingsTable.id, existing.id)).returning()
+      : await db.insert(attendanceMappingsTable).values({
+          machineName,
+          displayName,
+          employeeType,
+          userId,
+          isActive: req.body.isActive !== false,
+        }).returning();
     res.json(mapping);
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Gagal menyimpan mapping" });
@@ -793,13 +1028,24 @@ router.post("/attendance/mappings", async (req: any, res) => {
 router.patch("/attendance/mappings/:id", async (req: any, res) => {
   try {
     const user = await authenticate(req, res);
-    if (!user || !requireAdmin(user, res)) return;
+    if (!user || !requireAttendanceManager(user, res)) return;
     const changes: Record<string, unknown> = { updatedAt: new Date() };
     if (req.body.displayName !== undefined) changes.displayName = normalize(req.body.displayName);
     if (req.body.employeeType !== undefined) changes.employeeType = req.body.employeeType === "Office" ? "Office" : "Produksi";
-    if (req.body.userId !== undefined) changes.userId = req.body.userId ? Number(req.body.userId) : null;
+    if (req.body.userId !== undefined) {
+      const userId = req.body.userId ? Number(req.body.userId) : null;
+      if (userId && !Number.isInteger(userId)) {
+        res.status(400).json({ error: "User website tidak valid" });
+        return;
+      }
+      changes.userId = userId;
+    }
     if (req.body.isActive !== undefined) changes.isActive = Boolean(req.body.isActive);
     const [mapping] = await db.update(attendanceMappingsTable).set(changes).where(eq(attendanceMappingsTable.id, Number(req.params.id))).returning();
+    if (!mapping) {
+      res.status(404).json({ error: "Mapping tidak ditemukan" });
+      return;
+    }
     res.json(mapping);
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Gagal memperbarui mapping" });
@@ -808,7 +1054,7 @@ router.patch("/attendance/mappings/:id", async (req: any, res) => {
 
 router.delete("/attendance/mappings/:id", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
+  if (!user || !requireAttendanceManager(user, res)) return;
   await db.update(attendanceMappingsTable).set({ isActive: false, updatedAt: new Date() }).where(eq(attendanceMappingsTable.id, Number(req.params.id)));
   res.json({ success: true });
 });
@@ -845,7 +1091,7 @@ router.get("/attendance/holidays", async (req: any, res) => {
 
 router.post("/attendance/holidays", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
+  if (!user || !requireAttendanceManager(user, res)) return;
   const date = normalize(req.body.date);
   const name = normalize(req.body.name);
   if (!isIsoDate(date) || !name) {
@@ -872,7 +1118,7 @@ router.post("/attendance/holidays", async (req: any, res) => {
 
 router.patch("/attendance/holidays/:id", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
+  if (!user || !requireAttendanceManager(user, res)) return;
   const previous = (await db.select().from(attendanceHolidaysTable).where(eq(attendanceHolidaysTable.id, Number(req.params.id))).limit(1))[0];
   if (!previous) {
     res.status(404).json({ error: "Tanggal libur tidak ditemukan" });
@@ -898,7 +1144,7 @@ router.patch("/attendance/holidays/:id", async (req: any, res) => {
 
 router.delete("/attendance/holidays/:id", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
+  if (!user || !requireAttendanceManager(user, res)) return;
   const previous = (await db.select().from(attendanceHolidaysTable).where(eq(attendanceHolidaysTable.id, Number(req.params.id))).limit(1))[0];
   await db.delete(attendanceHolidaysTable).where(eq(attendanceHolidaysTable.id, Number(req.params.id)));
   if (previous?.date) await recalculateAttendanceDate(previous.date);
@@ -913,7 +1159,8 @@ router.get("/attendance/settings", async (req: any, res) => {
 
 router.patch("/attendance/settings", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
+  if (!user || !requireAttendanceManager(user, res)) return;
+  const previousSettings = await getSettings();
   const requestedSafeMax = Number(req.body.safeMax ?? 2);
   const requestedWarningMax = Number(req.body.warningMax ?? 4);
   if (!Number.isInteger(requestedSafeMax) || !Number.isInteger(requestedWarningMax)) {
@@ -928,30 +1175,45 @@ router.patch("/attendance/settings", async (req: any, res) => {
     autoIndonesiaHoliday: Boolean(req.body.autoIndonesiaHoliday),
     updatedAt: new Date(),
   }).where(eq(attendanceSettingsTable.id, 1)).returning();
-  const automaticDates = await db.select({ date: attendanceHolidaysTable.date })
-    .from(attendanceHolidaysTable)
-    .where(eq(attendanceHolidaysTable.source, "Auto Indonesia Holiday"));
-  for (const item of automaticDates) await recalculateAttendanceDate(item.date);
-  const processedBatches = await db.select().from(attendanceImportBatchesTable)
-    .where(eq(attendanceImportBatchesTable.status, "processed"));
-  for (const batch of processedBatches) {
-    if (!batch.periodStart || !batch.periodEnd) continue;
-    const daily = await db.select().from(attendanceDailyTable).where(eq(attendanceDailyTable.batchId, batch.id));
-    const totals = new Map<number, { userId: number | null; totalLate: number }>();
-    for (const row of daily) {
-      const current = totals.get(row.mappingId) ?? { userId: row.userId, totalLate: 0 };
-      if (row.isLate) current.totalLate += 1;
-      totals.set(row.mappingId, current);
+  if (previousSettings.autoIndonesiaHoliday !== settings.autoIndonesiaHoliday) {
+    const automaticDates = await db.select({ date: attendanceHolidaysTable.date })
+      .from(attendanceHolidaysTable)
+      .where(eq(attendanceHolidaysTable.source, "Auto Indonesia Holiday"));
+    for (const item of automaticDates) await recalculateAttendanceDate(item.date);
+  }
+  if (previousSettings.safeMax !== safeMax || previousSettings.warningMax !== warningMax) {
+    const processedBatches = await db.select().from(attendanceImportBatchesTable)
+      .where(eq(attendanceImportBatchesTable.status, "processed"));
+    for (const batch of processedBatches) {
+      if (!batch.periodStart || !batch.periodEnd) continue;
+      const daily = await db.select().from(attendanceDailyTable).where(eq(attendanceDailyTable.batchId, batch.id));
+      const totals = new Map<number, { userId: number | null; totalLate: number }>();
+      for (const row of daily) {
+        const current = totals.get(row.mappingId) ?? { userId: row.userId, totalLate: 0 };
+        if (row.isLate) current.totalLate += 1;
+        totals.set(row.mappingId, current);
+      }
+      await notifyAttendanceStatus([...totals.values()], batch.periodStart, batch.periodEnd);
     }
-    await notifyAttendanceStatus([...totals.values()], batch.periodStart, batch.periodEnd);
   }
   res.json(settings);
 });
 
 router.post("/attendance/holidays/sync-indonesia", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAdmin(user, res)) return;
-  const years = Array.isArray(req.body.years) ? req.body.years.map(Number) : [new Date().getFullYear()];
+  if (!user || !requireAttendanceManager(user, res)) return;
+  const years: number[] = Array.isArray(req.body.years)
+    ? [...new Set<number>(req.body.years.map((value: unknown) => Number(value)))]
+    : [new Date().getFullYear()];
+  const currentYear = new Date().getFullYear();
+  if (
+    years.length === 0
+    || years.length > 5
+    || years.some((year) => !Number.isInteger(year) || year < currentYear - 10 || year > currentYear + 10)
+  ) {
+    res.status(400).json({ error: "Tahun sinkronisasi tidak valid" });
+    return;
+  }
   let imported = 0;
   const failures: number[] = [];
   const importedDates = new Set<string>();
@@ -961,13 +1223,13 @@ router.post("/attendance/holidays/sync-indonesia", async (req: any, res) => {
       if (!response.ok) throw new Error(String(response.status));
       const holidays = await response.json() as Array<{ date: string; localName: string; name: string }>;
       for (const holiday of holidays) {
-        await db.insert(attendanceHolidaysTable).values({
+        const inserted = await db.insert(attendanceHolidaysTable).values({
           date: holiday.date,
           name: holiday.localName || holiday.name,
           holidayType: "Libur Nasional",
           source: "Auto Indonesia Holiday",
-        }).onConflictDoNothing();
-        imported += 1;
+        }).onConflictDoNothing().returning({ date: attendanceHolidaysTable.date });
+        imported += inserted.length;
         importedDates.add(holiday.date);
       }
     } catch {
@@ -979,7 +1241,7 @@ router.post("/attendance/holidays/sync-indonesia", async (req: any, res) => {
 });
 
 async function loadAttendance(start: string, end: string, user: AuthUser) {
-  const fullAccess = FULL_ACCESS_ROLES.has(String(user.role).toLowerCase());
+  const fullAccess = hasFullAttendanceAccess(user);
   const condition = fullAccess
     ? and(gte(attendanceDailyTable.workDate, start), lte(attendanceDailyTable.workDate, end))
     : and(gte(attendanceDailyTable.workDate, start), lte(attendanceDailyTable.workDate, end), eq(attendanceDailyTable.userId, user.id));
@@ -1008,6 +1270,13 @@ function summarize(rows: Awaited<ReturnType<typeof loadAttendance>>, settings: {
     overtimeProduction: number;
     overtimeOffice: number;
     scanDays: number;
+    sick: number;
+    permission: number;
+    daySwap: number;
+    leave: number;
+    withoutExplanation: number;
+    laidOff: number;
+    externalDuty: number;
   }>();
   for (const row of rows) {
     const person = people.get(row.mappingId) ?? {
@@ -1021,11 +1290,26 @@ function summarize(rows: Awaited<ReturnType<typeof loadAttendance>>, settings: {
       overtimeProduction: 0,
       overtimeOffice: 0,
       scanDays: 0,
+      sick: 0,
+      permission: 0,
+      daySwap: 0,
+      leave: 0,
+      withoutExplanation: 0,
+      laidOff: 0,
+      externalDuty: 0,
     };
+    const dailyStatus = normalize(row.dailyStatus).toLowerCase();
     if (row.isLate) person.totalLate += 1;
     person.overtimeProduction += Number(row.overtimeProduction);
     person.overtimeOffice += Number(row.overtimeOffice);
     if (row.totalScans > 0) person.scanDays += 1;
+    if (dailyStatus === "sakit") person.sick += 1;
+    if (dailyStatus === "izin") person.permission += 1;
+    if (dailyStatus === "tukar hari") person.daySwap += 1;
+    if (dailyStatus === "cuti") person.leave += 1;
+    if (dailyStatus === "tidak absen" || dailyStatus === "tanpa keterangan") person.withoutExplanation += 1;
+    if (dailyStatus === "dirumahkan") person.laidOff += 1;
+    if (dailyStatus === "dinas luar" || dailyStatus === "nginep" || dailyStatus === "dinas luar / nginep") person.externalDuty += 1;
     people.set(row.mappingId, person);
   }
   return [...people.values()].map((person) => ({
@@ -1051,22 +1335,9 @@ router.get("/attendance/summary", async (req: any, res) => {
   if (req.query.employeeType) employees = employees.filter((item) => item.employeeType === req.query.employeeType);
   if (req.query.status) employees = employees.filter((item) => item.status === req.query.status);
   if (req.query.onlyWithScans === "true") employees = employees.filter((item) => item.scanDays > 0);
-  const fullAccess = FULL_ACCESS_ROLES.has(String(user.role).toLowerCase());
+  const fullAccess = hasFullAttendanceAccess(user);
   const mappings = fullAccess ? await db.select().from(attendanceMappingsTable) : [];
-  const pendingNames = fullAccess
-    ? await db.selectDistinct({ machineName: attendanceImportRowsTable.machineName })
-      .from(attendanceImportRowsTable)
-      .innerJoin(attendanceImportBatchesTable, eq(attendanceImportRowsTable.batchId, attendanceImportBatchesTable.id))
-      .leftJoin(attendanceMappingsTable, and(
-        eq(attendanceImportRowsTable.machineName, attendanceMappingsTable.machineName),
-        eq(attendanceMappingsTable.isActive, true),
-      ))
-      .where(and(
-        eq(attendanceImportRowsTable.isValid, true),
-        eq(attendanceImportBatchesTable.status, "preview"),
-        sql`${attendanceMappingsTable.id} is null`,
-      ))
-    : [];
+  const pendingNames = fullAccess ? await getPendingMappingNames() : [];
   res.json({
     periodStart: start,
     periodEnd: end,
@@ -1113,7 +1384,11 @@ router.get("/attendance/detail/:mappingId", async (req: any, res) => {
     inArray(attendanceScansTable.batchId, batchIds),
     gte(attendanceScansTable.workDate, start),
     lte(attendanceScansTable.workDate, end),
-  )).orderBy(asc(attendanceScansTable.workDate), asc(attendanceScansTable.scanTime));
+  )).orderBy(
+    asc(attendanceScansTable.workDate),
+    asc(attendanceScansTable.scanDate),
+    asc(attendanceScansTable.scanTime),
+  );
   const settings = await getSettings();
   res.json({ employee: summarize(rows, settings)[0], daily: rows, rawScans });
 });

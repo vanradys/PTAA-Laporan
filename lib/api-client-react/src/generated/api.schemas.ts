@@ -44,6 +44,7 @@ export interface PoYearlyTrendItem {
   monthNumber: number;
   totalPo: number;
   totalAmount?: number | null;
+  targetAmount?: number | null;
 }
 
 export interface PoYearlyTrendResponse {
@@ -254,8 +255,14 @@ export type DashboardSummaryPendingAssignedTasksByAssignerItem = {
 
 export interface DashboardSummary {
   totalEmployees: number;
+  expectedWorkDays: number;
+  expectedSubmissions: number;
+  submittedEmployeeCount: number;
+  requiredEmployeeCount: number;
   submittedToday: number;
   notSubmittedToday: number;
+  submittedSelectedDate: number;
+  notSubmittedSelectedDate: number;
   totalTasksToday: number;
   tasksCompleted: number;
   tasksPending: number;
@@ -263,6 +270,14 @@ export interface DashboardSummary {
   completionRate: number;
   pendingAssignedTasksCount: number;
   pendingAssignedTasksByAssigner: DashboardSummaryPendingAssignedTasksByAssignerItem[];
+  missingEmployees: Array<{ id: number; name: string }>;
+  missingEmployeeCount: number;
+  scope: "company" | "personal";
+  period: "daily" | "weekly" | "monthly" | "yearly";
+  periodStartDate: string;
+  periodEndDate: string;
+  weekStartDate: string;
+  weekEndDate: string;
 }
 
 export interface DepartmentProductivity {
@@ -414,6 +429,7 @@ export type ListPoParams = {
   picUserId?: number;
   customer?: string;
   search?: string;
+  nominalSort?: "asc" | "desc";
 };
 
 export type GetPoSummaryParams = {
@@ -427,8 +443,10 @@ export type GetPoYearlyTrendParams = {
 
 export type GetDashboardSummaryParams = {
   date?: string;
+  period?: "daily" | "weekly" | "monthly" | "yearly";
 };
 
 export type GetDepartmentProductivityParams = {
   date?: string;
+  period?: "daily" | "weekly" | "monthly" | "yearly";
 };

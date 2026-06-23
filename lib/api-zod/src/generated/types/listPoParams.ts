@@ -13,5 +13,6 @@ export type ListPoParams = {
   departmentId?: number;
   picUserId?: number;
   customer?: string;
-  search?: string;
+search?: string;
+nominalSort?: "asc" | "desc";
 };

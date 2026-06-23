@@ -199,6 +199,10 @@ export default function ToDoList() {
     if (task) void openTask(task);
   }, [tasks, search, selectedTask]);
 
+  useEffect(() => {
+    if (viewMode === "calendar" && filterMode !== "month") setFilterMode("month");
+  }, [viewMode, filterMode]);
+
   const selectedYear = selectedDate.slice(0, 4);
   const selectedMonth = selectedDate.slice(0, 7);
   const periodStart =
@@ -357,7 +361,7 @@ export default function ToDoList() {
           <div className="flex flex-col gap-3 rounded-xl border bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               <ViewButton active={viewMode === "today"} icon={Grid2X2} label="Hari Ini" onClick={() => setViewMode("today")} />
-              <ViewButton active={viewMode === "calendar"} icon={CalendarDays} label="Kalender" onClick={() => setViewMode("calendar")} />
+              <ViewButton active={viewMode === "calendar"} icon={CalendarDays} label="Kalender" onClick={() => { setViewMode("calendar"); setFilterMode("month"); }} />
               <ViewButton active={viewMode === "cards"} icon={Columns3} label="Kartu" onClick={() => setViewMode("cards")} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -418,7 +422,7 @@ export default function ToDoList() {
                   <Button variant="outline" size="icon" onClick={() => moveCalendarMonth(-1)} title="Bulan sebelumnya">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" onClick={() => setSelectedDate(today)}>Bulan ini</Button>
+                  <Button variant="outline" onClick={() => { setSelectedDate(today); setFilterMode("month"); }}>Bulan ini</Button>
                   <Button variant="outline" size="icon" onClick={() => moveCalendarMonth(1)} title="Bulan berikutnya">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -443,7 +447,7 @@ export default function ToDoList() {
                     index >= 35 && "border-b-0",
                     !inSelectedMonth && "bg-slate-50/70",
                   )}>
-                    <button type="button" onClick={() => { setSelectedDate(value); setFilterMode("date"); }} className={cn(
+                    <button type="button" onClick={() => { setSelectedDate(value); setFilterMode("date"); setViewMode("today"); }} className={cn(
                       "flex h-7 w-7 items-center justify-center rounded-full text-sm font-black",
                       !inSelectedMonth && "text-slate-400",
                       value === today && "bg-[#ef0012] text-white",

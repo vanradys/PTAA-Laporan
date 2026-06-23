@@ -777,6 +777,7 @@ export const ListPoQueryParams = zod.object({
   picUserId: zod.coerce.number().optional(),
   customer: zod.coerce.string().optional(),
   search: zod.coerce.string().optional(),
+  nominalSort: zod.enum(["asc", "desc"]).optional(),
 });
 
 export const ListPoResponseItem = zod.object({
@@ -888,6 +889,7 @@ export const GetPoYearlyTrendResponse = zod.object({
       monthNumber: zod.number(),
       totalPo: zod.number(),
       totalAmount: zod.number().nullish(),
+      targetAmount: zod.number().nullish(),
     }),
   ),
 });
@@ -1083,12 +1085,19 @@ export const ClosePoResponse = zod.object({
  */
 export const GetDashboardSummaryQueryParams = zod.object({
   date: zod.coerce.string().optional(),
+  period: zod.enum(["daily", "weekly", "monthly", "yearly"]).optional(),
 });
 
 export const GetDashboardSummaryResponse = zod.object({
   totalEmployees: zod.number(),
+  expectedWorkDays: zod.number(),
+  expectedSubmissions: zod.number(),
+  submittedEmployeeCount: zod.number(),
+  requiredEmployeeCount: zod.number(),
   submittedToday: zod.number(),
   notSubmittedToday: zod.number(),
+  submittedSelectedDate: zod.number(),
+  notSubmittedSelectedDate: zod.number(),
   totalTasksToday: zod.number(),
   tasksCompleted: zod.number(),
   tasksPending: zod.number(),
@@ -1101,6 +1110,19 @@ export const GetDashboardSummaryResponse = zod.object({
       count: zod.number(),
     }),
   ),
+  missingEmployees: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+    }),
+  ),
+  missingEmployeeCount: zod.number(),
+  scope: zod.enum(["company", "personal"]),
+  period: zod.enum(["daily", "weekly", "monthly", "yearly"]),
+  periodStartDate: zod.string(),
+  periodEndDate: zod.string(),
+  weekStartDate: zod.string(),
+  weekEndDate: zod.string(),
 });
 
 /**
@@ -1108,6 +1130,7 @@ export const GetDashboardSummaryResponse = zod.object({
  */
 export const GetDepartmentProductivityQueryParams = zod.object({
   date: zod.coerce.string().optional(),
+  period: zod.enum(["daily", "weekly", "monthly", "yearly"]).optional(),
 });
 
 export const GetDepartmentProductivityResponseItem = zod.object({

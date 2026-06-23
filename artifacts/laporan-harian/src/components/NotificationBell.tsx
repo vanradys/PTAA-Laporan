@@ -37,6 +37,7 @@ function getNotificationTarget(item: NotificationItem) {
 
   if (item.relatedTodoId) return `/to-do-list?task=${item.relatedTodoId}`;
   if (item.relatedReportId) return `/laporan/${item.relatedReportId}`;
+  if (item.type === "attendance") return "/absensi";
   if (
     searchableText.includes("po") ||
     searchableText.includes("project") ||

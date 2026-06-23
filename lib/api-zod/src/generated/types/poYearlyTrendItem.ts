@@ -11,4 +11,5 @@ export interface PoYearlyTrendItem {
   monthNumber: number;
   totalPo: number;
   totalAmount?: number | null;
+  targetAmount?: number | null;
 }

@@ -536,6 +536,14 @@ function isDateOnly(value: string) {
   );
 }
 
+function normalizeFlexibleSearch(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
 interface PoNote {
   id: number;
   poId: number;
@@ -649,6 +657,7 @@ export default function JadwalProject() {
   const [filterStatus, setFilterStatus] = useState("semua");
   const [filterDeliveryStatus, setFilterDeliveryStatus] = useState("semua");
   const [filterDept, setFilterDept] = useState("semua");
+  const [nominalSort, setNominalSort] = useState("semua");
   const [searchText, setSearchText] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
@@ -683,6 +692,7 @@ export default function JadwalProject() {
     ...(filterDateTo ? { dateTo: filterDateTo } : {}),
     ...(filterStatus !== "semua" ? { status: filterStatus } : {}),
     ...(filterDept !== "semua" ? { departmentId: parseInt(filterDept) } : {}),
+    ...(nominalSort !== "semua" ? { nominalSort } : {}),
     ...(searchText.trim() ? { search: searchText.trim() } : {}),
   } as any;
 
@@ -805,11 +815,11 @@ export default function JadwalProject() {
     return po.deliveryStatus === "Tanggal Belum Valid";
   };
   const matchesOverallFilters = (po: PoItem) => {
-    const query = searchText.trim().toLowerCase();
+    const query = normalizeFlexibleSearch(searchText);
     if (
       query &&
       ![po.noPo, po.namaProject, po.customer]
-        .map((value) => String(value ?? "").toLowerCase())
+        .map(normalizeFlexibleSearch)
         .some((value) => value.includes(query))
     )
       return false;
@@ -842,12 +852,19 @@ export default function JadwalProject() {
       return po.deliveryStatus === "Tanggal Belum Valid";
     return true;
   };
-  const pos = posRaw.filter(matchesDeliveryFilter);
-  const allPos = allPosRaw.filter(
+  const sortByNominal = (items: PoItem[]) => {
+    if (nominalSort !== "asc" && nominalSort !== "desc") return items;
+    return [...items].sort((left, right) => {
+      const difference = Number(left.poAmount ?? 0) - Number(right.poAmount ?? 0);
+      return nominalSort === "asc" ? difference : -difference;
+    });
+  };
+  const pos = sortByNominal(posRaw.filter(matchesDeliveryFilter));
+  const allPos = sortByNominal(allPosRaw.filter(
     (po) =>
       !isClosedPo(po.status) &&
       matchesOverallFilters(po),
-  );
+  ));
   const yearlyTrendItems = Array.isArray(
     (yearlyTrend as { items?: unknown[] } | undefined)?.items,
   )
@@ -857,12 +874,15 @@ export default function JadwalProject() {
             month: string;
             totalPo: number;
             totalAmount?: number | null;
+            targetAmount?: number | null;
           }[];
         }
       ).items.map((item) => ({
         ...item,
         totalAmountRaw: Number(item.totalAmount ?? 0),
         totalAmountAxis: getNominalAxisValue(Number(item.totalAmount ?? 0)),
+        targetAmountRaw: Number(item.targetAmount ?? 3_000_000_000),
+        targetAmountAxis: getNominalAxisValue(Number(item.targetAmount ?? 3_000_000_000)),
       }))
     : [];
   const poCountCeil = 35;
@@ -1722,7 +1742,7 @@ export default function JadwalProject() {
               </CardTitle>
               <p className="text-xs text-muted-foreground">
                 {canViewPoAmount
-                  ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO."
+                  ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO dan target tetap 3M."
                   : "Grafik menunjukkan jumlah PO per bulan."}
               </p>
             </CardHeader>
@@ -1783,12 +1803,13 @@ export default function JadwalProject() {
                     )}
                     <Tooltip
                       formatter={(value, name, item) => {
-                        if (name === "Total Nominal") {
+                        if (name === "Total Nominal" || name === "Target 3M") {
                           const payload = item.payload as {
                             totalAmountRaw?: number;
+                            targetAmountRaw?: number;
                           };
                           return [
-                            formatRupiah(Number(payload.totalAmountRaw ?? 0)),
+                            formatRupiah(Number(name === "Target 3M" ? payload.targetAmountRaw ?? 0 : payload.totalAmountRaw ?? 0)),
                             name,
                           ];
                         }
@@ -1805,16 +1826,29 @@ export default function JadwalProject() {
                       radius={[6, 6, 0, 0]}
                     />
                     {canViewPoAmount && (
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="totalAmountAxis"
-                        name="Total Nominal"
-                        stroke="#f97316"
-                        strokeWidth={3}
-                        dot={{ r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
+                      <>
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="totalAmountAxis"
+                          name="Total Nominal"
+                          stroke="#f97316"
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="linear"
+                          dataKey="targetAmountAxis"
+                          name="Target 3M"
+                          stroke="#dc2626"
+                          strokeWidth={2}
+                          strokeDasharray="7 5"
+                          dot={false}
+                          activeDot={false}
+                        />
+                      </>
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -1960,6 +1994,21 @@ export default function JadwalProject() {
                   </SelectContent>
                 </Select>
               </div>
+              {canViewPoAmount && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Urutkan Nominal</Label>
+                  <Select value={nominalSort} onValueChange={setNominalSort}>
+                    <SelectTrigger className="h-8 w-44 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="semua">Tanpa Urutan</SelectItem>
+                      <SelectItem value="desc">Nominal Terbesar</SelectItem>
+                      <SelectItem value="asc">Nominal Terkecil</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label className="text-xs">Sampai Bulan</Label>
                 <Select

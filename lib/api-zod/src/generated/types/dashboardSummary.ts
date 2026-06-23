@@ -9,8 +9,14 @@ import type { DashboardSummaryPendingAssignedTasksByAssignerItem } from "./dashb
 
 export interface DashboardSummary {
   totalEmployees: number;
+  expectedWorkDays: number;
+  expectedSubmissions: number;
+  submittedEmployeeCount: number;
+  requiredEmployeeCount: number;
   submittedToday: number;
   notSubmittedToday: number;
+  submittedSelectedDate: number;
+  notSubmittedSelectedDate: number;
   totalTasksToday: number;
   tasksCompleted: number;
   tasksPending: number;
@@ -18,4 +24,12 @@ export interface DashboardSummary {
   completionRate: number;
   pendingAssignedTasksCount: number;
   pendingAssignedTasksByAssigner: DashboardSummaryPendingAssignedTasksByAssignerItem[];
+  missingEmployees: Array<{ id: number; name: string }>;
+  missingEmployeeCount: number;
+  scope: "company" | "personal";
+  period: "daily" | "weekly" | "monthly" | "yearly";
+  periodStartDate: string;
+  periodEndDate: string;
+  weekStartDate: string;
+  weekEndDate: string;
 }

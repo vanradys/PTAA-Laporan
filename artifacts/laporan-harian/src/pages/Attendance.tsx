@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getListNotificationsQueryKey } from "@workspace/api-client-react";
 import {
   CalendarDays,
   Download,
@@ -8,7 +9,6 @@ import {
   Loader2,
   Settings,
   Upload,
-  Users,
 } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,6 +36,13 @@ type EmployeeSummary = {
   overtimeProduction: number;
   overtimeOffice: number;
   scanDays: number;
+  sick: number;
+  permission: number;
+  daySwap: number;
+  leave: number;
+  withoutExplanation: number;
+  laidOff: number;
+  externalDuty: number;
   status: "Safe" | "Warning" | "SP1";
 };
 
@@ -147,7 +154,7 @@ function getPayrollPeriod() {
 function statusClass(status: string) {
   if (status === "SP1") return "border-red-600 bg-red-600 text-white";
   if (status === "Warning") return "border-amber-300 bg-amber-100 text-amber-900";
-  return "border-sky-200 bg-sky-100 text-sky-800";
+  return "border-emerald-300 bg-emerald-100 text-emerald-900";
 }
 
 function formatNumber(value: number) {
@@ -162,6 +169,11 @@ function formatDate(value: string) {
   });
 }
 
+function formatShortDate(value: string) {
+  const [year, month, day] = value.split("-");
+  return `${day}-${month}-${year}`;
+}
+
 function exportFileName(start: string, end: string) {
   const formatter = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long" });
   return `Rekap Absensi - ${formatter.format(new Date(`${start}T00:00:00`))} - ${formatter.format(new Date(`${end}T00:00:00`))}.xlsx`;
@@ -172,10 +184,28 @@ export default function Attendance() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const isAdmin = user?.role === "admin";
-  const canViewAll = ["admin", "direktur", "director", "dir"].includes(String(user?.role ?? "").toLowerCase());
+  const role = String(user?.role ?? "").toLowerCase();
+  const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  const departmentName = String(user?.departmentName ?? "").toLowerCase();
+  const email = String(user?.email ?? "").toLowerCase();
+  const canManageAttendance = role === "admin"
+    || role === "finance"
+    || ["AAF", "FIN"].includes(departmentCode)
+    || departmentName.includes("finance")
+    || email === "finance@adiyasa.com";
+  const canViewAll = canManageAttendance || [
+    "direktur",
+    "director",
+    "dir",
+    "monitoring_dummy",
+    "monitoring",
+    "monitor",
+  ].includes(role);
   const [start, setStart] = useState(payroll.start);
   const [end, setEnd] = useState(payroll.end);
+  const [quickPeriod, setQuickPeriod] = useState<"payroll" | "month" | "custom">("payroll");
+  const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("all");
   const [employeeType, setEmployeeType] = useState("all");
@@ -200,6 +230,7 @@ export default function Attendance() {
   const holidaysQuery = useQuery({
     queryKey: ["attendance-holidays", start, end],
     queryFn: () => apiRequest<Holiday[]>(`/api/attendance/holidays?start=${start}&end=${end}`),
+    enabled: canViewAll,
   });
   const mappingsQuery = useQuery({
     queryKey: ["attendance-mappings"],
@@ -209,16 +240,19 @@ export default function Attendance() {
   const settingsQuery = useQuery({
     queryKey: ["attendance-settings"],
     queryFn: () => apiRequest<SettingsData>("/api/attendance/settings"),
+    enabled: canManageAttendance,
   });
+  const selfEmployee = canViewAll ? null : summaryQuery.data?.employees[0] ?? null;
+  const effectiveDetailId = canViewAll ? detailId : selfEmployee?.mappingId ?? null;
   const detailQuery = useQuery({
-    queryKey: ["attendance-detail", detailId, start, end],
-    queryFn: () => apiRequest<DetailResponse>(`/api/attendance/detail/${detailId}?start=${start}&end=${end}`),
-    enabled: detailId !== null,
+    queryKey: ["attendance-detail", effectiveDetailId, start, end],
+    queryFn: () => apiRequest<DetailResponse>(`/api/attendance/detail/${effectiveDetailId}?start=${start}&end=${end}`),
+    enabled: effectiveDetailId !== null,
   });
   const importsQuery = useQuery({
     queryKey: ["attendance-imports"],
     queryFn: () => apiRequest<ImportBatch[]>("/api/attendance/imports"),
-    enabled: isAdmin,
+    enabled: canManageAttendance,
   });
   const pendingBatch = importsQuery.data?.find((item) => item.status === "preview") ?? null;
 
@@ -237,6 +271,19 @@ export default function Attendance() {
   const pageSize = 50;
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
   const visibleEmployees = filteredEmployees.slice((page - 1) * pageSize, page * pageSize);
+  const filteredSummary = useMemo(() => ({
+    totalEmployees: filteredEmployees.length,
+    totalLate: filteredEmployees.reduce((sum, item) => sum + item.totalLate, 0),
+    totalOvertimeProduction: filteredEmployees.reduce((sum, item) => sum + item.overtimeProduction, 0),
+    totalOvertimeOffice: filteredEmployees.reduce((sum, item) => sum + item.overtimeOffice, 0),
+    warning: filteredEmployees.filter((item) => item.status === "Warning").length,
+    sp1: filteredEmployees.filter((item) => item.status === "SP1").length,
+    unmapped: summaryQuery.data?.summary.unmapped ?? 0,
+  }), [filteredEmployees, summaryQuery.data?.summary.unmapped]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const refreshAttendance = async () => {
     await Promise.all([
@@ -246,7 +293,7 @@ export default function Attendance() {
       queryClient.invalidateQueries({ queryKey: ["attendance-detail"] }),
       queryClient.invalidateQueries({ queryKey: ["attendance-settings"] }),
       queryClient.invalidateQueries({ queryKey: ["attendance-imports"] }),
-      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+      queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() }),
     ]);
   };
 
@@ -259,7 +306,7 @@ export default function Attendance() {
       setPreview(result);
       await queryClient.invalidateQueries({ queryKey: ["attendance-mappings"] });
     } catch (error) {
-      toast({ title: "File tidak dapat dibaca", description: error instanceof Error ? error.message : "Format file tidak valid", variant: "destructive" });
+      toast({ title: "Upload file gagal", description: error instanceof Error ? error.message : "Format file tidak valid", variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -272,6 +319,7 @@ export default function Attendance() {
       const result = await apiRequest<{ periodStart: string; periodEnd: string }>(`/api/attendance/import/${preview.batchId}/process`, { method: "POST" });
       setStart(result.periodStart);
       setEnd(result.periodEnd);
+      setQuickPeriod("custom");
       setPreview(null);
       setUploadOpen(false);
       await refreshAttendance();
@@ -306,6 +354,17 @@ export default function Attendance() {
     }
   };
 
+  const refreshAfterMapping = async () => {
+    await refreshAttendance();
+    if (!preview) return;
+    try {
+      setPreview(await apiRequest<ImportPreview>(`/api/attendance/import/${preview.batchId}/preview`));
+    } catch {
+      setPreview(null);
+      await queryClient.invalidateQueries({ queryKey: ["attendance-imports"] });
+    }
+  };
+
   const exportExcel = async () => {
     try {
       const blob = await apiRequest<Blob>(`/api/attendance/export?start=${start}&end=${end}`, { responseType: "blob" });
@@ -320,7 +379,24 @@ export default function Attendance() {
     }
   };
 
-  const summary = summaryQuery.data?.summary;
+  const applyMonthYear = (month: string, year: string) => {
+    const numericMonth = Number(month);
+    const numericYear = Number(year);
+    setSelectedMonth(month);
+    setSelectedYear(year);
+    setStart(`${numericYear}-${String(numericMonth).padStart(2, "0")}-01`);
+    setEnd(new Date(numericYear, numericMonth, 0).toLocaleDateString("sv-SE"));
+    setQuickPeriod("custom");
+    setPage(1);
+  };
+
+  const summary = filteredSummary;
+  const personalStatus = selfEmployee?.status ?? "Safe";
+  const personalStatusContent = personalStatus === "SP1"
+    ? { label: "SP1", icon: "🔴", message: "Anda sudah mencapai batas SP1", className: "border-red-300 bg-red-50 text-red-900" }
+    : personalStatus === "Warning"
+      ? { label: "WARNING", icon: "🟡", message: "Anda sudah mendekati batas keterlambatan", className: "border-amber-300 bg-amber-50 text-amber-900" }
+      : { label: "SAFE", icon: "🟢", message: "Kehadiran Anda masih dalam batas aman", className: "border-emerald-300 bg-emerald-50 text-emerald-900" };
 
   return (
     <Layout>
@@ -331,16 +407,16 @@ export default function Attendance() {
             <p className="mt-1 text-sm text-slate-500">Import dan analisis data absensi Fingerspot</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isAdmin && (
+            {canManageAttendance && (
               <Button onClick={() => setUploadOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" />
                 Upload Data Absensi dari Mesin
               </Button>
             )}
-            <Button variant="outline" onClick={exportExcel}>
+            {canViewAll && <Button variant="outline" onClick={exportExcel}>
               <Download className="mr-2 h-4 w-4" /> Export Excel
-            </Button>
-            {isAdmin && (
+            </Button>}
+            {canManageAttendance && (
               <>
                 <Button variant="outline" onClick={() => setHolidayOpen(true)}>
                   <CalendarDays className="mr-2 h-4 w-4" /> Kelola Libur
@@ -354,11 +430,15 @@ export default function Attendance() {
         </div>
 
         <Card>
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-            <FilterField label="Tanggal mulai"><Input type="date" value={start} onChange={(event) => { setStart(event.target.value); setPage(1); }} /></FilterField>
-            <FilterField label="Tanggal selesai"><Input type="date" value={end} onChange={(event) => { setEnd(event.target.value); setPage(1); }} /></FilterField>
+          <CardContent className={cn("grid gap-3 p-4 sm:grid-cols-2", canViewAll && "lg:grid-cols-4 xl:grid-cols-10")}>
+            <FilterField label="Tanggal mulai"><Input type="date" value={start} onChange={(event) => { setStart(event.target.value); setQuickPeriod("custom"); setPage(1); }} /></FilterField>
+            <FilterField label="Tanggal selesai"><Input type="date" value={end} onChange={(event) => { setEnd(event.target.value); setQuickPeriod("custom"); setPage(1); }} /></FilterField>
+            {canViewAll && <>
             <FilterField label="Periode cepat">
-              <Select value="payroll" onValueChange={(value) => {
+              <Select value={quickPeriod} onValueChange={(value) => {
+                if (value === "custom") return;
+                setQuickPeriod(value as "payroll" | "month");
+                setPage(1);
                 if (value === "payroll") { setStart(payroll.start); setEnd(payroll.end); }
                 if (value === "month") {
                   const now = new Date();
@@ -367,7 +447,23 @@ export default function Attendance() {
                 }
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="payroll">Payroll 21–20</SelectItem><SelectItem value="month">Bulan ini</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="payroll">Payroll 21–20</SelectItem><SelectItem value="month">Bulan ini</SelectItem>{quickPeriod === "custom" && <SelectItem value="custom">Rentang manual</SelectItem>}</SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="Bulan">
+              <Select value={selectedMonth} onValueChange={(value) => applyMonthYear(value, selectedYear)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{Array.from({ length: 12 }, (_, index) => {
+                  const value = String(index + 1);
+                  const label = new Intl.DateTimeFormat("id-ID", { month: "long" }).format(new Date(2026, index, 1));
+                  return <SelectItem key={value} value={value}>{label}</SelectItem>;
+                })}</SelectContent>
+              </Select>
+            </FilterField>
+            <FilterField label="Tahun">
+              <Select value={selectedYear} onValueChange={(value) => applyMonthYear(selectedMonth, value)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{Array.from({ length: 7 }, (_, index) => String(new Date().getFullYear() - 3 + index)).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
               </Select>
             </FilterField>
             <FilterField label="Departemen">
@@ -381,57 +477,70 @@ export default function Attendance() {
               <Select value={employeeType} onValueChange={(value) => { setEmployeeType(value); setPage(1); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Semua</SelectItem><SelectItem value="Office">Office</SelectItem><SelectItem value="Produksi">Produksi</SelectItem></SelectContent></Select>
             </FilterField>
             <FilterField label="Status mapping">
-              <Select value={mappingStatus} onValueChange={(value) => { setMappingStatus(value); setShowUnmapped(value === "unmapped"); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Semua</SelectItem><SelectItem value="mapped">Sudah mapping</SelectItem><SelectItem value="unmapped">Belum mapping</SelectItem></SelectContent></Select>
+              <Select value={mappingStatus} onValueChange={(value) => { setMappingStatus(value); setShowUnmapped(value === "unmapped"); setPage(1); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Semua</SelectItem><SelectItem value="mapped">Sudah mapping</SelectItem><SelectItem value="unmapped">Belum mapping</SelectItem></SelectContent></Select>
             </FilterField>
             <FilterField label="Status absensi">
               <Select value={status} onValueChange={(value) => { setStatus(value); setPage(1); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Semua</SelectItem><SelectItem value="Safe">Safe</SelectItem><SelectItem value="Warning">Warning</SelectItem><SelectItem value="SP1">SP1</SelectItem></SelectContent></Select>
             </FilterField>
-            <div className="flex items-center gap-2 sm:col-span-2"><Checkbox checked={onlyWithScans} onCheckedChange={(checked) => setOnlyWithScans(Boolean(checked))} /><Label>Hanya karyawan yang punya scan</Label></div>
-            <div className="flex items-center gap-2 sm:col-span-2"><Checkbox checked={showAllActive} onCheckedChange={(checked) => setShowAllActive(Boolean(checked))} /><Label>Tampilkan semua karyawan aktif dari Excel</Label></div>
-            {canViewAll && <div className="flex items-center gap-2 sm:col-span-2"><Checkbox checked={showUnmapped} onCheckedChange={(checked) => setShowUnmapped(Boolean(checked))} /><Label>Tampilkan karyawan belum mapping</Label></div>}
+            <div className="flex items-center gap-2 sm:col-span-2"><Checkbox checked={onlyWithScans} onCheckedChange={(checked) => { setOnlyWithScans(Boolean(checked)); setPage(1); }} /><Label>Hanya karyawan yang punya scan</Label></div>
+            <div className="flex items-center gap-2 sm:col-span-2"><Checkbox checked={showAllActive} onCheckedChange={(checked) => { setShowAllActive(Boolean(checked)); setPage(1); }} /><Label>Tampilkan semua karyawan aktif dari Excel</Label></div>
+            <div className="flex items-center gap-2 sm:col-span-2"><Checkbox checked={showUnmapped} onCheckedChange={(checked) => { const value = Boolean(checked); setShowUnmapped(value); setMappingStatus(value ? "unmapped" : "all"); setPage(1); }} /><Label>Tampilkan karyawan belum mapping</Label></div>
+            </>}
           </CardContent>
         </Card>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-          <SummaryCard label="Total karyawan" value={summary?.totalEmployees ?? 0} />
-          <SummaryCard label="Total telat" value={summary?.totalLate ?? 0} />
-          <SummaryCard label="Lembur produksi" value={formatNumber(summary?.totalOvertimeProduction ?? 0)} />
-          <SummaryCard label="Lembur office" value={formatNumber(summary?.totalOvertimeOffice ?? 0)} />
-          <SummaryCard label="Warning" value={summary?.warning ?? 0} />
-          <SummaryCard label="SP1" value={summary?.sp1 ?? 0} />
-          <SummaryCard label="Belum mapping" value={summary?.unmapped ?? 0} />
-        </div>
+        {canViewAll ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+            <SummaryCard label="Total karyawan" value={summaryQuery.data?.summary.totalEmployees ?? 0} />
+            <SummaryCard label="Total telat" value={summary?.totalLate ?? 0} />
+            <SummaryCard label="Lembur produksi" value={formatNumber(summary?.totalOvertimeProduction ?? 0)} />
+            <SummaryCard label="Lembur office" value={formatNumber(summary?.totalOvertimeOffice ?? 0)} />
+            <SummaryCard label="Warning" value={summary?.warning ?? 0} />
+            <SummaryCard label="SP1" value={summary?.sp1 ?? 0} />
+            <SummaryCard label="Belum mapping" value={summary?.unmapped ?? 0} />
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Total Terlambat</p><p className="mt-2 text-3xl font-bold">{selfEmployee?.totalLate ?? 0} Kali</p></CardContent></Card>
+            <Card className={personalStatusContent.className}><CardContent className="p-5"><p className="text-sm font-semibold">Status Absensi Saya</p><p className="mt-2 text-2xl font-black">{personalStatusContent.icon} {personalStatusContent.label}</p><p className="mt-2 text-sm">{personalStatusContent.message}</p></CardContent></Card>
+          </div>
+        )}
 
         {showUnmapped && canViewAll && (mappingsQuery.data?.pendingNames.length ?? 0) > 0 && (
           <Card className="border-amber-200 bg-amber-50">
             <CardHeader><CardTitle className="text-base text-amber-900">Nama Belum Mapping</CardTitle></CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               {mappingsQuery.data?.pendingNames.map((name) => <Badge key={name} variant="outline" className="bg-white">{name}</Badge>)}
-              {isAdmin && <Button size="sm" variant="outline" onClick={() => setMappingOpen(true)}>Mapping sekarang</Button>}
+              {canManageAttendance && <Button size="sm" variant="outline" onClick={() => setMappingOpen(true)}>Mapping sekarang</Button>}
             </CardContent>
           </Card>
         )}
 
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        {canViewAll ? <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
           <Card>
             <CardHeader><CardTitle className="text-base">Rekap Absensi {start && end ? `(${formatDate(start)} – ${formatDate(end)})` : ""}</CardTitle></CardHeader>
             <CardContent className="p-0">
               {summaryQuery.isLoading ? <Loading /> : summaryQuery.error ? <ErrorState text="Gagal memuat rekap absensi." /> : (
                 <>
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[820px] text-sm">
+                    <table className="w-full min-w-[1500px] text-sm">
                       <thead><tr className="border-y bg-slate-100">
-                        <th className="px-4 py-3 text-left">Nama</th><th className="px-4 py-3 text-left">Tipe Karyawan</th><th className="px-4 py-3 text-center">Total Telat</th><th className="px-4 py-3 text-center">Lembur Produksi</th><th className="px-4 py-3 text-center">Lembur Office</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-center">Detail</th>
+                        <th className="px-4 py-3 text-left">Nama</th><th className="px-4 py-3 text-center">Sakit</th><th className="px-4 py-3 text-center">Izin</th><th className="px-4 py-3 text-center">Tukar Hari</th><th className="px-4 py-3 text-center">Cuti</th><th className="px-4 py-3 text-center">Tanpa Keterangan</th><th className="px-4 py-3 text-center">Dirumahkan</th><th className="px-4 py-3 text-center">Dinas Luar / Nginep</th><th className="px-4 py-3 text-center">Total Telat</th><th className="px-4 py-3 text-center">Lembur Produksi</th><th className="px-4 py-3 text-center">Lembur Office</th><th className="px-4 py-3 text-center">Status</th>
                       </tr></thead>
-                      <tbody>{visibleEmployees.length === 0 ? <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">Belum ada rekap pada periode ini.</td></tr> : visibleEmployees.map((item) => (
+                      <tbody>{visibleEmployees.length === 0 ? <tr><td colSpan={12} className="px-4 py-12 text-center text-muted-foreground">Belum ada rekap pada periode ini.</td></tr> : visibleEmployees.map((item) => (
                         <tr key={item.mappingId} className="border-b last:border-0 hover:bg-slate-50">
-                          <td className="px-4 py-3"><p className="font-semibold">{item.name}</p><p className="text-xs text-muted-foreground">{item.department || "Tanpa departemen"}</p></td>
-                          <td className="px-4 py-3">{item.employeeType}</td>
+                          <td className="px-4 py-3"><p className="font-semibold">{item.name}</p><p className="text-xs text-muted-foreground">{item.department || "Tanpa departemen"}</p><Button size="sm" variant="ghost" className="mt-1 h-7 px-0 text-xs" onClick={() => setDetailId(item.mappingId)}><Eye className="mr-1 h-3.5 w-3.5" /> Detail</Button></td>
+                          <td className="px-4 py-3 text-center">{item.sick}</td>
+                          <td className="px-4 py-3 text-center">{item.permission}</td>
+                          <td className="px-4 py-3 text-center">{item.daySwap}</td>
+                          <td className="px-4 py-3 text-center">{item.leave}</td>
+                          <td className="px-4 py-3 text-center">{item.withoutExplanation}</td>
+                          <td className="px-4 py-3 text-center">{item.laidOff}</td>
+                          <td className="px-4 py-3 text-center">{item.externalDuty}</td>
                           <td className="px-4 py-3 text-center">{item.totalLate}</td>
                           <td className="px-4 py-3 text-center">{formatNumber(item.overtimeProduction)}</td>
                           <td className="px-4 py-3 text-center">{formatNumber(item.overtimeOffice)}</td>
-                          <td className="px-4 py-3 text-center"><Badge className={statusClass(item.status)}>{item.status}</Badge></td>
-                          <td className="px-4 py-3 text-center"><Button size="sm" variant="ghost" onClick={() => setDetailId(item.mappingId)}><Eye className="mr-1.5 h-4 w-4" /> Detail</Button></td>
+                          <td className="px-4 py-3 text-center"><Badge className={statusClass(item.status)}>{item.status.toUpperCase()}</Badge></td>
                         </tr>
                       ))}</tbody>
                     </table>
@@ -447,13 +556,27 @@ export default function Attendance() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[360px] text-sm">
-                  <thead><tr className="border-y bg-slate-100"><th className="px-3 py-3 text-left">Tanggal</th><th className="px-3 py-3 text-left">Keterangan</th><th className="px-3 py-3 text-left">Jenis</th><th className="px-3 py-3 text-left">Sumber</th></tr></thead>
-                  <tbody>{(holidaysQuery.data ?? []).length === 0 ? <tr><td colSpan={4} className="px-3 py-10 text-center text-muted-foreground">Tidak ada tanggal libur.</td></tr> : holidaysQuery.data?.map((item) => <tr key={item.id} className="border-b"><td className="px-3 py-3 whitespace-nowrap">{formatDate(item.date)}</td><td className="px-3 py-3">{item.name}</td><td className="px-3 py-3">{item.holidayType}</td><td className="px-3 py-3">{item.source}</td></tr>)}</tbody>
+                  <thead><tr className="border-y bg-slate-100"><th className="px-3 py-3 text-left">Tanggal</th><th className="px-3 py-3 text-left">Keterangan</th></tr></thead>
+                  <tbody>{(holidaysQuery.data ?? []).length === 0 ? <tr><td colSpan={2} className="px-3 py-10 text-center text-muted-foreground">Tidak ada tanggal libur.</td></tr> : holidaysQuery.data?.map((item) => <tr key={item.id} className="border-b"><td className="px-3 py-3 whitespace-nowrap">{formatShortDate(item.date)}</td><td className="px-3 py-3">{item.name}</td></tr>)}</tbody>
                 </table>
               </div>
             </CardContent>
           </Card>
-        </div>
+        </div> : (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Riwayat Absensi Saya ({formatDate(start)} – {formatDate(end)})</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              {summaryQuery.isLoading || detailQuery.isLoading ? <Loading /> : summaryQuery.error ? <ErrorState text="Gagal memuat riwayat absensi." /> : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead><tr className="border-y bg-slate-100"><th className="px-4 py-3 text-left">Tanggal</th><th className="px-4 py-3 text-left">Jam Masuk</th><th className="px-4 py-3 text-left">Jam Keluar</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Keterangan</th></tr></thead>
+                    <tbody>{(detailQuery.data?.daily ?? []).length === 0 ? <tr><td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">Belum ada data absensi untuk akun ini pada periode tersebut.</td></tr> : detailQuery.data?.daily.map((item) => <tr key={item.id} className="border-b"><td className="px-4 py-3">{formatDate(item.workDate)}</td><td className="px-4 py-3">{item.clockIn ?? "-"}</td><td className="px-4 py-3">{item.clockOut ?? "-"}</td><td className="px-4 py-3"><Badge variant="outline" className={item.isLate ? "border-amber-300 bg-amber-50 text-amber-900" : ""}>{item.isLate ? "Terlambat" : item.dailyStatus}</Badge></td><td className="px-4 py-3">{item.notes ?? "-"}</td></tr>)}</tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <UploadDialog
@@ -471,9 +594,9 @@ export default function Attendance() {
         pendingBatch={pendingBatch}
         onResume={resumePreview}
       />
-      <MappingDialog open={mappingOpen} onOpenChange={setMappingOpen} data={mappingsQuery.data} settings={settingsQuery.data} onSaved={refreshAttendance} />
+      <MappingDialog open={mappingOpen} onOpenChange={setMappingOpen} data={mappingsQuery.data} settings={settingsQuery.data} onSaved={refreshAfterMapping} />
       <HolidayDialog open={holidayOpen} onOpenChange={setHolidayOpen} holidays={holidaysQuery.data ?? []} settings={settingsQuery.data} onSaved={refreshAttendance} />
-      <DetailDialog open={detailId !== null} onOpenChange={(open) => { if (!open) setDetailId(null); }} data={detailQuery.data} loading={detailQuery.isLoading} />
+      {canViewAll && <DetailDialog open={detailId !== null} onOpenChange={(open) => { if (!open) setDetailId(null); }} data={detailQuery.data} loading={detailQuery.isLoading} />}
     </Layout>
   );
 }
@@ -511,7 +634,7 @@ function UploadDialog({ open, onOpenChange, preview, uploading, processing, onFi
       <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center hover:bg-slate-50">
         {uploading ? <Loader2 className="mb-2 h-8 w-8 animate-spin" /> : <FileSpreadsheet className="mb-2 h-8 w-8 text-primary" />}
         <span className="font-semibold">Pilih file Excel atau CSV</span><span className="text-xs text-muted-foreground">Format .xls, .xlsx, atau .csv; maksimal 20 MB</span>
-        <input type="file" className="hidden" accept=".xls,.xlsx,.csv" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) onFile(file); }} />
+        <input type="file" className="hidden" accept=".xls,.xlsx,.csv" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) onFile(file); }} />
       </label>
       {!preview && pendingBatch && (
         <div className="flex flex-col gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -552,18 +675,27 @@ function MappingDialog({ open, onOpenChange, data, settings, onSaved }: {
   const [safeMax, setSafeMax] = useState<number | null>(null);
   const [warningMax, setWarningMax] = useState<number | null>(null);
   const defaultOfficeNames = new Set(["rais", "hafidz diinul", "alya", "ita", "ines", "dikri"]);
-  const rows = [
-    ...(data?.pendingNames ?? []).map((machineName) => ({
-      id: null,
-      machineName,
-      displayName: machineName,
-      userId: null,
-      employeeType: defaultOfficeNames.has(machineName.toLowerCase()) ? "Office" : "Produksi",
-      isActive: true,
-      pending: true,
-    })),
-    ...(data?.mappings ?? []).map((item) => ({ ...item, pending: false })),
-  ].filter((item) => {
+  type MappingRow = Omit<Mapping, "id"> & { id: number | null; pending: boolean };
+  const rowsByName = new Map<string, MappingRow>((data?.mappings ?? []).map((item) => [
+    item.machineName.trim().toLowerCase(),
+    { ...item, pending: !item.isActive },
+  ]));
+  for (const machineName of data?.pendingNames ?? []) {
+    const key = machineName.trim().toLowerCase();
+    if (!rowsByName.has(key)) {
+      rowsByName.set(key, {
+        id: null,
+        machineName,
+        displayName: machineName,
+        userId: null,
+        userName: null,
+        employeeType: defaultOfficeNames.has(key) ? "Office" : "Produksi",
+        isActive: false,
+        pending: true,
+      });
+    }
+  }
+  const rows = [...rowsByName.values()].filter((item) => {
     if (search && !item.machineName.toLowerCase().includes(search.toLowerCase()) && !item.displayName.toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === "mapped" && item.pending) return false;
     if (filter === "unmapped" && !item.pending) return false;
@@ -586,16 +718,20 @@ function MappingDialog({ open, onOpenChange, data, settings, onSaved }: {
     } finally { setSaving(null); }
   };
   const saveSettings = async () => {
-    await apiRequest("/api/attendance/settings", {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ safeMax: safeMax ?? settings?.safeMax ?? 2, warningMax: warningMax ?? settings?.warningMax ?? 4, autoIndonesiaHoliday: settings?.autoIndonesiaHoliday ?? false }),
-    });
-    await onSaved();
-    toast({ title: "Threshold absensi diperbarui" });
+    try {
+      await apiRequest("/api/attendance/settings", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ safeMax: safeMax ?? settings?.safeMax ?? 2, warningMax: warningMax ?? settings?.warningMax ?? 4, autoIndonesiaHoliday: settings?.autoIndonesiaHoliday ?? false }),
+      });
+      await onSaved();
+      toast({ title: "Threshold absensi diperbarui" });
+    } catch (error) {
+      toast({ title: "Threshold gagal disimpan", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
   };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>Pengaturan Mapping Absensi</DialogTitle></DialogHeader>
     <div className="grid gap-3 sm:grid-cols-2"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nama..." /><Select value={filter} onValueChange={setFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Semua mapping</SelectItem><SelectItem value="mapped">Sudah mapping</SelectItem><SelectItem value="unmapped">Belum mapping</SelectItem></SelectContent></Select></div>
-    <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[900px] text-sm"><thead><tr className="bg-slate-100"><th className="p-3 text-left">Nama di mesin</th><th className="p-3 text-left">Nama tampilan</th><th className="p-3 text-left">User website (opsional)</th><th className="p-3 text-left">Tipe</th><th className="p-3 text-left">Status</th><th className="p-3 text-left">Aksi</th></tr></thead><tbody>{rows.map((row) => { const draft = draftFor(row); return <tr key={row.machineName} className="border-t"><td className="p-3 font-semibold">{row.machineName}</td><td className="p-3"><Input value={draft.displayName} onChange={(event) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, displayName: event.target.value } }))} /></td><td className="p-3"><Select value={draft.userId} onValueChange={(value) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, userId: value } }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Tanpa akun website</SelectItem>{usersQuery.data?.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></td><td className="p-3"><Select value={draft.employeeType} onValueChange={(value) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, employeeType: value } }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Office">Office</SelectItem><SelectItem value="Produksi">Produksi</SelectItem></SelectContent></Select></td><td className="p-3"><Badge variant="outline" className={row.pending ? "border-amber-300 bg-amber-50" : row.isActive ? "border-green-300 bg-green-50" : "bg-slate-100"}>{row.pending ? "Belum mapping" : row.isActive ? "Aktif" : "Nonaktif"}</Badge></td><td className="p-3"><div className="flex gap-2"><Button size="sm" onClick={() => save(row)} disabled={saving !== null}>{saving === row.machineName && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Simpan</Button>{row.id && <Button size="sm" variant="outline" onClick={async () => { await apiRequest(`/api/attendance/mappings/${row.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !row.isActive }) }); await onSaved(); }}>{row.isActive ? "Nonaktifkan" : "Aktifkan"}</Button>}</div></td></tr>; })}</tbody></table></div>
+    <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[900px] text-sm"><thead><tr className="bg-slate-100"><th className="p-3 text-left">Nama di mesin</th><th className="p-3 text-left">Nama tampilan</th><th className="p-3 text-left">User website (opsional)</th><th className="p-3 text-left">Tipe</th><th className="p-3 text-left">Status</th><th className="p-3 text-left">Aksi</th></tr></thead><tbody>{rows.map((row) => { const draft = draftFor(row); return <tr key={row.machineName.trim().toLowerCase()} className="border-t"><td className="p-3 font-semibold">{row.machineName}</td><td className="p-3"><Input value={draft.displayName} onChange={(event) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, displayName: event.target.value } }))} /></td><td className="p-3"><Select value={draft.userId} onValueChange={(value) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, userId: value } }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Tanpa akun website</SelectItem>{usersQuery.data?.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></td><td className="p-3"><Select value={draft.employeeType} onValueChange={(value) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, employeeType: value } }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Office">Office</SelectItem><SelectItem value="Produksi">Produksi</SelectItem></SelectContent></Select></td><td className="p-3"><Badge variant="outline" className={row.pending ? "border-amber-300 bg-amber-50" : row.isActive ? "border-green-300 bg-green-50" : "bg-slate-100"}>{row.pending ? "Belum mapping" : row.isActive ? "Aktif" : "Nonaktif"}</Badge></td><td className="p-3"><div className="flex gap-2"><Button size="sm" onClick={() => save(row)} disabled={saving !== null}>{saving === row.machineName && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Simpan</Button>{row.id && <Button size="sm" variant="outline" onClick={async () => { try { await apiRequest(`/api/attendance/mappings/${row.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !row.isActive }) }); await onSaved(); } catch (error) { toast({ title: "Status mapping gagal diubah", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" }); } }}>{row.isActive ? "Nonaktifkan" : "Aktifkan"}</Button>}</div></td></tr>; })}</tbody></table></div>
     <Card><CardHeader><CardTitle className="text-base">Threshold Status Global</CardTitle></CardHeader><CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end"><FilterField label="Safe maksimal telat"><Input type="number" min={0} value={safeMax ?? settings?.safeMax ?? 2} onChange={(event) => setSafeMax(Number(event.target.value))} /></FilterField><FilterField label="Warning maksimal telat"><Input type="number" min={1} value={warningMax ?? settings?.warningMax ?? 4} onChange={(event) => setWarningMax(Number(event.target.value))} /></FilterField><Button onClick={saveSettings}>Simpan Threshold</Button></CardContent></Card>
   </DialogContent></Dialog>;
 }
@@ -616,15 +752,24 @@ function HolidayDialog({ open, onOpenChange, holidays, settings, onSaved }: {
   const [syncing, setSyncing] = useState(false);
   const reset = () => { setEditingId(null); setDate(""); setName(""); setType("Libur Nasional"); setSource("Manual"); };
   const save = async () => {
-    await apiRequest(editingId ? `/api/attendance/holidays/${editingId}` : "/api/attendance/holidays", {
-      method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, name, holidayType: type, source }),
-    });
-    reset(); await onSaved(); toast({ title: "Tanggal libur disimpan" });
+    try {
+      await apiRequest(editingId ? `/api/attendance/holidays/${editingId}` : "/api/attendance/holidays", {
+        method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, name, holidayType: type, source }),
+      });
+      reset(); await onSaved(); toast({ title: "Tanggal libur disimpan" });
+    } catch (error) {
+      toast({ title: "Tanggal libur gagal disimpan", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
   };
   const updateAuto = async (checked: boolean) => {
-    await apiRequest("/api/attendance/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...settings, autoIndonesiaHoliday: checked }) });
-    if (checked) await sync();
-    await onSaved();
+    try {
+      await apiRequest("/api/attendance/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...settings, autoIndonesiaHoliday: checked }) });
+      await onSaved();
+      if (checked) await sync();
+    } catch (error) {
+      toast({ title: "Pengaturan libur otomatis gagal diubah", description: error instanceof Error ? error.message : "Data manual tetap dapat digunakan.", variant: "destructive" });
+      await onSaved();
+    }
   };
   const sync = async () => {
     setSyncing(true);
@@ -632,13 +777,15 @@ function HolidayDialog({ open, onOpenChange, holidays, settings, onSaved }: {
       const year = new Date().getFullYear();
       const result = await apiRequest<{ message: string }>("/api/attendance/holidays/sync-indonesia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ years: [year - 1, year, year + 1] }) });
       await onSaved(); toast({ title: "Sinkronisasi libur", description: result.message });
+    } catch (error) {
+      toast({ title: "Sinkronisasi libur tidak tersedia", description: error instanceof Error ? `${error.message}. Data manual tetap digunakan.` : "Data manual tetap digunakan.", variant: "destructive" });
     } finally { setSyncing(false); }
   };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>Kelola Tanggal Libur</DialogTitle></DialogHeader>
     <div className="flex flex-col justify-between gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"><div><p className="text-sm font-semibold">Gunakan tanggal merah Indonesia otomatis</p><p className="text-xs text-muted-foreground">Jika layanan gagal, data manual tetap digunakan dan aplikasi tidak error.</p></div><div className="flex items-center gap-2"><Switch checked={settings?.autoIndonesiaHoliday ?? false} onCheckedChange={updateAuto} /><Button size="sm" variant="outline" disabled={syncing} onClick={sync}>{syncing && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Sinkronkan</Button></div></div>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><FilterField label="Tanggal"><Input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></FilterField><FilterField label="Keterangan"><Input value={name} onChange={(event) => setName(event.target.value)} /></FilterField><FilterField label="Jenis"><Select value={type} onValueChange={setType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Libur Nasional", "Cuti Bersama", "Libur Perusahaan", "Tanggal Merah", "Lainnya"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></FilterField><FilterField label="Sumber"><Select value={source} onValueChange={setSource}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Manual">Manual</SelectItem><SelectItem value="Auto Indonesia Holiday">Auto Indonesia Holiday</SelectItem></SelectContent></Select></FilterField></div>
     <div className="flex gap-2"><Button disabled={!date || !name} onClick={save}>{editingId ? "Simpan Perubahan" : "Tambah Libur"}</Button>{editingId && <Button variant="outline" onClick={reset}>Batal edit</Button>}</div>
-    <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[650px] text-sm"><thead><tr className="bg-slate-100"><th className="p-3 text-left">Tanggal</th><th className="p-3 text-left">Keterangan</th><th className="p-3 text-left">Jenis</th><th className="p-3 text-left">Sumber</th><th className="p-3 text-left">Aksi</th></tr></thead><tbody>{holidays.map((item) => <tr key={`${item.source}-${item.id}-${item.date}`} className="border-t"><td className="p-3">{formatDate(item.date)}</td><td className="p-3">{item.name}</td><td className="p-3">{item.holidayType}</td><td className="p-3">{item.source}</td><td className="p-3">{item.editable === false ? <span className="text-xs text-muted-foreground">Dikelola fitur existing</span> : <div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => { setEditingId(item.id); setDate(item.date); setName(item.name); setType(item.holidayType); setSource(item.source); }}>Edit</Button><Button size="sm" variant="destructive" onClick={async () => { if (!window.confirm(`Hapus libur ${item.name}?`)) return; await apiRequest(`/api/attendance/holidays/${item.id}`, { method: "DELETE" }); await onSaved(); }}>Hapus</Button></div>}</td></tr>)}</tbody></table></div>
+    <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[650px] text-sm"><thead><tr className="bg-slate-100"><th className="p-3 text-left">Tanggal</th><th className="p-3 text-left">Keterangan</th><th className="p-3 text-left">Jenis</th><th className="p-3 text-left">Sumber</th><th className="p-3 text-left">Aksi</th></tr></thead><tbody>{holidays.map((item) => <tr key={`${item.source}-${item.id}-${item.date}`} className="border-t"><td className="p-3">{formatDate(item.date)}</td><td className="p-3">{item.name}</td><td className="p-3">{item.holidayType}</td><td className="p-3">{item.source}</td><td className="p-3">{item.editable === false ? <span className="text-xs text-muted-foreground">Dikelola fitur existing</span> : <div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => { setEditingId(item.id); setDate(item.date); setName(item.name); setType(item.holidayType); setSource(item.source); }}>Edit</Button><Button size="sm" variant="destructive" onClick={async () => { if (!window.confirm(`Hapus libur ${item.name}?`)) return; try { await apiRequest(`/api/attendance/holidays/${item.id}`, { method: "DELETE" }); await onSaved(); toast({ title: "Tanggal libur dihapus" }); } catch (error) { toast({ title: "Tanggal libur gagal dihapus", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" }); } }}>Hapus</Button></div>}</td></tr>)}</tbody></table></div>
   </DialogContent></Dialog>;
 }
 

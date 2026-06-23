@@ -85,7 +85,7 @@ const PO_AMOUNT_VISIBLE_EMAILS = [
 ];
 const PO_AMOUNT_HIDDEN_ROLES = ["admin_marketing", "monitoring_dummy", "monitoring", "monitor"];
 const PO_AMOUNT_HIDDEN_EMAILS = ["monitoring.progress@adiyasa.com"];
-const MONTHLY_PO_TARGET = 10_000_000_000;
+const MONTHLY_PO_TARGET = 3_000_000_000;
 const MONTH_NAMES = [
   "Januari",
   "Februari",
@@ -110,6 +110,14 @@ function normalizeCustomerName(value: unknown): string | null {
   const customer = String(value ?? "").trim();
   if (!customer) return null;
   return customer.replace(/^PT\s*\.\s*/i, "PT ");
+}
+
+function normalizeFlexibleSearch(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function canViewPoAmount(user?: {
@@ -645,10 +653,10 @@ router.get("/po/summary", async (req, res) => {
   const now = new Date();
   const month = parseInt(req.query.month as string) || now.getMonth() + 1;
   const year = parseInt(req.query.year as string) || now.getFullYear();
-  const targetStartMonth = month === 1 ? 12 : month - 1;
-  const targetStartYear = month === 1 ? year - 1 : year;
-  const targetStartDate = `${targetStartYear}-${String(targetStartMonth).padStart(2, "0")}-21`;
-  const targetEndDate = `${year}-${String(month).padStart(2, "0")}-20`;
+  const targetStartDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const targetEndDate = `${year}-${String(month).padStart(2, "0")}-${String(
+    new Date(Date.UTC(year, month, 0)).getUTCDate(),
+  ).padStart(2, "0")}`;
 
   const pos = await db.select().from(projectsPoTable);
 
@@ -796,7 +804,7 @@ router.get("/po", async (req, res) => {
     return;
   }
 
-  const { month, year, status, departmentId, picUserId, customer, search, dateFrom, dateTo, openOnly } = req.query;
+  const { month, year, status, departmentId, picUserId, customer, search, dateFrom, dateTo, openOnly, nominalSort } = req.query;
 
   const conditions = [];
   if (month && year) {
@@ -819,14 +827,17 @@ router.get("/po", async (req, res) => {
       eq(projectsPoTable.picUserId, parseInt(picUserId as string)),
     );
   if (search) {
-    const s = `%${search}%`;
-    conditions.push(
-      or(
-        like(projectsPoTable.noPo, s),
-        like(projectsPoTable.namaProject, s),
-        like(sql`coalesce(${projectsPoTable.customer}, '')`, s),
-      ),
-    );
+    const normalizedSearch = normalizeFlexibleSearch(search);
+    if (normalizedSearch) {
+      const pattern = `%${normalizedSearch}%`;
+      conditions.push(
+        or(
+          sql`regexp_replace(lower(coalesce(${projectsPoTable.noPo}, '')), '[^a-z0-9]+', '', 'g') like ${pattern}`,
+          sql`regexp_replace(lower(coalesce(${projectsPoTable.namaProject}, '')), '[^a-z0-9]+', '', 'g') like ${pattern}`,
+          sql`regexp_replace(lower(coalesce(${projectsPoTable.customer}, '')), '[^a-z0-9]+', '', 'g') like ${pattern}`,
+        ),
+      );
+    }
   }
   if (customer) {
     conditions.push(like(sql`coalesce(${projectsPoTable.customer}, '')`, `%${customer}%`));
@@ -837,6 +848,13 @@ router.get("/po", async (req, res) => {
     .from(projectsPoTable)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(projectsPoTable.deadline);
+
+  if (canViewPoAmount(user) && (nominalSort === "asc" || nominalSort === "desc")) {
+    pos.sort((left, right) => {
+      const difference = Number(left.poAmount ?? 0) - Number(right.poAmount ?? 0);
+      return nominalSort === "asc" ? difference : -difference;
+    });
+  }
 
   // Check and send notifications
   for (const po of pos) {
@@ -1073,7 +1091,7 @@ router.get("/po/yearly-trend", async (req, res) => {
       month,
       monthNumber,
       totalPo: monthlyPos.length,
-      ...(canSeeAmount ? { totalAmount } : {}),
+      ...(canSeeAmount ? { totalAmount, targetAmount: MONTHLY_PO_TARGET } : {}),
     };
   });
 

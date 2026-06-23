@@ -601,6 +601,11 @@ paths:
         - name: search
           in: query
           schema: { type: string }
+        - name: nominalSort
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
       responses:
         "200":
           description: List of PO
@@ -747,6 +752,11 @@ paths:
         - name: date
           in: query
           schema: { type: string }
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, yearly]
       responses:
         "200":
           description: Dashboard summary
@@ -764,6 +774,11 @@ paths:
         - name: date
           in: query
           schema: { type: string }
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, yearly]
       responses:
         "200":
           description: Department productivity
@@ -856,6 +871,9 @@ components:
         totalPo:
           type: integer
         totalAmount:
+          type: number
+          nullable: true
+        targetAmount:
           type: number
           nullable: true
       required:
@@ -1153,8 +1171,14 @@ components:
       type: object
       properties:
         totalEmployees: { type: integer }
+        expectedWorkDays: { type: integer }
+        expectedSubmissions: { type: integer }
+        submittedEmployeeCount: { type: integer }
+        requiredEmployeeCount: { type: integer }
         submittedToday: { type: integer }
         notSubmittedToday: { type: integer }
+        submittedSelectedDate: { type: integer }
+        notSubmittedSelectedDate: { type: integer }
         totalTasksToday: { type: integer }
         tasksCompleted: { type: integer }
         tasksPending: { type: integer }
@@ -1169,11 +1193,36 @@ components:
               assignedByName: { type: string }
               count: { type: integer }
             required: [assignedByName, count]
+        missingEmployees:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              name: { type: string }
+            required: [id, name]
+        missingEmployeeCount: { type: integer }
+        scope:
+          type: string
+          enum: [company, personal]
+        period:
+          type: string
+          enum: [daily, weekly, monthly, yearly]
+        periodStartDate: { type: string }
+        periodEndDate: { type: string }
+        weekStartDate: { type: string }
+        weekEndDate: { type: string }
       required:
         [
           totalEmployees,
+          expectedWorkDays,
+          expectedSubmissions,
+          submittedEmployeeCount,
+          requiredEmployeeCount,
           submittedToday,
           notSubmittedToday,
+          submittedSelectedDate,
+          notSubmittedSelectedDate,
           totalTasksToday,
           tasksCompleted,
           tasksPending,
@@ -1181,6 +1230,14 @@ components:
           completionRate,
           pendingAssignedTasksCount,
           pendingAssignedTasksByAssigner,
+          missingEmployees,
+          missingEmployeeCount,
+          scope,
+          period,
+          periodStartDate,
+          periodEndDate,
+          weekStartDate,
+          weekEndDate,
         ]
 
     DepartmentProductivity:

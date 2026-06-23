@@ -27,8 +27,12 @@ function normalizeDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : getJakartaDateString();
 }
 
-function normalizePeriod(value: unknown): "weekly" | "monthly" {
-  return value === "monthly" ? "monthly" : "weekly";
+type DashboardPeriod = "daily" | "weekly" | "monthly" | "yearly";
+
+function normalizePeriod(value: unknown): DashboardPeriod {
+  return value === "daily" || value === "monthly" || value === "yearly"
+    ? value
+    : "weekly";
 }
 
 function addDays(dateString: string, amount: number) {
@@ -37,8 +41,15 @@ function addDays(dateString: string, amount: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function getPeriodBounds(dateString: string, period: "weekly" | "monthly") {
+function getPeriodBounds(dateString: string, period: DashboardPeriod) {
   const date = new Date(`${dateString}T00:00:00.000Z`);
+  if (period === "daily") {
+    return { start: dateString, end: dateString };
+  }
+  if (period === "yearly") {
+    const year = date.getUTCFullYear();
+    return { start: `${year}-01-01`, end: `${year}-12-31` };
+  }
   if (period === "monthly") {
     const year = date.getUTCFullYear();
     const month = date.getUTCMonth();
@@ -98,6 +109,7 @@ router.get("/dashboard/summary", async (req, res) => {
       ))
     : [];
   const submittedCount = new Set(submittedReports.map((item) => `${item.userId}:${item.date}`)).size;
+  const submittedEmployeeCount = new Set(submittedReports.map((item) => item.userId)).size;
   const submittedKeys = new Set(submittedReports.map((item) => `${item.userId}:${item.date}`));
   const selectedDateIsWorkingDay = workingDates.includes(date);
   const missingEmployees = companyScope && selectedDateIsWorkingDay
@@ -106,6 +118,12 @@ router.get("/dashboard/summary", async (req, res) => {
       .map((employee) => ({ id: employee.id, name: employee.name }))
       .sort((a, b) => a.name.localeCompare(b.name, "id"))
     : [];
+  const selectedDateSubmittedCount = companyScope && selectedDateIsWorkingDay
+    ? employeeCount - missingEmployees.length
+    : selectedDateIsWorkingDay && submittedKeys.has(`${user.id}:${date}`) ? 1 : 0;
+  const selectedDateMissingCount = selectedDateIsWorkingDay
+    ? Math.max(0, employeeCount - selectedDateSubmittedCount)
+    : 0;
 
   const taskStats = scopedUserIds.length
     ? await db.select({
@@ -115,8 +133,9 @@ router.get("/dashboard/summary", async (req, res) => {
         .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
         .where(and(
           inArray(dailyReportsTable.userId, scopedUserIds),
-          sql`(${dailyTasksTable.updatedAt} at time zone 'Asia/Jakarta')::date >= ${start}::date`,
-          sql`(${dailyTasksTable.updatedAt} at time zone 'Asia/Jakarta')::date <= ${end}::date`,
+          gte(dailyReportsTable.date, start),
+          lte(dailyReportsTable.date, end),
+          sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
         ))
         .groupBy(dailyTasksTable.status)
     : [];
@@ -142,8 +161,12 @@ router.get("/dashboard/summary", async (req, res) => {
     totalEmployees: employeeCount,
     expectedWorkDays: workingDates.length,
     expectedSubmissions,
+    submittedEmployeeCount,
+    requiredEmployeeCount: employeeCount,
     submittedToday: submittedCount,
     notSubmittedToday: Math.max(0, expectedSubmissions - submittedCount),
+    submittedSelectedDate: selectedDateSubmittedCount,
+    notSubmittedSelectedDate: selectedDateMissingCount,
     totalTasksToday: totalTasks,
     tasksCompleted: completedTasks,
     tasksPending: pendingTasks,
@@ -189,7 +212,7 @@ router.get("/dashboard/department-productivity", async (req, res) => {
           sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
         ))
       : [];
-    const submittedCount = new Set(reports.map((item) => `${item.userId}:${item.date}`)).size;
+    const submittedCount = new Set(reports.map((item) => item.userId)).size;
     const expectedSubmissions = employees.length * workingDates.length;
     result.push({
       departmentId: department.id,
@@ -197,7 +220,7 @@ router.get("/dashboard/department-productivity", async (req, res) => {
       employeeCount: employees.length,
       submittedCount,
       expectedSubmissions,
-      submitRate: expectedSubmissions ? Math.round(submittedCount / expectedSubmissions * 100) : 0,
+      submitRate: employees.length ? Math.round(submittedCount / employees.length * 100) : 0,
       period,
       periodStartDate: start,
       periodEndDate: end,

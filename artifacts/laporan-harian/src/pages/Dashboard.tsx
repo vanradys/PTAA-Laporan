@@ -115,10 +115,22 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [requestedName, setRequestedName] = useState("");
   const today = getJakartaDateString();
-  const [period, setPeriod] = useState<"weekly" | "monthly">("weekly");
-  const periodLabel = period === "monthly" ? "Bulanan" : "Mingguan";
-  const periodSummaryLabel = period === "monthly" ? "Bulan Ini" : "Minggu Ini";
-  const dashboardParams = { date: today, period } as any;
+  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("weekly");
+  const periodLabels = {
+    daily: "Harian",
+    weekly: "Mingguan",
+    monthly: "Bulanan",
+    yearly: "Tahunan",
+  } as const;
+  const periodSummaryLabels = {
+    daily: "Hari Ini",
+    weekly: "Minggu Ini",
+    monthly: "Bulan Ini",
+    yearly: "Tahun Ini",
+  } as const;
+  const periodLabel = periodLabels[period];
+  const periodSummaryLabel = periodSummaryLabels[period];
+  const dashboardParams = { date: today, period };
 
   const { data: summary, isLoading: summaryLoading } = useGetDashboardSummary(
     dashboardParams,
@@ -166,13 +178,18 @@ export default function Dashboard() {
     : [];
 
   const todayFormatted = formatJakartaDateLong();
-  const periodRangeText =
-    summary && "periodStartDate" in summary && "periodEndDate" in summary
-      ? `${String((summary as any).periodStartDate)} s/d ${String((summary as any).periodEndDate)}`
-      : today;
-  const missingEmployees = summary && Array.isArray((summary as any).missingEmployees)
-    ? (summary as any).missingEmployees as Array<{ id: number; name: string }>
-    : [];
+  const periodRangeText = summary
+    ? period === "daily"
+      ? new Intl.DateTimeFormat("id-ID", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+          timeZone: "Asia/Jakarta",
+        }).format(new Date(`${summary.periodStartDate}T12:00:00+07:00`))
+      : `${summary.periodStartDate} s/d ${summary.periodEndDate}`
+    : today;
+  const missingEmployees = summary?.missingEmployees ?? [];
   const isDirector = ["direktur", "director", "dir"].includes(String(user?.role ?? "").toLowerCase());
 
   const copyMissingReportTemplate = async () => {
@@ -231,11 +248,19 @@ Terima kasih.`;
   };
 
   const chartData = Array.isArray(deptData)
-    ? deptData.map((dept: any) => ({
-        name: dept.departmentName,
-        Submit: dept.submittedCount,
-        Target: dept.expectedSubmissions,
-        ringkasan: `${dept.submittedCount}/${dept.expectedSubmissions} Submit`,
+    ? Array.from(
+        deptData.reduce((groups, dept: any) => {
+          const name = formatDepartmentChartLabel(dept.departmentName);
+          const current = groups.get(name) ?? { name, Submit: 0, Target: 0 };
+          current.Submit += Number(dept.submittedCount ?? 0);
+          current.Target += Number(dept.employeeCount ?? 0);
+          groups.set(name, current);
+          return groups;
+        }, new Map<string, { name: string; Submit: number; Target: number }>())
+        .values(),
+      ).map((item) => ({
+        ...item,
+        ringkasan: `${item.Submit}/${item.Target} Submit`,
       }))
     : [];
   const todoNotifications = Array.isArray(notifications)
@@ -319,21 +344,21 @@ Terima kasih.`;
           <>
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <StatCard
-                title={(summary as any).scope === "personal" ? "Hari Kerja" : "Karyawan Office"}
-                value={(summary as any).scope === "personal" ? (summary as any).expectedWorkDays : summary.totalEmployees}
+                title={summary.scope === "personal" ? "Hari Kerja" : "Karyawan Office"}
+                value={summary.scope === "personal" ? summary.expectedWorkDays : summary.totalEmployees}
                 icon={Users}
                 iconClass="bg-blue-50 text-blue-600"
-                description={(summary as any).scope === "personal" ? "Denominator periode aktif" : "Wajib submit laporan"}
+                description={summary.scope === "personal" ? "Denominator periode aktif" : "Wajib submit laporan"}
               />
               <StatCard
-                title="Sudah Submit"
+                title="Sudah Submit (Periode)"
                 value={summary.submittedToday}
                 icon={CheckSquare}
                 iconClass="bg-emerald-50 text-emerald-600"
                 description={`${summary.submitRate}% dari total`}
               />
               <StatCard
-                title="Belum Submit"
+                title="Belum Submit (Periode)"
                 value={summary.notSubmittedToday}
                 icon={AlertTriangle}
                 iconClass="bg-amber-50 text-amber-600"
@@ -367,13 +392,15 @@ Terima kasih.`;
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <Filter className="h-4 w-4 text-slate-500" />
-                    <Select value={period} onValueChange={(value) => setPeriod(value as "weekly" | "monthly")}>
+                    <Select value={period} onValueChange={(value) => setPeriod(value as "daily" | "weekly" | "monthly" | "yearly")}>
                       <SelectTrigger className="h-9 w-36 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="daily">Harian</SelectItem>
                         <SelectItem value="weekly">Mingguan</SelectItem>
                         <SelectItem value="monthly">Bulanan</SelectItem>
+                        <SelectItem value="yearly">Tahunan</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -384,7 +411,7 @@ Terima kasih.`;
                       Periode: {periodRangeText}
                     </span>
                     <span className="rounded-md bg-blue-50 px-2 py-1 font-semibold text-blue-700">
-                      Submit: {summary.submittedToday}
+                      Submit: {summary.submittedEmployeeCount} / {summary.requiredEmployeeCount}
                     </span>
                     <span className="rounded-md bg-violet-50 px-2 py-1 font-semibold text-violet-700">
                       Total Tugas: {summary.totalTasksToday}
@@ -452,7 +479,7 @@ Terima kasih.`;
                     </div>
                   ) : (
                     <div className="flex h-[285px] items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
-                      Belum ada data laporan {period === "monthly" ? "bulan ini" : "minggu ini"}
+                      Belum ada data laporan {periodSummaryLabel.toLowerCase()}
                     </div>
                   )}
                 </CardContent>
@@ -469,7 +496,7 @@ Terima kasih.`;
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-bold text-slate-800">
-                          Laporan yang tidak di submit {period === "monthly" ? "bulan ini" : "minggu ini"}
+                          Laporan periode yang belum disubmit {periodSummaryLabel.toLowerCase()}
                         </p>
                         <p className="text-xs text-slate-500">
                           Jumlah kewajiban laporan yang belum terpenuhi
@@ -481,10 +508,15 @@ Terima kasih.`;
                     </div>
                     {isDirector && missingEmployees.length > 0 && (
                       <div className="mt-3 border-t border-amber-200 pt-3">
-                        <p className="mb-2 text-xs font-semibold text-amber-900">
-                          Belum submit hari ini:{" "}
-                          {missingEmployees.map((employee) => employee.name).join(", ")}
-                        </p>
+                        <div className="mb-2 flex items-start justify-between gap-3">
+                          <p className="text-xs font-semibold text-amber-900">
+                            Belum submit hari ini:{" "}
+                            {missingEmployees.map((employee) => employee.name).join(", ")}
+                          </p>
+                          <Badge className="shrink-0 border-amber-300 bg-white text-amber-700">
+                            {summary.notSubmittedSelectedDate}
+                          </Badge>
+                        </div>
                         <Button
                           size="sm"
                           variant="outline"

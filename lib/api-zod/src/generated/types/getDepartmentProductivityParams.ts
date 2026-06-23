@@ -8,4 +8,5 @@
 
 export type GetDepartmentProductivityParams = {
   date?: string;
+  period?: "daily" | "weekly" | "monthly" | "yearly";
 };
