@@ -2940,6 +2940,106 @@ export default function JadwalProject() {
                 </Card>
               </section>
 
+              <Card className="border border-border">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                    Komentar Internal
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Textarea
+                      value={internalCommentDraft}
+                      onChange={(event) =>
+                        setInternalCommentDraft(event.target.value)
+                      }
+                      placeholder="Tulis komentar internal..."
+                      className="min-h-20 resize-none text-sm"
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleSendInternalComment}
+                        disabled={!internalCommentDraft.trim()}
+                      >
+                        <Send className="mr-1.5 h-3.5 w-3.5" />
+                        Kirim Komentar
+                      </Button>
+                    </div>
+                  </div>
+
+                  {internalCommentsLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    </div>
+                  ) : poInternalComments.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-border bg-slate-50 px-4 py-6 text-center text-sm text-muted-foreground">
+                      Belum ada komentar internal.
+                    </p>
+                  ) : (
+                    <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                      {poInternalComments.map((comment) => (
+                        <div
+                          key={comment.id}
+                          className="rounded-lg border border-border bg-white p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {comment.userName}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatCommentDateTime(comment.createdAt)}
+                                {comment.userDepartment
+                                  ? ` · ${comment.userDepartment}`
+                                  : ""}
+                              </p>
+                            </div>
+                            {(canEditComments || canDeleteComments) && (
+                              <div className="flex shrink-0 items-center gap-1">
+                                {canEditComments && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Edit komentar"
+                                    onClick={() =>
+                                      handleEditInternalComment(comment)
+                                    }
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                                {canDeleteComments && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                    title="Hapus komentar"
+                                    onClick={() =>
+                                      handleDeleteInternalComment(comment)
+                                    }
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                            {comment.comment}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
             </div>
           </div>
         </div>
