@@ -39,8 +39,12 @@ const emptyDraft: TutorialDraft = {
   screenshotMimeType: null,
 };
 
+function normalizeTutorialContent(content: string) {
+  return content.replace(/\\r\\n|\\n|\\r/g, "\n");
+}
+
 function stepsFromContent(content: string) {
-  return content
+  return normalizeTutorialContent(content)
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
@@ -74,7 +78,7 @@ export default function PanduanWebsite() {
     setEditingId(item.id);
     setDraft({
       title: item.title,
-      content: item.content,
+      content: normalizeTutorialContent(item.content),
       sortOrder: item.sortOrder,
       screenshotData: item.screenshotData,
       screenshotMimeType: item.screenshotMimeType,
@@ -84,10 +88,14 @@ export default function PanduanWebsite() {
   const save = async () => {
     if (!draft.title.trim() || !draft.content.trim()) return;
     try {
+      const payload = {
+        ...draft,
+        content: normalizeTutorialContent(draft.content),
+      };
       await apiRequest(editingId === "new" ? "/api/tutorials" : `/api/tutorials/${editingId}`, {
         method: editingId === "new" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(payload),
       });
       setEditingId(null);
       setDraft(emptyDraft);
