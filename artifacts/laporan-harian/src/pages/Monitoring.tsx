@@ -477,13 +477,19 @@ export default function Monitoring() {
         {showFilters && (
           <Card className="border border-border">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center justify-between">
-                Filter Laporan
-                <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground h-7">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-sm">Filter Laporan</CardTitle>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetFilters}
+                  className="h-8 shrink-0 text-muted-foreground hover:text-foreground"
+                >
                   <X className="w-3.5 h-3.5 mr-1.5" />
                   Reset
                 </Button>
-              </CardTitle>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-5">

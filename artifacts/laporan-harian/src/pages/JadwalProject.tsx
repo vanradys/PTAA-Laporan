@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useListPo,
@@ -47,6 +47,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1522,6 +1523,203 @@ export default function JadwalProject() {
     ? formatDeadlineLabel(viewingPo.sisaHari, viewingPo.status)
     : "-";
 
+  const renderPoSlider = (
+    items: PoItem[],
+    options: {
+      emptyText: string;
+      showCreateButton?: boolean;
+      allowDelete?: boolean;
+    },
+  ) => (
+    <>
+      {items.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">{options.emptyText}</p>
+          {options.showCreateButton && canManage && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={openCreate}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Tambah PO Pertama
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto px-5 pb-5">
+          <div className="flex snap-x snap-mandatory gap-4">
+            {items.map((po) => {
+              const ss = STATUS_STYLES[po.status] ?? STATUS_STYLES.belum_mulai;
+              const deliveryStatus = getDeliveryStatus(po);
+              const deadlineStyle = getDeadlineStyle(po.sisaHari, po.status);
+              const deadlineLabel = formatDeadlineLabel(po.sisaHari, po.status);
+
+              return (
+                <article
+                  key={po.id}
+                  className="flex w-[min(88vw,360px)] shrink-0 snap-start flex-col rounded-lg border border-border bg-background p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-semibold text-primary">
+                        {po.noPo}
+                      </p>
+                      <h3 className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">
+                        {po.namaProject}
+                      </h3>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {po.customer ?? "-"}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${deliveryStatus.className}`}
+                    >
+                      {deliveryStatus.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                    <DetailInfo label="Qty" value={po.qty ?? "-"} />
+                    <DetailInfo
+                      label="PIC"
+                      value={po.picProject ?? po.picName ?? "-"}
+                    />
+                    <DetailInfo
+                      label="Tanggal PO"
+                      value={isoDateToDisplay(po.tanggalPoMasuk)}
+                    />
+                    <DetailInfo
+                      label="Target"
+                      value={isoDateToDisplay(po.targetPengiriman ?? po.deadline)}
+                    />
+                    <DetailInfo
+                      label="Aktual"
+                      value={
+                        po.aktualPengiriman
+                          ? isoDateToDisplay(po.aktualPengiriman)
+                          : "Belum Diisi"
+                      }
+                    />
+                    <DetailInfo
+                      label="Sisa Hari"
+                      value={<span className={deadlineStyle}>{deadlineLabel}</span>}
+                    />
+                    {canViewPoAmount && (
+                      <div className="col-span-2">
+                        <DetailInfo
+                          label="Nominal PO"
+                          value={po.poAmount ? formatRupiah(po.poAmount) : "-"}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <span
+                      className={`inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-xs font-medium ${ss.badge}`}
+                    >
+                      <span
+                        className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${ss.dot}`}
+                      />
+                      <span className="truncate">{getStatusLabel(po, ss.label)}</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 flex-1 rounded-full bg-muted">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${
+                            isFinishedPo(po.status) ? "bg-green-500" : "bg-primary"
+                          }`}
+                          style={{ width: `${clampProgress(po.progress)}%` }}
+                        />
+                      </div>
+                      <span className="w-9 text-right text-xs font-semibold">
+                        {po.progress}%
+                      </span>
+                    </div>
+                    {po.departmentName && (
+                      <p className="text-xs text-muted-foreground">
+                        {po.departmentName}
+                      </p>
+                    )}
+                    {po.isEditLocked && role !== "admin" && (
+                      <p className="text-xs text-red-600">
+                        {getFinishedPoNotice(po)}
+                      </p>
+                    )}
+                  </div>
+
+                  {canViewPoDetail && (
+                    <div className="mt-auto flex items-center justify-end gap-1 pt-4">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                        title="Lihat Detail"
+                        onClick={() => setViewingPo(po)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      {canUpdateProjectProgress && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title={
+                              po.isEditLocked
+                                ? (getFinishedPoNotice(po) ?? "PO terkunci")
+                                : "Edit"
+                            }
+                            disabled={Boolean(po.isEditLocked && role !== "admin")}
+                            onClick={() => openEdit(po)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          {canClosePo && po.status === "project_invoiced" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-green-600 hover:bg-green-50 hover:text-green-700"
+                              title="Progress Selesai"
+                              type="button"
+                              disabled={closePo.isPending}
+                              onClick={() => handleClose(po)}
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {options.allowDelete && canManage && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              title={
+                                po.isEditLocked
+                                  ? (getFinishedPoNotice(po) ?? "PO terkunci")
+                                  : "Hapus"
+                              }
+                              disabled={Boolean(po.isEditLocked && role !== "admin")}
+                              onClick={() => handleDelete(po)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <Layout>
       <div className="page-shell space-y-5 max-w-7xl">
@@ -1724,28 +1922,23 @@ export default function JadwalProject() {
                     />
                     {canViewPoTrendAmount && (
                       <>
+                        <ReferenceLine
+                          yAxisId="right"
+                          y={getNominalAxisValue(3_000_000_000)}
+                          stroke="#ef4444"
+                          strokeWidth={2}
+                          ifOverflow="extendDomain"
+                        />
                         <Line
                           yAxisId="right"
                           type="monotone"
                           dataKey="totalAmountAxis"
                           name="Total Nominal PO"
                           stroke="#f97316"
-                          strokeWidth={3}
-                          connectNulls
-                          dot={{ r: 4 }}
-                          activeDot={{ r: 6 }}
-                        />
-                        <Line
-                          yAxisId="right"
-                          type="linear"
-                          dataKey="targetAmountAxis"
-                          name="Target 3M"
-                          stroke="#dc2626"
                           strokeWidth={2}
-                          strokeDasharray="7 5"
                           connectNulls
-                          dot={false}
-                          activeDot={false}
+                          dot={{ r: 3, fill: "#ffffff", stroke: "#f97316", strokeWidth: 2 }}
+                          activeDot={{ r: 5 }}
                         />
                       </>
                     )}
@@ -1989,7 +2182,12 @@ export default function JadwalProject() {
                 )}
               </div>
             ) : (
-              <div className="overflow-hidden">
+              <>
+                {renderPoSlider(pos, {
+                  emptyText: "Tidak ada data PO untuk filter ini",
+                  showCreateButton: true,
+                })}
+                <div className="hidden">
                 <table className="po-fit-table w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
@@ -2188,7 +2386,8 @@ export default function JadwalProject() {
                     })}
                   </tbody>
                 </table>
-              </div>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -2293,7 +2492,12 @@ export default function JadwalProject() {
                 <p className="text-sm">Belum ada data PO / Project</p>
               </div>
             ) : (
-              <div className="overflow-hidden">
+              <>
+                {renderPoSlider(allPos, {
+                  emptyText: "Belum ada data PO / Project",
+                  allowDelete: true,
+                })}
+                <div className="hidden">
                 <table className="po-fit-table w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
@@ -2496,7 +2700,8 @@ export default function JadwalProject() {
                     })}
                   </tbody>
                 </table>
-              </div>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -3166,7 +3371,7 @@ export default function JadwalProject() {
   );
 }
 
-function DetailInfo({ label, value }: { label: string; value: string }) {
+function DetailInfo({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <p className="text-xs font-semibold text-muted-foreground">{label}</p>
