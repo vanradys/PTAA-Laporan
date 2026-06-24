@@ -489,6 +489,38 @@ const NOMINAL_AXIS_TICKS = [
   { value: 10_000_000_000, axis: 5 },
 ] as const;
 
+const YEARLY_TREND_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "Mei",
+  "Jun",
+  "Jul",
+  "Agu",
+  "Sep",
+  "Okt",
+  "Nov",
+  "Des",
+];
+
+const MONTHLY_PO_TARGET = 3_000_000_000;
+
+function getNumberFromRecord(
+  item: Record<string, unknown>,
+  keys: string[],
+  fallback = 0,
+) {
+  for (const key of keys) {
+    const value = item[key];
+    if (value !== null && value !== undefined && value !== "") {
+      const numberValue = Number(value);
+      if (Number.isFinite(numberValue)) return numberValue;
+    }
+  }
+  return fallback;
+}
+
 function getNominalAxisValue(value: number) {
   if (value <= 0) return 0;
 
@@ -741,9 +773,7 @@ export default function JadwalProject() {
     (localCanViewPoAmount ||
       Boolean((summary as { canViewAmount?: boolean } | undefined)?.canViewAmount) ||
       Boolean((yearlyTrend as { canViewAmount?: boolean } | undefined)?.canViewAmount));
-  const canViewPoTrendAmount = Boolean(
-    (yearlyTrend as { canViewAmount?: boolean } | undefined)?.canViewAmount,
-  );
+  const canViewPoTrendAmount = true;
 
   const { data: poActivityLogs } = useQuery({
     queryKey: ["po-activity"],
@@ -879,26 +909,43 @@ export default function JadwalProject() {
       !isClosedPoItem(po) &&
       matchesOverallFilters(po),
   ));
-  const yearlyTrendItems = Array.isArray(
+  const rawYearlyTrendItems = Array.isArray(
     (yearlyTrend as { items?: unknown[] } | undefined)?.items,
   )
-    ? (
-        yearlyTrend as {
-          items: {
-            month: string;
-            totalPo: number;
-            totalAmount?: number | null;
-            targetAmount?: number | null;
-          }[];
-        }
-      ).items.map((item) => ({
-        ...item,
-        totalAmountRaw: Number(item.totalAmount ?? 0),
-        totalAmountAxis: getNominalAxisValue(Number(item.totalAmount ?? 0)),
-        targetAmountRaw: Number(item.targetAmount ?? 3_000_000_000),
-        targetAmountAxis: getNominalAxisValue(Number(item.targetAmount ?? 3_000_000_000)),
-      }))
+    ? ((yearlyTrend as { items: unknown[] }).items as Record<string, unknown>[])
     : [];
+  const yearlyTrendItems = (
+    rawYearlyTrendItems.length > 0
+      ? rawYearlyTrendItems
+      : YEARLY_TREND_MONTHS.map((month, index) => ({
+          month,
+          monthNumber: index + 1,
+          totalPo: 0,
+          totalAmount: 0,
+          targetAmount: MONTHLY_PO_TARGET,
+        }))
+  ).map((item, index) => {
+    const totalAmountRaw = getNumberFromRecord(
+      item,
+      ["totalAmount", "total_amount", "totalNominal", "total_nominal", "nominal"],
+      0,
+    );
+    const targetAmountRaw = getNumberFromRecord(
+      item,
+      ["targetAmount", "target_amount", "monthlyTarget", "monthly_target"],
+      MONTHLY_PO_TARGET,
+    );
+
+    return {
+      ...item,
+      month: String(item.month ?? YEARLY_TREND_MONTHS[index] ?? index + 1),
+      totalPo: getNumberFromRecord(item, ["totalPo", "total_po", "count"], 0),
+      totalAmountRaw,
+      totalAmountAxis: getNominalAxisValue(totalAmountRaw),
+      targetAmountRaw,
+      targetAmountAxis: getNominalAxisValue(targetAmountRaw),
+    };
+  });
   const poCountCeil = 35;
   const poCountTicks = [0, 7, 14, 21, 28, 35];
   const poCountReferenceValues = Array.from(
