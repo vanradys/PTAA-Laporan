@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetPoYearlyTrendParams = {
-year?: number;
+export type DashboardSummaryMissingEmployeesItem = {
+  id: number;
+  name: string;
 };

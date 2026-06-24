@@ -13,6 +13,9 @@ export * from "./po_notes";
 export * from "./name_change_requests";
 export * from "./company_holidays";
 export * from "./todo_tasks";
+export * from "./todo_checklist_history";
+export * from "./website_tutorials";
+export * from "./attendance_manual_corrections";
 export * from "./sessions";
 
 export * from "./device_tokens";

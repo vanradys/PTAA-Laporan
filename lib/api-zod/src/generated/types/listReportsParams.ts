@@ -7,17 +7,19 @@
  */
 
 export type ListReportsParams = {
-  date?: string;
-  month?: string;
-  year?: string;
-  /**
-   * @nullable
-   */
-  departmentId?: number | null;
-  /**
-   * @nullable
-   */
-  userId?: number | null;
-  status?: string;
-  search?: string;
+date?: string;
+dateFrom?: string;
+dateTo?: string;
+month?: string;
+year?: string;
+/**
+ * @nullable
+ */
+departmentId?: number | null;
+/**
+ * @nullable
+ */
+userId?: number | null;
+status?: string;
+search?: string;
 };

@@ -271,4 +271,19 @@
     border: 2px solid hsl(var(--primary));
     background: hsl(var(--primary));
   }
+
+  .po-fit-table {
+    table-layout: fixed;
+  }
+
+  .po-fit-table th,
+  .po-fit-table td {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    padding-left: 0.35rem !important;
+    padding-right: 0.35rem !important;
+    font-size: 0.72rem;
+    line-height: 1.2rem;
+  }
 }

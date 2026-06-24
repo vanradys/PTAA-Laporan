@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetReport, useCreateComment,
@@ -43,6 +43,9 @@ interface Task {
   id: number;
   title: string;
   project: string | null;
+  deadline?: string | null;
+  completionInputType?: string | null;
+  completionValue?: string | null;
   progress: number;
   status: string;
   notes: string | null;
@@ -64,6 +67,7 @@ interface Comment {
 export default function DetailLaporan() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
+  const search = useSearch();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -72,6 +76,7 @@ export default function DetailLaporan() {
   const [reviewingTaskId, setReviewingTaskId] = useState<number | null>(null);
 
   const reportId = parseInt(id ?? "0");
+  const returnTo = new URLSearchParams(search).get("returnTo") || "/monitoring";
   const { data: report, isLoading } = useGetReport(
     reportId,
     { query: { enabled: !!reportId, queryKey: getGetReportQueryKey(reportId) } }
@@ -178,7 +183,7 @@ export default function DetailLaporan() {
       <Layout>
         <div className="page-shell text-center text-muted-foreground">
           <p>Laporan tidak ditemukan</p>
-          <Button variant="ghost" onClick={() => navigate("/monitoring")} className="mt-4">
+          <Button variant="ghost" onClick={() => navigate(returnTo)} className="mt-4">
             Kembali ke Monitoring
           </Button>
         </div>
@@ -202,7 +207,7 @@ export default function DetailLaporan() {
       <div className="page-shell space-y-5 max-w-4xl">
         {/* Header */}
         <div className="flex items-start gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/monitoring")} className="mt-0.5">
+          <Button variant="ghost" size="icon" onClick={() => navigate(returnTo)} className="mt-0.5">
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="flex-1">
@@ -265,14 +270,16 @@ export default function DetailLaporan() {
               <div className="px-5 py-8 text-center text-muted-foreground text-sm">Tidak ada tugas</div>
             ) : (
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-sm">
+              <table className="w-full min-w-[1120px] text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Tugas</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Project</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diberikan</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diselesaikan</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Catatan</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Job yang dikerjakan</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Revisi</th>
                   </tr>
                 </thead>
@@ -283,6 +290,8 @@ export default function DetailLaporan() {
                       <tr key={task.id} className="border-b border-border last:border-0">
                         <td className="px-4 py-3 font-medium text-foreground">{task.title}</td>
                         <td className="px-4 py-3 text-muted-foreground">{task.project ?? "—"}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{task.deadline ?? "-"}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{task.completionValue ?? "-"}</td>
                         <td className="px-4 py-3 text-center">
                           <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${ts.color}`}>
                             {ts.label}
@@ -296,7 +305,7 @@ export default function DetailLaporan() {
                             <span className="text-xs font-medium w-8">{task.progress}%</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{task.notes ?? "—"}</td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{task.notes ?? "-"}</td>
                         <td className="px-4 py-3">
                           {task.reviewStatus && task.reviewStatus !== "komentar" && (
                             <div className="mb-2">

@@ -7,6 +7,6 @@
  */
 
 export type GetPoSummaryParams = {
-  month?: number;
-  year?: number;
+month?: number;
+year?: number;
 };

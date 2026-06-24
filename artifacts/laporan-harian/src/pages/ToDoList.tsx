@@ -14,12 +14,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Columns3,
-  Grid2X2, ListChecks, MessageSquare, Plus, Send, UsersRound, X,
+  Grid2X2, History, ListChecks, MessageSquare, Pencil, Plus, Send, Trash2, UsersRound, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getJakartaDateString } from "@/lib/date";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 type TaskType = "personal" | "team";
 type TaskStatus = "Belum Mulai" | "In Progress" | "Selesai";
@@ -34,6 +35,14 @@ type Employee = {
   departmentName?: string | null;
 };
 type ChecklistItem = { id: number; text: string; isCompleted: boolean };
+type ChecklistHistoryItem = {
+  id: number;
+  action: string;
+  previousText: string | null;
+  nextText: string | null;
+  actorName: string;
+  createdAt: string;
+};
 type TaskComment = { id: number; userName: string; comment: string; createdAt: string };
 type Task = {
   id: number; title: string; description: string | null; type: TaskType;
@@ -160,6 +169,7 @@ function SummaryCard({
 export default function ToDoList() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const search = useSearch();
   const [viewMode, setViewMode] = useState<ViewMode>("today");
@@ -169,7 +179,12 @@ export default function ToDoList() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [form, setForm] = useState<TaskForm>(emptyForm);
   const [comment, setComment] = useState("");
+  const [newChecklistText, setNewChecklistText] = useState("");
+  const [editingChecklistId, setEditingChecklistId] = useState<number | null>(null);
+  const [editingChecklistText, setEditingChecklistText] = useState("");
+  const [checklistHistory, setChecklistHistory] = useState<ChecklistHistoryItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const isAdmin = String(user?.role ?? "").toLowerCase() === "admin";
 
   const { data: tasks = [], isLoading, isError, error } = useQuery({
     queryKey: ["todo-tasks"],
@@ -186,6 +201,11 @@ export default function ToDoList() {
     try {
       const detail = await apiRequest<Task>(`/api/todo-tasks/${task.id}`);
       setSelectedTask(detail);
+      if (isAdmin) {
+        setChecklistHistory(await apiRequest<ChecklistHistoryItem[]>(`/api/todo-tasks/${task.id}/checklist-history`));
+      } else {
+        setChecklistHistory([]);
+      }
       queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
     } catch (error) {
       toast({ title: "Gagal membuka tugas", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
@@ -325,6 +345,48 @@ export default function ToDoList() {
       queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
     } catch (error) {
       toast({ title: "Gagal memperbarui checklist", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
+  };
+  const addChecklistItem = async () => {
+    if (!selectedTask || !newChecklistText.trim()) return;
+    try {
+      await apiRequest(`/api/todo-tasks/${selectedTask.id}/checklist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: newChecklistText }),
+      });
+      setNewChecklistText("");
+      await openTask(selectedTask);
+      queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+    } catch (error) {
+      toast({ title: "Gagal menambah checklist", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
+  };
+  const saveChecklistText = async (item: ChecklistItem) => {
+    if (!selectedTask || !editingChecklistText.trim()) return;
+    try {
+      await apiRequest(`/api/todo-tasks/${selectedTask.id}/checklist/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: editingChecklistText }),
+      });
+      setEditingChecklistId(null);
+      setEditingChecklistText("");
+      await openTask(selectedTask);
+      queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+    } catch (error) {
+      toast({ title: "Gagal mengedit checklist", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
+  };
+  const deleteChecklistItem = async (item: ChecklistItem) => {
+    if (!selectedTask) return;
+    if (!window.confirm(`Hapus sub-task "${item.text}"?`)) return;
+    try {
+      await apiRequest(`/api/todo-tasks/${selectedTask.id}/checklist/${item.id}`, { method: "DELETE" });
+      await openTask(selectedTask);
+      queryClient.invalidateQueries({ queryKey: ["todo-tasks"] });
+    } catch (error) {
+      toast({ title: "Gagal menghapus checklist", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
     }
   };
   const sendComment = async () => {
@@ -545,7 +607,69 @@ export default function ToDoList() {
         <div className="grid max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl lg:grid-cols-[1fr_280px]">
           <div className="p-6">
             <div className="flex items-start gap-3"><button type="button" onClick={() => updateStatus(selectedTask.status === "Selesai" ? "Belum Mulai" : "Selesai")} className={cn("mt-1 h-5 w-5 rounded-full border-2", selectedTask.status === "Selesai" && "border-emerald-500 bg-emerald-500")} /><div className="flex-1"><h2 className="text-xl font-black">{selectedTask.title}</h2><p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{selectedTask.description || "Tidak ada deskripsi."}</p></div><Button variant="ghost" size="icon" onClick={() => { setSelectedTask(null); navigate("/to-do-list"); }}><X /></Button></div>
-            <div className="mt-6"><h3 className="text-sm font-black">Sub-task / Checklist ({selectedTask.checklist.filter((item) => item.isCompleted).length}/{selectedTask.checklist.length})</h3><div className="mt-2 space-y-2">{selectedTask.checklist.length ? selectedTask.checklist.map((item) => <button key={item.id} type="button" onClick={() => toggleChecklist(item)} className="flex w-full items-center gap-3 rounded-lg border p-3 text-left"><span className={cn("h-4 w-4 rounded-full border", item.isCompleted && "border-emerald-500 bg-emerald-500")} /><span className={cn("text-sm", item.isCompleted && "text-slate-400 line-through")}>{item.text}</span></button>) : <p className="text-sm text-slate-400">Tidak ada checklist.</p>}</div></div>
+            <div className="mt-6">
+              <h3 className="text-sm font-black">Sub-task / Checklist ({selectedTask.checklist.filter((item) => item.isCompleted).length}/{selectedTask.checklist.length})</h3>
+              <div className="mt-3 flex gap-2">
+                <Input
+                  value={newChecklistText}
+                  onChange={(event) => setNewChecklistText(event.target.value)}
+                  placeholder="Tambah sub-task baru..."
+                  onKeyDown={(event) => { if (event.key === "Enter") void addChecklistItem(); }}
+                />
+                <Button type="button" onClick={addChecklistItem} disabled={!newChecklistText.trim()}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="mt-2 space-y-2">
+                {selectedTask.checklist.length ? selectedTask.checklist.map((item) => (
+                  <div key={item.id} className="flex w-full items-center gap-2 rounded-lg border p-2">
+                    <button type="button" onClick={() => toggleChecklist(item)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-slate-100" title="Centang selesai">
+                      <span className={cn("h-4 w-4 rounded-full border", item.isCompleted && "border-emerald-500 bg-emerald-500")} />
+                    </button>
+                    {editingChecklistId === item.id ? (
+                      <Input
+                        value={editingChecklistText}
+                        onChange={(event) => setEditingChecklistText(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void saveChecklistText(item);
+                          if (event.key === "Escape") setEditingChecklistId(null);
+                        }}
+                        className="h-8"
+                        autoFocus
+                      />
+                    ) : (
+                      <span className={cn("flex-1 text-sm", item.isCompleted && "text-slate-400 line-through")}>{item.text}</span>
+                    )}
+                    {editingChecklistId === item.id ? (
+                      <Button type="button" size="sm" onClick={() => saveChecklistText(item)} disabled={!editingChecklistText.trim()}>Simpan</Button>
+                    ) : (
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingChecklistId(item.id); setEditingChecklistText(item.text); }} title="Edit sub-task">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => deleteChecklistItem(item)} title="Hapus sub-task">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )) : <p className="text-sm text-slate-400">Tidak ada checklist.</p>}
+              </div>
+              {isAdmin && (
+                <div className="mt-4 rounded-lg border bg-slate-50 p-3">
+                  <h4 className="flex items-center gap-2 text-xs font-black text-slate-600">
+                    <History className="h-3.5 w-3.5" />
+                    Riwayat Checklist
+                  </h4>
+                  <div className="mt-2 max-h-36 space-y-2 overflow-y-auto">
+                    {checklistHistory.length ? checklistHistory.map((item) => (
+                      <div key={item.id} className="text-xs text-slate-600">
+                        <b>{item.actorName}</b> {item.action} {item.nextText || item.previousText || "-"}
+                        <span className="ml-1 text-slate-400">{new Date(item.createdAt).toLocaleString("id-ID")}</span>
+                      </div>
+                    )) : <p className="text-xs text-slate-400">Belum ada riwayat checklist.</p>}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="mt-6"><h3 className="flex items-center gap-2 text-sm font-black"><MessageSquare className="h-4 w-4" />Komentar ({selectedTask.comments.length})</h3><div className="mt-3 max-h-52 space-y-3 overflow-y-auto">{selectedTask.comments.map((item) => <div key={item.id} className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-black">{item.userName}</p><p className="mt-1 text-sm text-slate-700">{item.comment}</p><p className="mt-1 text-[10px] text-slate-400">{new Date(item.createdAt).toLocaleString("id-ID")}</p></div>)}</div><div className="mt-3 flex gap-2"><Input value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Tambah komentar..." onKeyDown={(event) => { if (event.key === "Enter") void sendComment(); }} /><Button onClick={sendComment}><Send className="h-4 w-4" /></Button></div></div>
           </div>
           <aside className="border-t bg-slate-50 p-6 lg:border-l lg:border-t-0">

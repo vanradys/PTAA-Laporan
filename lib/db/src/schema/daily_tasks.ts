@@ -10,6 +10,8 @@ export const dailyTasksTable = pgTable("daily_tasks", {
   title: text("title").notNull(),
   project: text("project"),
   deadline: text("deadline"),
+  completionInputType: text("completion_input_type"),
+  completionValue: text("completion_value"),
   progress: integer("progress").notNull().default(0),
   status: text("status").notNull().default("belum_mulai"),
   notes: text("notes"),

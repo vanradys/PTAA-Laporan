@@ -61,6 +61,10 @@ export interface DailyTask {
   project?: string | null;
   /** @nullable */
   deadline?: string | null;
+  /** @nullable */
+  completionInputType?: string | null;
+  /** @nullable */
+  completionValue?: string | null;
   progress: number;
   status: string;
   /** @nullable */
@@ -76,6 +80,8 @@ export interface TaskInput {
   title: string;
   project?: string;
   deadline?: string;
+  completionInputType?: string;
+  completionValue?: string;
   progress: number;
   status: string;
   notes?: string;
@@ -85,6 +91,8 @@ export interface TaskUpdate {
   title?: string;
   project?: string;
   deadline?: string;
+  completionInputType?: string;
+  completionValue?: string;
   progress?: number;
   status?: string;
   notes?: string;
@@ -253,6 +261,29 @@ export type DashboardSummaryPendingAssignedTasksByAssignerItem = {
   count: number;
 };
 
+export type DashboardSummaryMissingEmployeesItem = {
+  id: number;
+  name: string;
+};
+
+export type DashboardSummaryScope = typeof DashboardSummaryScope[keyof typeof DashboardSummaryScope];
+
+
+export const DashboardSummaryScope = {
+  company: 'company',
+  personal: 'personal',
+} as const;
+
+export type DashboardSummaryPeriod = typeof DashboardSummaryPeriod[keyof typeof DashboardSummaryPeriod];
+
+
+export const DashboardSummaryPeriod = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+  yearly: 'yearly',
+} as const;
+
 export interface DashboardSummary {
   totalEmployees: number;
   expectedWorkDays: number;
@@ -270,10 +301,10 @@ export interface DashboardSummary {
   completionRate: number;
   pendingAssignedTasksCount: number;
   pendingAssignedTasksByAssigner: DashboardSummaryPendingAssignedTasksByAssignerItem[];
-  missingEmployees: Array<{ id: number; name: string }>;
+  missingEmployees: DashboardSummaryMissingEmployeesItem[];
   missingEmployeeCount: number;
-  scope: "company" | "personal";
-  period: "daily" | "weekly" | "monthly" | "yearly";
+  scope: DashboardSummaryScope;
+  period: DashboardSummaryPeriod;
   periodStartDate: string;
   periodEndDate: string;
   weekStartDate: string;
@@ -406,47 +437,78 @@ export interface PoSummary {
 }
 
 export type ListReportsParams = {
-  date?: string;
-  month?: string;
-  year?: string;
-  /**
-   * @nullable
-   */
-  departmentId?: number | null;
-  /**
-   * @nullable
-   */
-  userId?: number | null;
-  status?: string;
-  search?: string;
+date?: string;
+dateFrom?: string;
+dateTo?: string;
+month?: string;
+year?: string;
+/**
+ * @nullable
+ */
+departmentId?: number | null;
+/**
+ * @nullable
+ */
+userId?: number | null;
+status?: string;
+search?: string;
 };
 
 export type ListPoParams = {
-  month?: number;
-  year?: number;
-  status?: string;
-  departmentId?: number;
-  picUserId?: number;
-  customer?: string;
-  search?: string;
-  nominalSort?: "asc" | "desc";
+month?: number;
+year?: number;
+status?: string;
+departmentId?: number;
+picUserId?: number;
+customer?: string;
+search?: string;
+nominalSort?: ListPoNominalSort;
 };
 
+export type ListPoNominalSort = typeof ListPoNominalSort[keyof typeof ListPoNominalSort];
+
+
+export const ListPoNominalSort = {
+  asc: 'asc',
+  desc: 'desc',
+} as const;
+
 export type GetPoSummaryParams = {
-  month?: number;
-  year?: number;
+month?: number;
+year?: number;
 };
 
 export type GetPoYearlyTrendParams = {
-  year?: number;
+year?: number;
 };
 
 export type GetDashboardSummaryParams = {
-  date?: string;
-  period?: "daily" | "weekly" | "monthly" | "yearly";
+date?: string;
+period?: GetDashboardSummaryPeriod;
 };
 
+export type GetDashboardSummaryPeriod = typeof GetDashboardSummaryPeriod[keyof typeof GetDashboardSummaryPeriod];
+
+
+export const GetDashboardSummaryPeriod = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+  yearly: 'yearly',
+} as const;
+
 export type GetDepartmentProductivityParams = {
-  date?: string;
-  period?: "daily" | "weekly" | "monthly" | "yearly";
+date?: string;
+period?: GetDepartmentProductivityPeriod;
 };
+
+export type GetDepartmentProductivityPeriod = typeof GetDepartmentProductivityPeriod[keyof typeof GetDepartmentProductivityPeriod];
+
+
+export const GetDepartmentProductivityPeriod = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+  yearly: 'yearly',
+} as const;
+

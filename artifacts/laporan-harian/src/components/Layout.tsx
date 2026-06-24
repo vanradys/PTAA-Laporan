@@ -17,6 +17,8 @@ import {
   X,
   UsersRound,
   Fingerprint,
+  HelpCircle,
+  MessagesSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,7 +35,9 @@ const navItems = [
   { href: "/to-do-list", label: "To Do List", icon: ClipboardList },
   { href: "/monitoring", label: "Monitoring Laporan", icon: BarChart2 },
   { href: "/jadwal-project", label: "Jadwal Project", icon: CalendarClock },
+  { href: "/komentar-project", label: "Komentar Project", icon: MessagesSquare },
   { href: "/absensi", label: "Absensi", icon: Fingerprint },
+  { href: "/panduan-website", label: "Panduan Website", icon: HelpCircle },
   { href: "/notifikasi", label: "Notifikasi", icon: Bell },
 ];
 
@@ -72,7 +76,7 @@ export default function Layout({ children }: LayoutProps) {
   const userRole = String(user?.role ?? "").toLowerCase();
   const canViewOverallMonitoring = ["admin", "monitoring_dummy"].includes(userRole);
   const visibleNavItems = [
-    ...navItems.slice(0, 5),
+    ...navItems.slice(0, 6),
     ...(canViewOverallMonitoring
       ? [{
           href: "/monitoring-keseluruhan",
@@ -87,7 +91,7 @@ export default function Layout({ children }: LayoutProps) {
           icon: UsersRound,
         }]
       : []),
-    ...navItems.slice(5),
+    ...navItems.slice(6),
   ];
 
   return (

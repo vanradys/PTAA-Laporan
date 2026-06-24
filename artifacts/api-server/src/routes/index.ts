@@ -14,6 +14,7 @@ import overallMonitoringRouter from "./overallMonitoring";
 import nameChangeRequestsRouter from "./nameChangeRequests";
 import todoRouter from "./todo";
 import attendanceRouter from "./attendance";
+import tutorialsRouter from "./tutorials";
 
 const router = Router();
 
@@ -32,5 +33,6 @@ router.use(overallMonitoringRouter);
 router.use(nameChangeRequestsRouter);
 router.use(todoRouter);
 router.use(attendanceRouter);
+router.use(tutorialsRouter);
 
 export default router;

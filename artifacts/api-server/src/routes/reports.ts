@@ -184,6 +184,8 @@ async function buildReportDetail(reportId: number) {
         title: t.title,
         project: t.project ?? null,
         deadline: t.deadline ?? null,
+        completionInputType: t.completionInputType ?? null,
+        completionValue: t.completionValue ?? null,
         progress: t.progress,
         status: t.status,
         notes: t.notes ?? null,
@@ -221,7 +223,7 @@ router.get("/reports", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const { date, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
+  const { date, dateFrom, dateTo, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
 
   if (date) {
     if (isWeekendReportDate(date)) {
@@ -341,7 +343,10 @@ router.get("/reports", async (req, res) => {
 
   const conditions: SQL[] = [activeUserCondition()];
 
-  if (month && year) {
+  if (dateFrom || dateTo) {
+    if (dateFrom) conditions.push(gte(dailyReportsTable.date, dateFrom));
+    if (dateTo) conditions.push(lte(dailyReportsTable.date, dateTo));
+  } else if (month && year) {
     const m = month.padStart(2, "0");
     conditions.push(gte(dailyReportsTable.date, `${year}-${m}-01`));
     const nextMonth = parseInt(month) === 12 ? 1 : parseInt(month) + 1;
@@ -541,6 +546,8 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
       title: t.title,
       project: t.project ?? null,
       deadline: t.deadline ?? null,
+      completionInputType: t.completionInputType ?? null,
+      completionValue: t.completionValue ?? null,
       progress: t.progress,
       status: t.status,
       notes: t.notes ?? null,

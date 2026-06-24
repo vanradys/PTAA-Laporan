@@ -137,6 +137,17 @@ type DetailResponse = {
   }>;
 };
 
+const MANUAL_STATUS_OPTIONS = [
+  "Hadir",
+  "Sakit",
+  "Izin",
+  "Tukar Hari",
+  "Cuti",
+  "Tanpa Keterangan",
+  "Dirumahkan",
+  "Dinas Luar / Nginep",
+];
+
 function getPayrollPeriod() {
   const now = new Date();
   const day = now.getDate();
@@ -523,7 +534,7 @@ export default function Attendance() {
               {summaryQuery.isLoading ? <Loading /> : summaryQuery.error ? <ErrorState text="Gagal memuat rekap absensi." /> : (
                 <>
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1500px] text-sm">
+                    <table className="w-full table-fixed text-xs">
                       <thead><tr className="border-y bg-slate-100">
                         <th className="px-4 py-3 text-left">Nama</th><th className="px-4 py-3 text-center">Sakit</th><th className="px-4 py-3 text-center">Izin</th><th className="px-4 py-3 text-center">Tukar Hari</th><th className="px-4 py-3 text-center">Cuti</th><th className="px-4 py-3 text-center">Tanpa Keterangan</th><th className="px-4 py-3 text-center">Dirumahkan</th><th className="px-4 py-3 text-center">Dinas Luar / Nginep</th><th className="px-4 py-3 text-center">Total Telat</th><th className="px-4 py-3 text-center">Lembur Produksi</th><th className="px-4 py-3 text-center">Lembur Office</th><th className="px-4 py-3 text-center">Status</th>
                       </tr></thead>
@@ -596,7 +607,7 @@ export default function Attendance() {
       />
       <MappingDialog open={mappingOpen} onOpenChange={setMappingOpen} data={mappingsQuery.data} settings={settingsQuery.data} onSaved={refreshAfterMapping} />
       <HolidayDialog open={holidayOpen} onOpenChange={setHolidayOpen} holidays={holidaysQuery.data ?? []} settings={settingsQuery.data} onSaved={refreshAttendance} />
-      {canViewAll && <DetailDialog open={detailId !== null} onOpenChange={(open) => { if (!open) setDetailId(null); }} data={detailQuery.data} loading={detailQuery.isLoading} />}
+      {canViewAll && <DetailDialog open={detailId !== null} onOpenChange={(open) => { if (!open) setDetailId(null); }} data={detailQuery.data} loading={detailQuery.isLoading} canEdit={canManageAttendance} onSaved={refreshAttendance} />}
     </Layout>
   );
 }
@@ -789,12 +800,37 @@ function HolidayDialog({ open, onOpenChange, holidays, settings, onSaved }: {
   </DialogContent></Dialog>;
 }
 
-function DetailDialog({ open, onOpenChange, data, loading }: { open: boolean; onOpenChange: (open: boolean) => void; data?: DetailResponse; loading: boolean }) {
+function DetailDialog({ open, onOpenChange, data, loading, canEdit, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; data?: DetailResponse; loading: boolean; canEdit: boolean; onSaved: () => Promise<void> }) {
+  const { toast } = useToast();
+  const saveCorrection = async (workDate: string, dailyStatus: string) => {
+    if (!data) return;
+    try {
+      await apiRequest("/api/attendance/corrections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mappingId: data.employee.mappingId, workDate, dailyStatus }),
+      });
+      await onSaved();
+      toast({ title: "Koreksi absensi disimpan" });
+    } catch (error) {
+      toast({ title: "Koreksi gagal disimpan", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
+  };
+  const resetCorrection = async (workDate: string) => {
+    if (!data) return;
+    try {
+      await apiRequest(`/api/attendance/corrections?mappingId=${data.employee.mappingId}&workDate=${workDate}`, { method: "DELETE" });
+      await onSaved();
+      toast({ title: "Koreksi absensi dihapus" });
+    } catch (error) {
+      toast({ title: "Koreksi gagal dihapus", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
+  };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>Detail Absensi Karyawan</DialogTitle></DialogHeader>
     {loading ? <Loading /> : data ? <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6"><SummaryCard label="Nama" value={data.employee.name} /><SummaryCard label="Tipe" value={data.employee.employeeType} /><SummaryCard label="Total telat" value={data.employee.totalLate} /><SummaryCard label="Lembur produksi" value={formatNumber(data.employee.overtimeProduction)} /><SummaryCard label="Lembur office" value={formatNumber(data.employee.overtimeOffice)} /><Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Status periode</p><Badge className={cn("mt-2", statusClass(data.employee.status))}>{data.employee.status}</Badge></CardContent></Card></div>
       <div className="grid gap-3 lg:grid-cols-2"><Card><CardHeader><CardTitle className="text-sm">Daftar tanggal telat</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">{data.daily.filter((item) => item.isLate).length ? data.daily.filter((item) => item.isLate).map((item) => <Badge key={item.id} variant="outline">{formatDate(item.workDate)}</Badge>) : <span className="text-sm text-muted-foreground">Tidak ada.</span>}</CardContent></Card><Card><CardHeader><CardTitle className="text-sm">Daftar tanggal lembur</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">{data.daily.filter((item) => Number(item.overtimeProduction) > 0 || Number(item.overtimeOffice) > 0).length ? data.daily.filter((item) => Number(item.overtimeProduction) > 0 || Number(item.overtimeOffice) > 0).map((item) => <Badge key={item.id} variant="outline">{formatDate(item.workDate)}</Badge>) : <span className="text-sm text-muted-foreground">Tidak ada.</span>}</CardContent></Card></div>
-      <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[1150px] text-sm"><thead><tr className="bg-slate-100"><th className="p-3 text-left">Tanggal</th><th className="p-3 text-left">Jam Masuk</th><th className="p-3 text-left">Jam Pulang</th><th className="p-3 text-center">Total Scan</th><th className="p-3 text-left">Scan Mentah</th><th className="p-3 text-left">Status Masuk</th><th className="p-3 text-left">Status Pulang</th><th className="p-3 text-left">Status Harian</th><th className="p-3 text-left">Keterangan</th></tr></thead><tbody>{data.daily.map((item) => <tr key={item.id} className="border-t"><td className="p-3">{formatDate(item.workDate)}</td><td className="p-3">{item.clockIn ?? "-"}</td><td className="p-3">{item.clockOut ?? "-"}</td><td className="p-3 text-center">{item.totalScans}</td><td className="p-3">{data.rawScans.filter((scan) => scan.workDate === item.workDate).map((scan) => `${scan.scanTime}${scan.ioType ? ` (${scan.ioType === "1" ? "Masuk" : scan.ioType === "2" ? "Pulang" : scan.ioType})` : ""}`).join(", ") || "-"}</td><td className="p-3">{item.entryStatus}</td><td className="p-3">{item.exitStatus}</td><td className="p-3">{item.dailyStatus}</td><td className="p-3">{item.notes ?? "-"}</td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[1150px] text-sm"><thead><tr className="bg-slate-100"><th className="p-3 text-left">Tanggal</th><th className="p-3 text-left">Jam Masuk</th><th className="p-3 text-left">Jam Pulang</th><th className="p-3 text-center">Total Scan</th><th className="p-3 text-left">Scan Mentah</th><th className="p-3 text-left">Status Masuk</th><th className="p-3 text-left">Status Pulang</th><th className="p-3 text-left">Status Harian</th>{canEdit && <th className="p-3 text-left">Koreksi Manual</th>}<th className="p-3 text-left">Keterangan</th></tr></thead><tbody>{data.daily.map((item) => <tr key={item.id} className="border-t"><td className="p-3">{formatDate(item.workDate)}</td><td className="p-3">{item.clockIn ?? "-"}</td><td className="p-3">{item.clockOut ?? "-"}</td><td className="p-3 text-center">{item.totalScans}</td><td className="p-3">{data.rawScans.filter((scan) => scan.workDate === item.workDate).map((scan) => `${scan.scanTime}${scan.ioType ? ` (${scan.ioType === "1" ? "Masuk" : scan.ioType === "2" ? "Pulang" : scan.ioType})` : ""}`).join(", ") || "-"}</td><td className="p-3">{item.entryStatus}</td><td className="p-3">{item.exitStatus}</td><td className="p-3">{item.dailyStatus}</td>{canEdit && <td className="p-3"><div className="flex min-w-44 gap-2"><Select value={MANUAL_STATUS_OPTIONS.includes(item.dailyStatus) ? item.dailyStatus : "Hadir"} onValueChange={(value) => saveCorrection(item.workDate, value)}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent>{MANUAL_STATUS_OPTIONS.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select><Button size="sm" variant="outline" onClick={() => resetCorrection(item.workDate)}>Reset</Button></div></td>}<td className="p-3">{item.notes ?? "-"}</td></tr>)}</tbody></table></div>
     </div> : <ErrorState text="Detail tidak ditemukan." />}
   </DialogContent></Dialog>;
 }

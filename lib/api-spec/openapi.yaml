@@ -91,6 +91,12 @@ paths:
         - name: date
           in: query
           schema: { type: string }
+        - name: dateFrom
+          in: query
+          schema: { type: string }
+        - name: dateTo
+          in: query
+          schema: { type: string }
         - name: month
           in: query
           schema: { type: string }
@@ -905,6 +911,8 @@ components:
         title: { type: string }
         project: { type: ["string", "null"] }
         deadline: { type: ["string", "null"] }
+        completionInputType: { type: ["string", "null"] }
+        completionValue: { type: ["string", "null"] }
         progress: { type: integer }
         status: { type: string }
         notes: { type: ["string", "null"] }
@@ -933,6 +941,8 @@ components:
         title: { type: string }
         project: { type: string }
         deadline: { type: string }
+        completionInputType: { type: string }
+        completionValue: { type: string }
         progress: { type: integer }
         status: { type: string }
         notes: { type: string }
@@ -944,6 +954,8 @@ components:
         title: { type: string }
         project: { type: string }
         deadline: { type: string }
+        completionInputType: { type: string }
+        completionValue: { type: string }
         progress: { type: integer }
         status: { type: string }
         notes: { type: string }

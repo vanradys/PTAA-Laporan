@@ -5,8 +5,8 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
-import type { DailyTask } from "./dailyTask";
-import type { ReportComment } from "./reportComment";
+import type { DailyTask } from './dailyTask';
+import type { ReportComment } from './reportComment';
 
 export interface Report {
   id: number;

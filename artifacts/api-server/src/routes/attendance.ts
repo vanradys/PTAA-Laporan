@@ -9,6 +9,7 @@ import {
   attendanceImportBatchesTable,
   attendanceImportRowsTable,
   attendanceMappingsTable,
+  attendanceManualCorrectionsTable,
   attendanceNotificationLogsTable,
   attendanceScansTable,
   attendanceSettingsTable,
@@ -31,6 +32,16 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 const INSERT_CHUNK_SIZE = 500;
+const MANUAL_DAILY_STATUSES = new Set([
+  "Hadir",
+  "Sakit",
+  "Izin",
+  "Tukar Hari",
+  "Cuti",
+  "Tanpa Keterangan",
+  "Dirumahkan",
+  "Dinas Luar / Nginep",
+]);
 
 const OFFICE_DEFAULTS = new Set(["rais", "hafidz", "hafidz diinul", "alya", "aliya", "ita", "ines", "dikri"]);
 const FULL_ACCESS_ROLES = new Set([
@@ -304,6 +315,21 @@ function attendanceUpload(req: any, res: any, next: (error?: unknown) => void) {
     }
     res.status(400).json({ error: error instanceof Error ? error.message : "Upload file gagal" });
   });
+}
+
+function isSupportedExcelFile(file?: Express.Multer.File) {
+  if (!file) return false;
+  const name = file.originalname.toLowerCase();
+  const mimetype = String(file.mimetype ?? "").toLowerCase();
+  return (
+    name.endsWith(".xlsx") ||
+    name.endsWith(".xls") ||
+    name.endsWith(".csv") ||
+    mimetype.includes("spreadsheet") ||
+    mimetype.includes("excel") ||
+    mimetype.includes("csv") ||
+    mimetype === "application/octet-stream"
+  );
 }
 
 function parseWorkbook(buffer: Buffer) {
@@ -814,8 +840,12 @@ router.post("/attendance/import/preview", attendanceUpload, async (req: any, res
       res.status(400).json({ error: "Pilih file Excel atau CSV" });
       return;
     }
+    if (!req.file.buffer?.length) {
+      res.status(400).json({ error: "File kosong atau tidak dapat dibaca" });
+      return;
+    }
     const extension = req.file.originalname.toLowerCase().match(/\.[^.]+$/)?.[0];
-    if (!extension || ![".xls", ".xlsx", ".csv"].includes(extension)) {
+    if ((!extension || ![".xls", ".xlsx", ".csv"].includes(extension)) && !isSupportedExcelFile(req.file)) {
       res.status(400).json({ error: "Format file harus .xls, .xlsx, atau .csv" });
       return;
     }
@@ -1255,7 +1285,26 @@ async function loadAttendance(start: string, end: string, user: AuthUser) {
     const key = `${row.mappingId}|${row.workDate}`;
     if (!deduped.has(key)) deduped.set(key, row);
   }
-  return [...deduped.values()];
+  const dailyRows = [...deduped.values()];
+  if (dailyRows.length === 0) return dailyRows;
+  const corrections = await db.select().from(attendanceManualCorrectionsTable)
+    .where(and(
+      gte(attendanceManualCorrectionsTable.workDate, start),
+      lte(attendanceManualCorrectionsTable.workDate, end),
+      inArray(attendanceManualCorrectionsTable.mappingId, [...new Set(dailyRows.map((row) => row.mappingId))]),
+    ));
+  const correctionByKey = new Map(corrections.map((item) => [`${item.mappingId}|${item.workDate}`, item]));
+  return dailyRows.map((row) => {
+    const correction = correctionByKey.get(`${row.mappingId}|${row.workDate}`);
+    if (!correction) return row;
+    return {
+      ...row,
+      dailyStatus: correction.dailyStatus,
+      notes: correction.notes ?? row.notes,
+      overtimeProduction: correction.overtimeProduction ?? row.overtimeProduction,
+      overtimeOffice: correction.overtimeOffice ?? row.overtimeOffice,
+    };
+  });
 }
 
 function summarize(rows: Awaited<ReturnType<typeof loadAttendance>>, settings: { safeMax: number; warningMax: number }) {
@@ -1393,6 +1442,86 @@ router.get("/attendance/detail/:mappingId", async (req: any, res) => {
   res.json({ employee: summarize(rows, settings)[0], daily: rows, rawScans });
 });
 
+router.post("/attendance/corrections", async (req: any, res) => {
+  const user = await authenticate(req, res);
+  if (!user) return;
+  if (!requireAttendanceManager(user, res)) return;
+  const mappingId = Number(req.body?.mappingId);
+  const workDate = normalize(req.body?.workDate);
+  const dailyStatus = normalize(req.body?.dailyStatus);
+  const notes = normalize(req.body?.notes);
+  const overtimeProduction =
+    req.body?.overtimeProduction === "" || req.body?.overtimeProduction === undefined
+      ? null
+      : Number(req.body.overtimeProduction);
+  const overtimeOffice =
+    req.body?.overtimeOffice === "" || req.body?.overtimeOffice === undefined
+      ? null
+      : Number(req.body.overtimeOffice);
+
+  if (!Number.isInteger(mappingId) || !isIsoDate(workDate)) {
+    res.status(400).json({ error: "Mapping dan tanggal wajib valid" });
+    return;
+  }
+  if (!MANUAL_DAILY_STATUSES.has(dailyStatus)) {
+    res.status(400).json({ error: "Status koreksi tidak valid" });
+    return;
+  }
+  if (
+    (overtimeProduction !== null && (!Number.isFinite(overtimeProduction) || overtimeProduction < 0)) ||
+    (overtimeOffice !== null && (!Number.isFinite(overtimeOffice) || overtimeOffice < 0))
+  ) {
+    res.status(400).json({ error: "Nilai lembur harus angka positif" });
+    return;
+  }
+
+  const [mapping] = await db.select({ id: attendanceMappingsTable.id })
+    .from(attendanceMappingsTable)
+    .where(eq(attendanceMappingsTable.id, mappingId))
+    .limit(1);
+  if (!mapping) { res.status(404).json({ error: "Mapping absensi tidak ditemukan" }); return; }
+
+  const [saved] = await db.insert(attendanceManualCorrectionsTable).values({
+    mappingId,
+    workDate,
+    dailyStatus,
+    notes: notes || null,
+    overtimeProduction: overtimeProduction === null ? null : overtimeProduction.toFixed(2),
+    overtimeOffice: overtimeOffice === null ? null : overtimeOffice.toFixed(2),
+    updatedByUserId: user.id,
+    updatedAt: new Date(),
+  }).onConflictDoUpdate({
+    target: [attendanceManualCorrectionsTable.mappingId, attendanceManualCorrectionsTable.workDate],
+    set: {
+      dailyStatus,
+      notes: notes || null,
+      overtimeProduction: overtimeProduction === null ? null : overtimeProduction.toFixed(2),
+      overtimeOffice: overtimeOffice === null ? null : overtimeOffice.toFixed(2),
+      updatedByUserId: user.id,
+      updatedAt: new Date(),
+    },
+  }).returning();
+
+  res.json(saved);
+});
+
+router.delete("/attendance/corrections", async (req: any, res) => {
+  const user = await authenticate(req, res);
+  if (!user) return;
+  if (!requireAttendanceManager(user, res)) return;
+  const mappingId = Number(req.query.mappingId);
+  const workDate = normalize(req.query.workDate);
+  if (!Number.isInteger(mappingId) || !isIsoDate(workDate)) {
+    res.status(400).json({ error: "Mapping dan tanggal wajib valid" });
+    return;
+  }
+  await db.delete(attendanceManualCorrectionsTable).where(and(
+    eq(attendanceManualCorrectionsTable.mappingId, mappingId),
+    eq(attendanceManualCorrectionsTable.workDate, workDate),
+  ));
+  res.json({ success: true });
+});
+
 router.get("/attendance/export", async (req: any, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
@@ -1422,19 +1551,25 @@ router.get("/attendance/export", async (req: any, res) => {
   ].sort((a, b) => a.date.localeCompare(b.date));
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ["Nama", "Tipe Karyawan", "Total Telat", "Total Lembur Produksi", "Total Lembur Office", "Status"],
+    ["Nama", "Sakit", "Izin", "Tukar Hari", "Cuti", "Tanpa Keterangan", "Dirumahkan", "Dinas Luar Nginep", "Total Telat", "Total Lembur Produksi", "Total Lembur Office", "Status"],
     ...employees.map((item) => [
       item.name,
-      item.employeeType,
+      item.sick,
+      item.permission,
+      item.daySwap,
+      item.leave,
+      item.withoutExplanation,
+      item.laidOff,
+      item.externalDuty,
       item.totalLate,
       item.overtimeProduction,
       item.overtimeOffice,
-      item.status,
+      item.status.toUpperCase(),
     ]),
   ]), "Rekap Absensi");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ["Tanggal Libur", "Keterangan", "Jenis", "Sumber"],
-    ...holidays.map((item) => [item.date, item.name, item.holidayType, item.source]),
+    ["Tanggal Libur", "Keterangan"],
+    ...holidays.map((item) => [item.date, item.name]),
   ]), "Tanggal Libur");
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
     ["Nama", "Tanggal", "Jam Masuk", "Jam Pulang", "Total Scan", "Status Masuk", "Status Pulang", "Status Harian", "Keterangan"],

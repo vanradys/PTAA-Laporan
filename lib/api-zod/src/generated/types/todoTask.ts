@@ -5,9 +5,9 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
-import type { TodoAssignee } from "./todoAssignee";
-import type { TodoChecklistItem } from "./todoChecklistItem";
-import type { TodoComment } from "./todoComment";
+import type { TodoAssignee } from './todoAssignee';
+import type { TodoChecklistItem } from './todoChecklistItem';
+import type { TodoComment } from './todoComment';
 
 export interface TodoTask {
   id: number;

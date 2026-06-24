@@ -10,6 +10,8 @@ export interface TaskUpdate {
   title?: string;
   project?: string;
   deadline?: string;
+  completionInputType?: string;
+  completionValue?: string;
   progress?: number;
   status?: string;
   notes?: string;

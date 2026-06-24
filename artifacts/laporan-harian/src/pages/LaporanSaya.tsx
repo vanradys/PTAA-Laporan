@@ -55,6 +55,10 @@ const REPORT_STATUSES = [
   { value: "perlu_revisi", label: "Perlu Revisi", color: "bg-orange-100 text-orange-700 border-orange-200" },
 ];
 
+function normalizeCompletionInputType(value: unknown): "date" | "text" | "" {
+  return value === "date" || value === "text" ? value : "";
+}
+
 function getStatusInfo(status: string) {
   return TASK_STATUSES.find(s => s.value === status) ?? TASK_STATUSES[0];
 }
@@ -129,10 +133,66 @@ function TaskDeliveryInput({
   );
 }
 
+function TaskCompletionInput({
+  inputType,
+  value,
+  disabled,
+  onCommit,
+}: {
+  inputType?: "date" | "text" | "" | null;
+  value: string;
+  disabled?: boolean;
+  onCommit: (inputType: "date" | "text", value: string) => void;
+}) {
+  const [mode, setMode] = useState<"date" | "text">(inputType || "date");
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setMode(inputType || "date");
+    setDraft(value);
+  }, [inputType, value]);
+
+  const changeMode = (nextMode: "date" | "text") => {
+    const nextValue = nextMode === "date" && !isDateOnly(draft) ? "" : draft;
+    setMode(nextMode);
+    setDraft(nextValue);
+    onCommit(nextMode, nextValue.trim());
+  };
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Select
+        value={mode}
+        disabled={disabled}
+        onValueChange={(nextMode) => changeMode(nextMode as "date" | "text")}
+      >
+        <SelectTrigger className="h-8 w-36 text-sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="date">Pilih Tanggal</SelectItem>
+          <SelectItem value="text">Input Text Manual</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input
+        type={mode === "date" ? "date" : "text"}
+        value={draft}
+        disabled={disabled}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => onCommit(mode, draft.trim())}
+        placeholder={mode === "date" ? undefined : "Menunggu customer / Tentative"}
+        className="h-8 min-w-40 flex-1 text-sm"
+      />
+    </div>
+  );
+}
+
 interface TaskForm {
   title: string;
   project: string;
   deadline: string;
+  completionInputType: "date" | "text" | "";
+  completionValue: string;
   progress: number;
   status: string;
   notes: string;
@@ -148,6 +208,8 @@ interface ExistingTask {
   title: string;
   project: string | null;
   deadline: string | null;
+  completionInputType?: "date" | "text" | null;
+  completionValue?: string | null;
   progress: number;
   status: string;
   notes: string | null;
@@ -555,6 +617,8 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
     title: "",
     project: "",
     deadline: "",
+    completionInputType: "",
+    completionValue: "",
     progress: 0,
     status: "belum_mulai",
     notes: "",
@@ -615,6 +679,8 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
       title: t.title,
       project: t.project ?? "",
       deadline: t.deadline ?? "",
+      completionInputType: normalizeCompletionInputType(t.completionInputType),
+      completionValue: t.completionValue ?? "",
       progress: t.progress,
       status: t.status,
       notes: t.notes ?? "",
@@ -837,8 +903,10 @@ useEffect(() => {
       data: {
         title: task.title,
         project: task.project,
-        deadline: task.deadline || undefined,
-        progress: task.progress,
+      deadline: task.deadline || undefined,
+      completionInputType: task.completionInputType || undefined,
+      completionValue: task.completionValue || undefined,
+      progress: task.progress,
         status: task.status,
         notes: task.notes,
       }
@@ -868,6 +936,8 @@ useEffect(() => {
           title: task.title,
           project: task.project ?? "",
           deadline: task.deadline || undefined,
+          completionInputType: task.completionInputType || undefined,
+          completionValue: task.completionValue || undefined,
           progress: task.progress,
           status: task.status,
           notes: task.notes ?? "",
@@ -878,6 +948,8 @@ useEffect(() => {
           original.title !== task.title ||
           (original.project ?? "") !== (task.project ?? "") ||
           (original.deadline ?? "") !== (task.deadline ?? "") ||
+          (original.completionInputType ?? "") !== (task.completionInputType ?? "") ||
+          (original.completionValue ?? "") !== (task.completionValue ?? "") ||
           original.progress !== task.progress ||
           original.status !== task.status ||
           (original.notes ?? "") !== (task.notes ?? "")
@@ -894,6 +966,8 @@ useEffect(() => {
             title: task.title,
             project: task.project,
             deadline: task.deadline || undefined,
+            completionInputType: task.completionInputType || undefined,
+            completionValue: task.completionValue || undefined,
             progress: task.progress,
             status: task.status,
             notes: task.notes,
@@ -957,7 +1031,11 @@ useEffect(() => {
     }
   };
 
-  const handleUpdateExistingTask = async (taskId: number, field: string, value: string | number) => {
+  const handleUpdateExistingTask = async (
+    taskId: number,
+    fieldOrData: string | Partial<TaskForm>,
+    value?: string | number,
+  ) => {
   const task = existingTasks.find(t => t.id === taskId);
 
   if (
@@ -974,7 +1052,8 @@ useEffect(() => {
   }
 
   try {
-    await updateTask.mutateAsync({ taskId, data: { [field]: value } });
+    const data = typeof fieldOrData === "string" ? { [fieldOrData]: value } : fieldOrData;
+    await updateTask.mutateAsync({ taskId, data });
     queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
     toast({
       title: "Tugas diperbarui",
@@ -1348,7 +1427,13 @@ useEffect(() => {
 
                               {task.deadline && (
                                 <span className={`text-xs ${task.isDelay ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-                                  Tanggal Delivery: {formatDeliveryValue(task.deadline)}
+                                  Tanggal Tugas Diberikan: {formatDeliveryValue(task.deadline)}
+                                </span>
+                              )}
+
+                              {task.completionValue && (
+                                <span className="text-xs text-muted-foreground">
+                                  Tanggal Tugas Diselesaikan: {task.completionValue}
                                 </span>
                               )}
 
@@ -1385,7 +1470,7 @@ useEffect(() => {
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Tanggal Delivery</Label>
+                                  <Label className="text-xs">Tanggal Tugas Diberikan</Label>
                                   <TaskDeliveryInput
                                     value={task.deadline ?? ""}
                                     disabled={taskLocked}
@@ -1394,6 +1479,25 @@ useEffect(() => {
                                         ? updateEditableTask(task.id, "deadline", value)
                                         : handleUpdateExistingTask(task.id, "deadline", value)
                                     }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Tanggal Tugas Diselesaikan</Label>
+                                  <TaskCompletionInput
+                                    inputType={task.completionInputType}
+                                    value={task.completionValue ?? ""}
+                                    disabled={taskLocked}
+                                    onCommit={(inputType, value) => {
+                                      if (isEditingSubmitted) {
+                                        updateEditableTask(task.id, "completionInputType", inputType);
+                                        updateEditableTask(task.id, "completionValue", value);
+                                      } else {
+                                        handleUpdateExistingTask(task.id, {
+                                          completionInputType: inputType,
+                                          completionValue: value,
+                                        });
+                                      }
+                                    }}
                                   />
                                 </div>
                               </div>
@@ -1429,7 +1533,7 @@ useEffect(() => {
                               </div>
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-xs">Catatan Tugas</Label>
+                              <Label className="text-xs">Job yang dikerjakan</Label>
                                 <Input
                                   defaultValue={task.notes ?? ""}
                                   disabled={taskLocked}
@@ -1489,10 +1593,21 @@ useEffect(() => {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-xs">Tanggal Delivery</Label>
+                        <Label className="text-xs">Tanggal Tugas Diberikan</Label>
                         <TaskDeliveryInput
                           value={task.deadline}
                           onCommit={(value) => updateNewTask(task.id, "deadline", value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Tanggal Tugas Diselesaikan</Label>
+                        <TaskCompletionInput
+                          inputType={task.completionInputType}
+                          value={task.completionValue}
+                          onCommit={(inputType, value) => {
+                            updateNewTask(task.id, "completionInputType", inputType);
+                            updateNewTask(task.id, "completionValue", value);
+                          }}
                         />
                       </div>
                     </div>
@@ -1514,7 +1629,7 @@ useEffect(() => {
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Catatan Tugas</Label>
+                        <Label className="text-xs">Job yang dikerjakan</Label>
                         <Input value={task.notes} onChange={e => updateNewTask(task.id, "notes", e.target.value)} placeholder="Catatan opsional..." className="h-8 text-sm" />
                       </div>
                     </div>

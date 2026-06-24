@@ -10,6 +10,8 @@ import Monitoring from "@/pages/Monitoring";
 import DetailLaporan from "@/pages/DetailLaporan";
 import Notifikasi from "@/pages/Notifikasi";
 import JadwalProject from "@/pages/JadwalProject";
+import KomentarProject from "@/pages/KomentarProject";
+import PanduanWebsite from "@/pages/PanduanWebsite";
 import ToDoList from "@/pages/ToDoList";
 import CustomerTracking from "@/pages/CustomerTracking";
 import MonitoringKeseluruhan from "@/pages/MonitoringKeseluruhan";
@@ -63,6 +65,8 @@ function AppRoutes() {
       <Route path="/absensi" component={Attendance} />
       <Route path="/laporan/:id" component={DetailLaporan} />
       <Route path="/jadwal-project" component={JadwalProject} />
+      <Route path="/komentar-project" component={KomentarProject} />
+      <Route path="/panduan-website" component={PanduanWebsite} />
       <Route path="/notifikasi" component={Notifikasi} />
       <Route>
         <Dashboard />

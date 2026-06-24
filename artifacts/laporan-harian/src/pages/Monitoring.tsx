@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useListReports, useListDepartments, useListEmployees } from "@workspace/api-client-react";
 import { CheckCircle, XCircle, Eye, Search, Filter, X, Loader2, FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,15 @@ import {
   useMissingDailyReportsToday,
 } from "@/hooks/use-daily-report-reminder";
 
-const MONTHS = [
-  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
-];
-
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+type MonitoringFilters = {
+  dateFrom: string;
+  dateTo: string;
+  departmentId: string;
+  userId: string;
+  status: string;
+  search: string;
+};
 
 const REPORT_STATUSES = [
   { value: "belum_submit", label: "Belum Submit", color: "bg-red-50 text-red-700 border-red-200" },
@@ -170,18 +173,32 @@ function buildRowsFromEmployeesAndReports(
 
 export default function Monitoring() {
   const todayString = getJakartaDateString();
-  const today = new Date();
+  const [, navigate] = useLocation();
+  const searchParams = useSearch();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({
-    date: todayString,
-    month: "",
-    year: "",
+  const defaultDateFrom = `${todayString.slice(0, 8)}01`;
+  const defaultFilters: MonitoringFilters = {
+    dateFrom: defaultDateFrom,
+    dateTo: todayString,
     departmentId: "",
     userId: "",
     status: "",
     search: "",
-  });
+  };
+  const readFiltersFromUrl = (): MonitoringFilters => {
+    const params = new URLSearchParams(searchParams);
+    return {
+      dateFrom: params.get("dateFrom") || defaultFilters.dateFrom,
+      dateTo: params.get("dateTo") || defaultFilters.dateTo,
+      departmentId: params.get("departmentId") || "",
+      userId: params.get("userId") || "",
+      status: params.get("status") || "",
+      search: params.get("search") || "",
+    };
+  };
+  const [filters, setFilters] = useState<MonitoringFilters>(readFiltersFromUrl);
+  const [draftFilters, setDraftFilters] = useState<MonitoringFilters>(filters);
   const [showFilters, setShowFilters] = useState(false);
 
   const userRole = user?.role?.toLowerCase() ?? "";
@@ -190,7 +207,7 @@ export default function Monitoring() {
   const isAfterReminderTime = jakartaHour >= 16;
   const showReminderNotice = true;
   const showReminderSection = canManageReminder;
-  const reminderDate = filters.date || todayString;
+  const reminderDate = filters.dateTo || todayString;
 
   const { data: departments } = useListDepartments();
   const { data: employees, isLoading: isLoadingEmployees } = useListEmployees();
@@ -200,14 +217,8 @@ export default function Monitoring() {
   } = useMissingDailyReportsToday(canManageReminder, reminderDate);
 
   const params: Record<string, string> = {};
-  if (filters.date) {
-    params.date = filters.date;
-  } else if (filters.month && filters.year) {
-    params.month = filters.month;
-    params.year = filters.year;
-  } else if (filters.year) {
-    params.year = filters.year;
-  }
+  if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+  if (filters.dateTo) params.dateTo = filters.dateTo;
   if (filters.departmentId) params.departmentId = filters.departmentId;
   if (filters.userId) params.userId = filters.userId;
   if (filters.search) params.search = filters.search;
@@ -224,10 +235,10 @@ export default function Monitoring() {
   const reportList: ReportSummaryLike[] = Array.isArray(reports) ? (reports as ReportSummaryLike[]) : [];
 
   const reportRows = useMemo(() => {
-    const hasSpecificDate = !!filters.date;
+    const hasSingleDate = filters.dateFrom === filters.dateTo;
 
-    if (hasSpecificDate && employeeList.length > 0) {
-      return buildRowsFromEmployeesAndReports(employeeList, reportList, filters.date);
+    if (hasSingleDate && employeeList.length > 0) {
+      return buildRowsFromEmployeesAndReports(employeeList, reportList, filters.dateFrom);
     }
 
     return reportList.map((report) => ({
@@ -247,7 +258,7 @@ export default function Monitoring() {
       hasReport: true,
       isSubmitted: isSubmittedStatus(report.status),
     }));
-  }, [employeeList, filters.date, reportList]);
+  }, [employeeList, filters.dateFrom, filters.dateTo, reportList]);
 
   const filteredRows = useMemo(() => {
     return reportRows.filter((row) => {
@@ -302,46 +313,45 @@ export default function Monitoring() {
 
   const missingSummaryText = buildMissingSummary(missingList, employeeList.length, reminderDate);
   const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;
-  const years = Array.from({ length: 5 }, (_, index) => String(today.getFullYear() - index));
   const isLoading = isLoadingReports || isLoadingEmployees;
   const hasActiveFilters =
-    filters.date !== todayString ||
-    !!filters.month ||
-    !!filters.year ||
+    filters.dateFrom !== defaultFilters.dateFrom ||
+    filters.dateTo !== defaultFilters.dateTo ||
     !!filters.departmentId ||
     !!filters.userId ||
     !!filters.status ||
     !!filters.search;
 
-  const setFilter = (key: string, value: string) => {
-    setFilters((prev) => {
-      if (key === "date") {
-        return { ...prev, date: value, month: value ? "" : prev.month, year: value ? "" : prev.year };
-      }
-
-      if (key === "month") {
-        return { ...prev, date: "", month: value, year: prev.year || String(today.getFullYear()) };
-      }
-
-      if (key === "year") {
-        return { ...prev, date: "", year: value };
-      }
-
-      return { ...prev, [key]: value };
+  const buildMonitoringUrl = (nextFilters: MonitoringFilters) => {
+    const params = new URLSearchParams();
+    Object.entries(nextFilters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
     });
+    return `/monitoring?${params.toString()}`;
+  };
+
+  const setDraftFilter = (key: keyof MonitoringFilters, value: string) => {
+    setDraftFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const applyFilters = () => {
+    const nextFilters = {
+      ...draftFilters,
+      dateFrom: draftFilters.dateFrom || defaultFilters.dateFrom,
+      dateTo: draftFilters.dateTo || defaultFilters.dateTo,
+    };
+    setFilters(nextFilters);
+    navigate(buildMonitoringUrl(nextFilters), { replace: true });
   };
 
   const resetFilters = () => {
-    setFilters({
-      date: todayString,
-      month: "",
-      year: "",
-      departmentId: "",
-      userId: "",
-      status: "",
-      search: "",
-    });
+    setFilters(defaultFilters);
+    setDraftFilters(defaultFilters);
+    navigate("/monitoring", { replace: true });
   };
+
+  const periodLabel = `${new Date(`${filters.dateFrom}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })} - ${new Date(`${filters.dateTo}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}`;
+  const monitoringReturnTo = buildMonitoringUrl(filters);
 
   return (
     <Layout>
@@ -464,45 +474,28 @@ export default function Monitoring() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
                 <div className="space-y-1">
-                  <Label className="text-xs">Tanggal Spesifik</Label>
+                  <Label className="text-xs">Dari Tanggal</Label>
                   <Input
                     type="date"
-                    value={filters.date}
-                    onChange={(event) => setFilter("date", event.target.value)}
+                    value={draftFilters.dateFrom}
+                    onChange={(event) => setDraftFilter("dateFrom", event.target.value)}
                     className="h-8 text-sm"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Bulan</Label>
-                  <Select value={filters.month || "none"} onValueChange={(value) => setFilter("month", value === "none" ? "" : value)}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Pilih bulan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Pilih bulan</SelectItem>
-                      {MONTHS.map((month, index) => (
-                        <SelectItem key={month} value={String(index + 1)}>{month}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Tahun</Label>
-                  <Select value={filters.year || "none"} onValueChange={(value) => setFilter("year", value === "none" ? "" : value)}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Pilih tahun" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Pilih tahun</SelectItem>
-                      {years.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-xs">Sampai Tanggal</Label>
+                  <Input
+                    type="date"
+                    value={draftFilters.dateTo}
+                    onChange={(event) => setDraftFilter("dateTo", event.target.value)}
+                    className="h-8 text-sm"
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Departemen</Label>
-                  <Select value={filters.departmentId || "all"} onValueChange={(value) => setFilter("departmentId", value === "all" ? "" : value)}>
+                  <Select value={draftFilters.departmentId || "all"} onValueChange={(value) => setDraftFilter("departmentId", value === "all" ? "" : value)}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Semua" />
                     </SelectTrigger>
@@ -515,22 +508,8 @@ export default function Monitoring() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Karyawan</Label>
-                  <Select value={filters.userId || "all"} onValueChange={(value) => setFilter("userId", value === "all" ? "" : value)}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Semua" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Karyawan</SelectItem>
-                      {employeeList.map((employee) => (
-                        <SelectItem key={employee.id} value={String(employee.id)}>{employee.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Status Laporan</Label>
-                  <Select value={filters.status || "all"} onValueChange={(value) => setFilter("status", value === "all" ? "" : value)}>
+                  <Label className="text-xs">Progress</Label>
+                  <Select value={draftFilters.status || "all"} onValueChange={(value) => setDraftFilter("status", value === "all" ? "" : value)}>
                     <SelectTrigger className="h-8 text-sm">
                       <SelectValue placeholder="Semua" />
                     </SelectTrigger>
@@ -542,17 +521,22 @@ export default function Monitoring() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1 col-span-2">
-                  <Label className="text-xs">Cari Nama</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs">Search</Label>
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      value={filters.search}
-                      onChange={(event) => setFilter("search", event.target.value)}
+                      value={draftFilters.search}
+                      onChange={(event) => setDraftFilter("search", event.target.value)}
                       placeholder="Cari nama karyawan..."
                       className="h-8 text-sm pl-8"
                     />
                   </div>
+                </div>
+                <div className="flex items-end gap-2 md:col-span-5">
+                  <Button type="button" size="sm" onClick={applyFilters}>
+                    Terapkan Filter
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -578,6 +562,7 @@ export default function Monitoring() {
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Nama Karyawan</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Departemen</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground whitespace-nowrap">Waktu Submit</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground whitespace-nowrap">Periode</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Tanggal</th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground">Jml Tugas</th>
                       <th className="text-center px-4 py-3 text-xs font-semibold text-muted-foreground">Progress</th>
@@ -596,6 +581,7 @@ export default function Monitoring() {
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">{report.departmentName ?? "—"}</td>
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatSubmitTime(report.submittedAt)}</td>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{periodLabel}</td>
                           <td className="px-4 py-3">
                             <p className="text-foreground">{new Date(`${report.date}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}</p>
                             <p className="text-xs text-muted-foreground">{report.dayName}</p>
@@ -628,7 +614,7 @@ export default function Monitoring() {
                           </td>
                           <td className="px-4 py-3 text-center">
                             {report.reportId ? (
-                              <Link href={`/laporan/${report.reportId}`}>
+                              <Link href={`/laporan/${report.reportId}?returnTo=${encodeURIComponent(monitoringReturnTo)}`}>
                                 <Button variant="ghost" size="icon" className="w-7 h-7">
                                   <Eye className="w-3.5 h-3.5" />
                                 </Button>

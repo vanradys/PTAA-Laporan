@@ -14,6 +14,10 @@ export interface DailyTask {
   project?: string | null;
   /** @nullable */
   deadline?: string | null;
+  /** @nullable */
+  completionInputType?: string | null;
+  /** @nullable */
+  completionValue?: string | null;
   progress: number;
   status: string;
   /** @nullable */

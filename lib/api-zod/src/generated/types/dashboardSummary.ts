@@ -5,7 +5,10 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
-import type { DashboardSummaryPendingAssignedTasksByAssignerItem } from "./dashboardSummaryPendingAssignedTasksByAssignerItem";
+import type { DashboardSummaryMissingEmployeesItem } from './dashboardSummaryMissingEmployeesItem';
+import type { DashboardSummaryPendingAssignedTasksByAssignerItem } from './dashboardSummaryPendingAssignedTasksByAssignerItem';
+import type { DashboardSummaryPeriod } from './dashboardSummaryPeriod';
+import type { DashboardSummaryScope } from './dashboardSummaryScope';
 
 export interface DashboardSummary {
   totalEmployees: number;
@@ -24,10 +27,10 @@ export interface DashboardSummary {
   completionRate: number;
   pendingAssignedTasksCount: number;
   pendingAssignedTasksByAssigner: DashboardSummaryPendingAssignedTasksByAssignerItem[];
-  missingEmployees: Array<{ id: number; name: string }>;
+  missingEmployees: DashboardSummaryMissingEmployeesItem[];
   missingEmployeeCount: number;
-  scope: "company" | "personal";
-  period: "daily" | "weekly" | "monthly" | "yearly";
+  scope: DashboardSummaryScope;
+  period: DashboardSummaryPeriod;
   periodStartDate: string;
   periodEndDate: string;
   weekStartDate: string;

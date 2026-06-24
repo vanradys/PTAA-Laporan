@@ -5,14 +5,15 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListPoNominalSort } from './listPoNominalSort';
 
 export type ListPoParams = {
-  month?: number;
-  year?: number;
-  status?: string;
-  departmentId?: number;
-  picUserId?: number;
-  customer?: string;
+month?: number;
+year?: number;
+status?: string;
+departmentId?: number;
+picUserId?: number;
+customer?: string;
 search?: string;
-nominalSort?: "asc" | "desc";
+nominalSort?: ListPoNominalSort;
 };

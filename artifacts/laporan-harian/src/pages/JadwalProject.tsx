@@ -1617,122 +1617,6 @@ export default function JadwalProject() {
           </Card>
         )}
 
-        <Card className="border border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              Customer Notes
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="max-h-[360px] space-y-3 overflow-y-auto">
-            {trackingComments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Belum ada komentar customer.
-              </p>
-            ) : (
-              trackingComments.slice(0, 8).map((comment) => (
-                <div
-                  key={comment.id}
-                  className="rounded-lg border border-border bg-white p-3"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm text-foreground">
-                          <span className="font-semibold">
-                            {comment.displayName ?? comment.customerName ?? "-"}
-                          </span>{" "}
-                          - {comment.comment}{" "}
-                          <span className="text-xs text-muted-foreground">
-                            {formatCommentDateTime(comment.createdAt)}
-                          </span>
-                        </p>
-                      <p className="text-xs text-muted-foreground">
-                        {comment.noPo ?? "-"} · {comment.namaProject ?? "-"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {canEditComments && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleEditCustomerComment(comment)}
-                          title="Edit komentar"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                      {canDeleteComments && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
-                          onClick={() => handleDeleteCustomerComment(comment)}
-                          title="Hapus komentar"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              Internal Comments
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="max-h-[360px] space-y-3 overflow-y-auto">
-            {latestInternalComments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Belum ada komentar internal.
-              </p>
-            ) : (
-              latestInternalComments.slice(0, 8).map((comment) => (
-                <div
-                  key={comment.id}
-                  className="rounded-lg border border-border bg-white p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm text-foreground">
-                        <span className="font-semibold">{comment.userName}</span>{" "}
-                        - {comment.comment}{" "}
-                        <span className="text-xs text-muted-foreground">
-                          {formatCommentDateTime(comment.createdAt)}
-                        </span>
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {comment.noPo ?? "-"} - {comment.namaProject ?? "-"}
-                        {comment.userDepartment ? ` - ${comment.userDepartment}` : ""}
-                      </p>
-                    </div>
-                    {canEditComments && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleEditInternalComment(comment)}
-                        title="Edit komentar"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
 
         {yearlyTrendItems.length > 0 && (
           <Card className="border border-border">
@@ -1803,7 +1687,7 @@ export default function JadwalProject() {
                     )}
                     <Tooltip
                       formatter={(value, name, item) => {
-                        if (name === "Total Nominal" || name === "Target 3M") {
+                        if (name === "Total Nominal PO" || name === "Target 3M") {
                           const payload = item.payload as {
                             totalAmountRaw?: number;
                             targetAmountRaw?: number;
@@ -1831,9 +1715,10 @@ export default function JadwalProject() {
                           yAxisId="right"
                           type="monotone"
                           dataKey="totalAmountAxis"
-                          name="Total Nominal"
+                          name="Total Nominal PO"
                           stroke="#f97316"
                           strokeWidth={3}
+                          connectNulls
                           dot={{ r: 4 }}
                           activeDot={{ r: 6 }}
                         />
@@ -1845,6 +1730,7 @@ export default function JadwalProject() {
                           stroke="#dc2626"
                           strokeWidth={2}
                           strokeDasharray="7 5"
+                          connectNulls
                           dot={false}
                           activeDot={false}
                         />
@@ -2090,8 +1976,8 @@ export default function JadwalProject() {
                 )}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-sm">
+              <div className="overflow-hidden">
+                <table className="po-fit-table w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
@@ -2394,8 +2280,8 @@ export default function JadwalProject() {
                 <p className="text-sm">Belum ada data PO / Project</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] text-sm">
+              <div className="overflow-hidden">
+                <table className="po-fit-table w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/40">
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground whitespace-nowrap">
@@ -2789,155 +2675,6 @@ export default function JadwalProject() {
                 </Card>
               </section>
 
-              <Card className="border border-border">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <MessageSquare className="h-4 w-4" />
-                    Customer Notes ({poCustomerComments.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="max-h-[360px] space-y-3 overflow-y-auto">
-                  {poCustomerComments.length === 0 ? (
-                    <p className="py-5 text-center text-sm text-muted-foreground">
-                      Belum ada komentar customer
-                    </p>
-                  ) : (
-                    poCustomerComments.map((item) => (
-                      <div
-                        key={item.id}
-                        className="rounded-lg border border-border p-3"
-                      >
-                        <div className="flex flex-wrap justify-between gap-2 text-sm">
-                          <span>
-                            <span className="font-semibold">
-                              {item.displayName ?? item.customerName ?? "-"}
-                            </span>{" "}
-                            - {item.comment}{" "}
-                            <span className="text-xs text-muted-foreground">
-                              {formatCommentDateTime(item.createdAt)}
-                            </span>
-                          </span>
-                          <div className="flex items-center gap-2">
-                            {canEditComments && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleEditCustomerComment(item)}
-                                title="Edit komentar"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {canDeleteComments && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                onClick={() => handleDeleteCustomerComment(item)}
-                                title="Hapus komentar"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="border border-border">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <MessageSquare className="h-4 w-4" />
-                    Komentar Internal PTAA ({poInternalComments.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="max-h-[360px] space-y-3 overflow-y-auto">
-                  {internalCommentsLoading ? (
-                    <div className="flex justify-center py-5">
-                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                    </div>
-                  ) : poInternalComments.length === 0 ? (
-                    <p className="py-5 text-center text-sm text-muted-foreground">
-                      Belum ada komentar internal
-                    </p>
-                  ) : (
-                    poInternalComments.map((item) => (
-                      <div
-                        key={item.id}
-                        className="rounded-lg border border-border bg-slate-50 p-3"
-                      >
-                        <div className="flex flex-wrap justify-between gap-2 text-sm">
-                          <span>
-                            <span className="font-semibold">
-                              {item.userName}
-                            </span>{" "}
-                            - {item.comment}{" "}
-                            <span className="text-xs text-muted-foreground">
-                              {formatCommentDateTime(item.createdAt)}
-                            </span>
-                          </span>
-                          <div className="flex items-center gap-2">
-                            {canEditComments && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleEditInternalComment(item)}
-                                title="Edit komentar"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {canDeleteComments && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                onClick={() => handleDeleteInternalComment(item)}
-                                title="Hapus komentar"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Textarea
-                      value={internalCommentDraft}
-                      onChange={(event) =>
-                        setInternalCommentDraft(event.target.value)
-                      }
-                      placeholder="Tambahkan komentar internal..."
-                      rows={2}
-                      className="min-h-16 resize-none text-sm"
-                    />
-                    <Button
-                      type="button"
-                      className="shrink-0"
-                      disabled={!internalCommentDraft.trim()}
-                      onClick={handleSendInternalComment}
-                    >
-                      <Send className="mr-2 h-4 w-4" />
-                      Kirim Komentar
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Komentar internal ini hanya untuk pengguna PTAA dan tidak
-                    muncul di Customer Tracking Portal.
-                  </p>
-                </CardContent>
-              </Card>
             </div>
           </div>
         </div>

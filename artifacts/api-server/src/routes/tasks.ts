@@ -198,6 +198,8 @@ function buildTaskResponse(task: typeof dailyTasksTable.$inferSelect) {
     title: task.title,
     project: task.project ?? null,
     deadline: task.deadline ?? null,
+    completionInputType: task.completionInputType ?? null,
+    completionValue: task.completionValue ?? null,
     progress: task.progress,
     status: task.status,
     notes: task.notes ?? null,
@@ -527,7 +529,7 @@ router.post("/reports/:id/tasks", async (req, res) => {
     return;
   }
 
-  const { title, project, deadline, status, notes } = req.body;
+  const { title, project, deadline, completionInputType, completionValue, status, notes } = req.body;
   if (!title || !title.trim()) { res.status(400).json({ error: "Nama tugas diperlukan" }); return; }
 
   const [task] = await db.insert(dailyTasksTable).values({
@@ -535,6 +537,8 @@ router.post("/reports/:id/tasks", async (req, res) => {
     title,
     project: project ?? null,
     deadline: deadline || null,
+    completionInputType: completionInputType === "date" ? "date" : completionInputType === "text" ? "text" : null,
+    completionValue: completionValue ? String(completionValue).trim() : null,
     progress: getTaskProgress(status),
     status: normalizeTaskStatus(status),
     notes: notes ?? null,
@@ -564,7 +568,7 @@ router.patch("/tasks/:taskId", async (req, res) => {
     return;
   }
 
-  const { title, project, deadline, status, notes } = req.body;
+  const { title, project, deadline, completionInputType, completionValue, status, notes } = req.body;
 
   if (title !== undefined && !String(title).trim()) {
     res.status(400).json({ error: "Nama tugas tidak boleh kosong" });
@@ -575,6 +579,8 @@ router.patch("/tasks/:taskId", async (req, res) => {
     title !== undefined ||
     project !== undefined ||
     deadline !== undefined ||
+    completionInputType !== undefined ||
+    completionValue !== undefined ||
     status !== undefined ||
     notes !== undefined;
 
@@ -588,6 +594,15 @@ router.patch("/tasks/:taskId", async (req, res) => {
       ...(title !== undefined && { title }),
       ...(project !== undefined && { project }),
       ...(deadline !== undefined && { deadline: deadline || null }),
+      ...(completionInputType !== undefined && {
+        completionInputType:
+          completionInputType === "date" || completionInputType === "text"
+            ? completionInputType
+            : null,
+      }),
+      ...(completionValue !== undefined && {
+        completionValue: String(completionValue ?? "").trim() || null,
+      }),
       ...(status !== undefined && {
         status: normalizeTaskStatus(status),
         progress: getTaskProgress(status),
@@ -639,6 +654,8 @@ router.post("/tasks/:taskId/start-correction", async (req, res) => {
     title: task.title,
     project: task.project,
     deadline: task.deadline,
+    completionInputType: task.completionInputType,
+    completionValue: task.completionValue,
     progress: task.progress,
     status: task.status,
     notes: task.notes,

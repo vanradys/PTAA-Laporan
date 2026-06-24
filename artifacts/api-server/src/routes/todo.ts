@@ -8,6 +8,7 @@ import {
   notificationsTable,
   or,
   sql,
+  todoChecklistHistoryTable,
   todoTaskAssigneesTable,
   todoTaskChecklistTable,
   todoTaskCommentsTable,
@@ -51,6 +52,38 @@ async function canAccessTask(taskId: number, user: TodoActor) {
       eq(todoTaskAssigneesTable.userId, user.id),
     )).limit(1);
   return { task, allowed: Boolean(assignee) };
+}
+
+async function recordChecklistHistory({
+  taskId,
+  checklistId,
+  action,
+  previousText,
+  nextText,
+  previousCompleted,
+  nextCompleted,
+  user,
+}: {
+  taskId: number;
+  checklistId?: number | null;
+  action: string;
+  previousText?: string | null;
+  nextText?: string | null;
+  previousCompleted?: number | null;
+  nextCompleted?: number | null;
+  user: TodoActor & { name?: string | null };
+}) {
+  await db.insert(todoChecklistHistoryTable).values({
+    taskId,
+    checklistId: checklistId ?? null,
+    action,
+    previousText: previousText ?? null,
+    nextText: nextText ?? null,
+    previousCompleted: previousCompleted ?? null,
+    nextCompleted: nextCompleted ?? null,
+    actorUserId: user.id,
+    actorName: user.name ?? "User",
+  });
 }
 
 async function buildTasks(tasks: Array<typeof todoTasksTable.$inferSelect>) {
@@ -244,14 +277,111 @@ router.patch("/todo-tasks/:taskId/checklist/:itemId", async (req, res) => {
   if (!taskId || !itemId) { res.status(400).json({ error: "ID checklist tidak valid" }); return; }
   const access = await canAccessTask(taskId, user);
   if (!access.allowed) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  const [existing] = await db.select().from(todoTaskChecklistTable)
+    .where(and(
+      eq(todoTaskChecklistTable.id, itemId),
+      eq(todoTaskChecklistTable.taskId, taskId),
+    )).limit(1);
+  if (!existing) { res.status(404).json({ error: "Checklist tidak ditemukan" }); return; }
+  const updateData: {
+    isCompleted?: number;
+    text?: string;
+  } = {};
+  if (req.body?.isCompleted !== undefined) updateData.isCompleted = req.body.isCompleted ? 1 : 0;
+  if (req.body?.text !== undefined) {
+    const text = String(req.body.text ?? "").trim();
+    if (!text) { res.status(400).json({ error: "Isi checklist wajib diisi" }); return; }
+    updateData.text = text;
+  }
+  if (Object.keys(updateData).length === 0) {
+    res.status(400).json({ error: "Tidak ada data checklist yang diubah" });
+    return;
+  }
   const [updated] = await db.update(todoTaskChecklistTable)
-    .set({ isCompleted: req.body?.isCompleted ? 1 : 0 })
+    .set(updateData)
     .where(and(
       eq(todoTaskChecklistTable.id, itemId),
       eq(todoTaskChecklistTable.taskId, taskId),
     )).returning();
   if (!updated) { res.status(404).json({ error: "Checklist tidak ditemukan" }); return; }
+  await db.update(todoTasksTable).set({ updatedAt: new Date() }).where(eq(todoTasksTable.id, taskId));
+  await recordChecklistHistory({
+    taskId,
+    checklistId: itemId,
+    action: updateData.text !== undefined ? "edit" : "toggle",
+    previousText: existing.text,
+    nextText: updated.text,
+    previousCompleted: existing.isCompleted,
+    nextCompleted: updated.isCompleted,
+    user,
+  });
   res.json({ ...updated, isCompleted: Boolean(updated.isCompleted) });
+});
+
+router.post("/todo-tasks/:taskId/checklist", async (req, res) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+  const taskId = parseId(req.params.taskId);
+  if (!taskId) { res.status(400).json({ error: "ID tugas tidak valid" }); return; }
+  const access = await canAccessTask(taskId, user);
+  if (!access.task) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
+  if (!access.allowed) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  const text = String(req.body?.text ?? "").trim();
+  if (!text) { res.status(400).json({ error: "Isi checklist wajib diisi" }); return; }
+  const [created] = await db.insert(todoTaskChecklistTable).values({ taskId, text }).returning();
+  await db.update(todoTasksTable).set({ updatedAt: new Date() }).where(eq(todoTasksTable.id, taskId));
+  await recordChecklistHistory({
+    taskId,
+    checklistId: created.id,
+    action: "create",
+    nextText: created.text,
+    nextCompleted: created.isCompleted,
+    user,
+  });
+  res.status(201).json({ ...created, isCompleted: Boolean(created.isCompleted) });
+});
+
+router.delete("/todo-tasks/:taskId/checklist/:itemId", async (req, res) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+  const taskId = parseId(req.params.taskId);
+  const itemId = parseId(req.params.itemId);
+  if (!taskId || !itemId) { res.status(400).json({ error: "ID checklist tidak valid" }); return; }
+  const access = await canAccessTask(taskId, user);
+  if (!access.allowed) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  const [deleted] = await db.delete(todoTaskChecklistTable)
+    .where(and(
+      eq(todoTaskChecklistTable.id, itemId),
+      eq(todoTaskChecklistTable.taskId, taskId),
+    )).returning();
+  if (!deleted) { res.status(404).json({ error: "Checklist tidak ditemukan" }); return; }
+  await db.update(todoTasksTable).set({ updatedAt: new Date() }).where(eq(todoTasksTable.id, taskId));
+  await recordChecklistHistory({
+    taskId,
+    checklistId: itemId,
+    action: "delete",
+    previousText: deleted.text,
+    previousCompleted: deleted.isCompleted,
+    user,
+  });
+  res.json({ success: true });
+});
+
+router.get("/todo-tasks/:taskId/checklist-history", async (req, res) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+  if (!isAdmin(user)) { res.status(403).json({ error: "Hanya Admin yang dapat melihat riwayat checklist" }); return; }
+  const taskId = parseId(req.params.taskId);
+  if (!taskId) { res.status(400).json({ error: "ID tugas tidak valid" }); return; }
+  const history = await db.select().from(todoChecklistHistoryTable)
+    .where(eq(todoChecklistHistoryTable.taskId, taskId))
+    .orderBy(desc(todoChecklistHistoryTable.createdAt));
+  res.json(history.map((item) => ({
+    ...item,
+    previousCompleted: item.previousCompleted === null ? null : Boolean(item.previousCompleted),
+    nextCompleted: item.nextCompleted === null ? null : Boolean(item.nextCompleted),
+    createdAt: item.createdAt.toISOString(),
+  })));
 });
 
 router.post("/todo-tasks/:id/comments", async (req, res) => {

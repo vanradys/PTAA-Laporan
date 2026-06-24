@@ -5,7 +5,7 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
-import type { PoItemTrackingTimelineItem } from "./poItemTrackingTimelineItem";
+import type { PoItemTrackingTimelineItem } from './poItemTrackingTimelineItem';
 
 export interface PoItem {
   id: number;

@@ -5,1167 +5,1158 @@
  * Laporan Harian - Daily Work Report System API
  * OpenAPI spec version: 0.1.0
  */
-import * as zod from "zod";
+import * as zod from 'zod';
+
 
 /**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  status: zod.string(),
-});
+  "status": zod.string()
+})
+
 
 /**
  * @summary Get current user session
  */
 export const GetCurrentUserResponse = zod.object({
-  id: zod.number(),
-  name: zod.string(),
-  email: zod.string(),
-  role: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  departmentCode: zod.string().nullish(),
-  avatarInitials: zod.string(),
-});
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "departmentCode": zod.string().nullish(),
+  "avatarInitials": zod.string()
+})
+
 
 /**
  * @summary Login
  */
 export const LoginBody = zod.object({
-  email: zod.string(),
-  password: zod.string(),
-});
+  "email": zod.string(),
+  "password": zod.string()
+})
 
 export const LoginResponse = zod.object({
-  id: zod.number(),
-  name: zod.string(),
-  email: zod.string(),
-  role: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  departmentCode: zod.string().nullish(),
-  avatarInitials: zod.string(),
-});
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "departmentCode": zod.string().nullish(),
+  "avatarInitials": zod.string()
+})
+
 
 /**
  * @summary Logout
  */
 export const LogoutResponse = zod.object({
-  success: zod.boolean(),
-  message: zod.string().optional(),
-});
+  "success": zod.boolean(),
+  "message": zod.string().optional()
+})
+
 
 /**
  * @summary List all daily reports with filters
  */
 export const ListReportsQueryParams = zod.object({
-  date: zod.coerce.string().optional(),
-  month: zod.coerce.string().optional(),
-  year: zod.coerce.string().optional(),
-  departmentId: zod.coerce.number().nullish(),
-  userId: zod.coerce.number().nullish(),
-  status: zod.coerce.string().optional(),
-  search: zod.coerce.string().optional(),
-});
+  "date": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "month": zod.coerce.string().optional(),
+  "year": zod.coerce.string().optional(),
+  "departmentId": zod.coerce.number().nullish(),
+  "userId": zod.coerce.number().nullish(),
+  "status": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional()
+})
 
 export const ListReportsResponseItem = zod.object({
-  id: zod.number(),
-  userId: zod.number(),
-  userName: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  date: zod.string(),
-  dayName: zod.string(),
-  taskCount: zod.number(),
-  avgProgress: zod.number(),
-  status: zod.string(),
-  createdAt: zod.string(),
-});
-export const ListReportsResponse = zod.array(ListReportsResponseItem);
+  "id": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "date": zod.string(),
+  "dayName": zod.string(),
+  "taskCount": zod.number(),
+  "avgProgress": zod.number(),
+  "status": zod.string(),
+  "createdAt": zod.string()
+})
+export const ListReportsResponse = zod.array(ListReportsResponseItem)
+
 
 /**
  * @summary Create a new daily report
  */
 export const CreateReportBody = zod.object({
-  date: zod.string(),
-  obstacles: zod.string().optional(),
-  additionalNotes: zod.string().optional(),
-  tomorrowPlan: zod.string().optional(),
-  status: zod.string().optional(),
-});
+  "date": zod.string(),
+  "obstacles": zod.string().optional(),
+  "additionalNotes": zod.string().optional(),
+  "tomorrowPlan": zod.string().optional(),
+  "status": zod.string().optional()
+})
+
 
 /**
  * @summary Get current user's report for today
  */
 export const GetTodayReportResponse = zod.object({
-  id: zod.number(),
-  userId: zod.number(),
-  userName: zod.string(),
-  userEmail: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  date: zod.string(),
-  dayName: zod.string(),
-  obstacles: zod.string().nullish(),
-  additionalNotes: zod.string().nullish(),
-  tomorrowPlan: zod.string().nullish(),
-  status: zod.string(),
-  tasks: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      title: zod.string(),
-      project: zod.string().nullish(),
-      deadline: zod.string().nullish(),
-      progress: zod.number(),
-      status: zod.string(),
-      notes: zod.string().nullish(),
-      editCount: zod.number(),
-      remainingActions: zod.number(),
-      isLocked: zod.boolean(),
-      isDelay: zod.boolean(),
-      createdAt: zod.string(),
-    }),
-  ),
-  comments: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      userId: zod.number(),
-      userName: zod.string(),
-      userRole: zod.string(),
-      comment: zod.string(),
-      createdAt: zod.string(),
-    }),
-  ),
-  taskCount: zod.number(),
-  avgProgress: zod.number(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userEmail": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "date": zod.string(),
+  "dayName": zod.string(),
+  "obstacles": zod.string().nullish(),
+  "additionalNotes": zod.string().nullish(),
+  "tomorrowPlan": zod.string().nullish(),
+  "status": zod.string(),
+  "tasks": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "title": zod.string(),
+  "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "completionInputType": zod.string().nullish(),
+  "completionValue": zod.string().nullish(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
+  "createdAt": zod.string()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userRole": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})),
+  "taskCount": zod.number(),
+  "avgProgress": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Get unfinished/pending tasks from yesterday for copy
  */
 export const GetYesterdayTasksResponseItem = zod.object({
-  id: zod.number(),
-  reportId: zod.number(),
-  title: zod.string(),
-  project: zod.string().nullish(),
-  deadline: zod.string().nullish(),
-  progress: zod.number(),
-  status: zod.string(),
-  notes: zod.string().nullish(),
-  editCount: zod.number(),
-  remainingActions: zod.number(),
-  isLocked: zod.boolean(),
-  isDelay: zod.boolean(),
-  createdAt: zod.string(),
-});
-export const GetYesterdayTasksResponse = zod.array(
-  GetYesterdayTasksResponseItem,
-);
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "title": zod.string(),
+  "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "completionInputType": zod.string().nullish(),
+  "completionValue": zod.string().nullish(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
+  "createdAt": zod.string()
+})
+export const GetYesterdayTasksResponse = zod.array(GetYesterdayTasksResponseItem)
+
 
 /**
  * @summary Get a single report by ID
  */
 export const GetReportParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const GetReportResponse = zod.object({
-  id: zod.number(),
-  userId: zod.number(),
-  userName: zod.string(),
-  userEmail: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  date: zod.string(),
-  dayName: zod.string(),
-  obstacles: zod.string().nullish(),
-  additionalNotes: zod.string().nullish(),
-  tomorrowPlan: zod.string().nullish(),
-  status: zod.string(),
-  tasks: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      title: zod.string(),
-      project: zod.string().nullish(),
-      deadline: zod.string().nullish(),
-      progress: zod.number(),
-      status: zod.string(),
-      notes: zod.string().nullish(),
-      editCount: zod.number(),
-      remainingActions: zod.number(),
-      isLocked: zod.boolean(),
-      isDelay: zod.boolean(),
-      createdAt: zod.string(),
-    }),
-  ),
-  comments: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      userId: zod.number(),
-      userName: zod.string(),
-      userRole: zod.string(),
-      comment: zod.string(),
-      createdAt: zod.string(),
-    }),
-  ),
-  taskCount: zod.number(),
-  avgProgress: zod.number(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userEmail": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "date": zod.string(),
+  "dayName": zod.string(),
+  "obstacles": zod.string().nullish(),
+  "additionalNotes": zod.string().nullish(),
+  "tomorrowPlan": zod.string().nullish(),
+  "status": zod.string(),
+  "tasks": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "title": zod.string(),
+  "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "completionInputType": zod.string().nullish(),
+  "completionValue": zod.string().nullish(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
+  "createdAt": zod.string()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userRole": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})),
+  "taskCount": zod.number(),
+  "avgProgress": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Update a daily report
  */
 export const UpdateReportParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const UpdateReportBody = zod.object({
-  date: zod.string().optional(),
-  obstacles: zod.string().optional(),
-  additionalNotes: zod.string().optional(),
-  tomorrowPlan: zod.string().optional(),
-  status: zod.string().optional(),
-});
+  "date": zod.string().optional(),
+  "obstacles": zod.string().optional(),
+  "additionalNotes": zod.string().optional(),
+  "tomorrowPlan": zod.string().optional(),
+  "status": zod.string().optional()
+})
 
 export const UpdateReportResponse = zod.object({
-  id: zod.number(),
-  userId: zod.number(),
-  userName: zod.string(),
-  userEmail: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  date: zod.string(),
-  dayName: zod.string(),
-  obstacles: zod.string().nullish(),
-  additionalNotes: zod.string().nullish(),
-  tomorrowPlan: zod.string().nullish(),
-  status: zod.string(),
-  tasks: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      title: zod.string(),
-      project: zod.string().nullish(),
-      deadline: zod.string().nullish(),
-      progress: zod.number(),
-      status: zod.string(),
-      notes: zod.string().nullish(),
-      editCount: zod.number(),
-      remainingActions: zod.number(),
-      isLocked: zod.boolean(),
-      isDelay: zod.boolean(),
-      createdAt: zod.string(),
-    }),
-  ),
-  comments: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      userId: zod.number(),
-      userName: zod.string(),
-      userRole: zod.string(),
-      comment: zod.string(),
-      createdAt: zod.string(),
-    }),
-  ),
-  taskCount: zod.number(),
-  avgProgress: zod.number(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userEmail": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "date": zod.string(),
+  "dayName": zod.string(),
+  "obstacles": zod.string().nullish(),
+  "additionalNotes": zod.string().nullish(),
+  "tomorrowPlan": zod.string().nullish(),
+  "status": zod.string(),
+  "tasks": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "title": zod.string(),
+  "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "completionInputType": zod.string().nullish(),
+  "completionValue": zod.string().nullish(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
+  "createdAt": zod.string()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userRole": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})),
+  "taskCount": zod.number(),
+  "avgProgress": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Delete a daily report
  */
 export const DeleteReportParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const DeleteReportResponse = zod.object({
-  success: zod.boolean(),
-  message: zod.string().optional(),
-});
+  "success": zod.boolean(),
+  "message": zod.string().optional()
+})
+
 
 /**
  * @summary Submit a draft report
  */
 export const SubmitReportParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const SubmitReportResponse = zod.object({
-  id: zod.number(),
-  userId: zod.number(),
-  userName: zod.string(),
-  userEmail: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  date: zod.string(),
-  dayName: zod.string(),
-  obstacles: zod.string().nullish(),
-  additionalNotes: zod.string().nullish(),
-  tomorrowPlan: zod.string().nullish(),
-  status: zod.string(),
-  tasks: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      title: zod.string(),
-      project: zod.string().nullish(),
-      deadline: zod.string().nullish(),
-      progress: zod.number(),
-      status: zod.string(),
-      notes: zod.string().nullish(),
-      editCount: zod.number(),
-      remainingActions: zod.number(),
-      isLocked: zod.boolean(),
-      isDelay: zod.boolean(),
-      createdAt: zod.string(),
-    }),
-  ),
-  comments: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      userId: zod.number(),
-      userName: zod.string(),
-      userRole: zod.string(),
-      comment: zod.string(),
-      createdAt: zod.string(),
-    }),
-  ),
-  taskCount: zod.number(),
-  avgProgress: zod.number(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userEmail": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "date": zod.string(),
+  "dayName": zod.string(),
+  "obstacles": zod.string().nullish(),
+  "additionalNotes": zod.string().nullish(),
+  "tomorrowPlan": zod.string().nullish(),
+  "status": zod.string(),
+  "tasks": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "title": zod.string(),
+  "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "completionInputType": zod.string().nullish(),
+  "completionValue": zod.string().nullish(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
+  "createdAt": zod.string()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userRole": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})),
+  "taskCount": zod.number(),
+  "avgProgress": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Mark a report as reviewed (Admin/Director only)
  */
 export const ReviewReportParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const ReviewReportBody = zod.object({
-  action: zod.string(),
-  comment: zod.string().optional(),
-});
+  "action": zod.string(),
+  "comment": zod.string().optional()
+})
 
 export const ReviewReportResponse = zod.object({
-  id: zod.number(),
-  userId: zod.number(),
-  userName: zod.string(),
-  userEmail: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  date: zod.string(),
-  dayName: zod.string(),
-  obstacles: zod.string().nullish(),
-  additionalNotes: zod.string().nullish(),
-  tomorrowPlan: zod.string().nullish(),
-  status: zod.string(),
-  tasks: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      title: zod.string(),
-      project: zod.string().nullish(),
-      deadline: zod.string().nullish(),
-      progress: zod.number(),
-      status: zod.string(),
-      notes: zod.string().nullish(),
-      editCount: zod.number(),
-      remainingActions: zod.number(),
-      isLocked: zod.boolean(),
-      isDelay: zod.boolean(),
-      createdAt: zod.string(),
-    }),
-  ),
-  comments: zod.array(
-    zod.object({
-      id: zod.number(),
-      reportId: zod.number(),
-      userId: zod.number(),
-      userName: zod.string(),
-      userRole: zod.string(),
-      comment: zod.string(),
-      createdAt: zod.string(),
-    }),
-  ),
-  taskCount: zod.number(),
-  avgProgress: zod.number(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userEmail": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "date": zod.string(),
+  "dayName": zod.string(),
+  "obstacles": zod.string().nullish(),
+  "additionalNotes": zod.string().nullish(),
+  "tomorrowPlan": zod.string().nullish(),
+  "status": zod.string(),
+  "tasks": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "title": zod.string(),
+  "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "completionInputType": zod.string().nullish(),
+  "completionValue": zod.string().nullish(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
+  "createdAt": zod.string()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userRole": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})),
+  "taskCount": zod.number(),
+  "avgProgress": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary List tasks for a report
  */
 export const ListTasksParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const ListTasksResponseItem = zod.object({
-  id: zod.number(),
-  reportId: zod.number(),
-  title: zod.string(),
-  project: zod.string().nullish(),
-  deadline: zod.string().nullish(),
-  progress: zod.number(),
-  status: zod.string(),
-  notes: zod.string().nullish(),
-  editCount: zod.number(),
-  remainingActions: zod.number(),
-  isLocked: zod.boolean(),
-  isDelay: zod.boolean(),
-  createdAt: zod.string(),
-});
-export const ListTasksResponse = zod.array(ListTasksResponseItem);
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "title": zod.string(),
+  "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "completionInputType": zod.string().nullish(),
+  "completionValue": zod.string().nullish(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
+  "createdAt": zod.string()
+})
+export const ListTasksResponse = zod.array(ListTasksResponseItem)
+
 
 /**
  * @summary Add a task to a report
  */
 export const CreateTaskParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const CreateTaskBody = zod.object({
-  title: zod.string(),
-  project: zod.string().optional(),
-  deadline: zod.string().optional(),
-  progress: zod.number(),
-  status: zod.string(),
-  notes: zod.string().optional(),
-});
+  "title": zod.string(),
+  "project": zod.string().optional(),
+  "deadline": zod.string().optional(),
+  "completionInputType": zod.string().optional(),
+  "completionValue": zod.string().optional(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().optional()
+})
+
 
 /**
  * @summary Update a task
  */
 export const UpdateTaskParams = zod.object({
-  taskId: zod.coerce.number(),
-});
+  "taskId": zod.coerce.number()
+})
 
 export const UpdateTaskBody = zod.object({
-  title: zod.string().optional(),
-  project: zod.string().optional(),
-  deadline: zod.string().optional(),
-  progress: zod.number().optional(),
-  status: zod.string().optional(),
-  notes: zod.string().optional(),
-});
+  "title": zod.string().optional(),
+  "project": zod.string().optional(),
+  "deadline": zod.string().optional(),
+  "completionInputType": zod.string().optional(),
+  "completionValue": zod.string().optional(),
+  "progress": zod.number().optional(),
+  "status": zod.string().optional(),
+  "notes": zod.string().optional()
+})
 
 export const UpdateTaskResponse = zod.object({
-  id: zod.number(),
-  reportId: zod.number(),
-  title: zod.string(),
-  project: zod.string().nullish(),
-  deadline: zod.string().nullish(),
-  progress: zod.number(),
-  status: zod.string(),
-  notes: zod.string().nullish(),
-  editCount: zod.number(),
-  remainingActions: zod.number(),
-  isLocked: zod.boolean(),
-  isDelay: zod.boolean(),
-  createdAt: zod.string(),
-});
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "title": zod.string(),
+  "project": zod.string().nullish(),
+  "deadline": zod.string().nullish(),
+  "completionInputType": zod.string().nullish(),
+  "completionValue": zod.string().nullish(),
+  "progress": zod.number(),
+  "status": zod.string(),
+  "notes": zod.string().nullish(),
+  "editCount": zod.number(),
+  "remainingActions": zod.number(),
+  "isLocked": zod.boolean(),
+  "isDelay": zod.boolean(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Delete a task
  */
 export const DeleteTaskParams = zod.object({
-  taskId: zod.coerce.number(),
-});
+  "taskId": zod.coerce.number()
+})
 
 export const DeleteTaskResponse = zod.object({
-  success: zod.boolean(),
-  message: zod.string().optional(),
-});
+  "success": zod.boolean(),
+  "message": zod.string().optional()
+})
+
 
 /**
  * @summary List comments for a report
  */
 export const ListCommentsParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const ListCommentsResponseItem = zod.object({
-  id: zod.number(),
-  reportId: zod.number(),
-  userId: zod.number(),
-  userName: zod.string(),
-  userRole: zod.string(),
-  comment: zod.string(),
-  createdAt: zod.string(),
-});
-export const ListCommentsResponse = zod.array(ListCommentsResponseItem);
+  "id": zod.number(),
+  "reportId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string(),
+  "userRole": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})
+export const ListCommentsResponse = zod.array(ListCommentsResponseItem)
+
 
 /**
  * @summary Add a comment to a report
  */
 export const CreateCommentParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const CreateCommentBody = zod.object({
-  comment: zod.string(),
-});
+  "comment": zod.string()
+})
+
 
 /**
  * @summary List notifications for current user
  */
 export const ListNotificationsResponseItem = zod.object({
-  id: zod.number(),
-  userId: zod.number(),
-  title: zod.string(),
-  message: zod.string(),
-  isRead: zod.boolean(),
-  type: zod.string(),
-  relatedReportId: zod.number().nullish(),
-  relatedTodoId: zod.number().nullish(),
-  createdAt: zod.string(),
-});
-export const ListNotificationsResponse = zod.array(
-  ListNotificationsResponseItem,
-);
+  "id": zod.number(),
+  "userId": zod.number(),
+  "title": zod.string(),
+  "message": zod.string(),
+  "isRead": zod.boolean(),
+  "type": zod.string(),
+  "relatedReportId": zod.number().nullish(),
+  "relatedTodoId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListNotificationsResponse = zod.array(ListNotificationsResponseItem)
+
 
 /**
  * @summary Mark a notification as read
  */
 export const MarkNotificationReadParams = zod.object({
-  notifId: zod.coerce.number(),
-});
+  "notifId": zod.coerce.number()
+})
 
 export const MarkNotificationReadResponse = zod.object({
-  id: zod.number(),
-  userId: zod.number(),
-  title: zod.string(),
-  message: zod.string(),
-  isRead: zod.boolean(),
-  type: zod.string(),
-  relatedReportId: zod.number().nullish(),
-  relatedTodoId: zod.number().nullish(),
-  createdAt: zod.string(),
-});
+  "id": zod.number(),
+  "userId": zod.number(),
+  "title": zod.string(),
+  "message": zod.string(),
+  "isRead": zod.boolean(),
+  "type": zod.string(),
+  "relatedReportId": zod.number().nullish(),
+  "relatedTodoId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Delete a notification
  */
 export const DeleteNotificationParams = zod.object({
-  notifId: zod.coerce.number(),
-});
+  "notifId": zod.coerce.number()
+})
 
 export const DeleteNotificationResponse = zod.object({
-  success: zod.boolean(),
-  message: zod.string().optional(),
-});
+  "success": zod.boolean(),
+  "message": zod.string().optional()
+})
+
 
 /**
  * @summary Mark all notifications as read
  */
 export const MarkAllNotificationsReadResponse = zod.object({
-  success: zod.boolean(),
-  message: zod.string().optional(),
-});
+  "success": zod.boolean(),
+  "message": zod.string().optional()
+})
+
 
 /**
  * @summary List accessible to-do tasks
  */
 export const ListTodoTasksResponseItem = zod.object({
-  id: zod.number(),
-  title: zod.string(),
-  description: zod.string().nullish(),
-  type: zod.string(),
-  startDate: zod.string(),
-  dueDate: zod.string(),
-  priority: zod.string(),
-  status: zod.string(),
-  createdByUserId: zod.number().nullish(),
-  createdByName: zod.string(),
-  assignees: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      userId: zod.number(),
-      userName: zod.string(),
-    }),
-  ),
-  checklist: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      text: zod.string(),
-      isCompleted: zod.boolean(),
-    }),
-  ),
-  comments: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      userId: zod.number().nullish(),
-      userName: zod.string(),
-      comment: zod.string(),
-      createdAt: zod.string(),
-    }),
-  ),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
-export const ListTodoTasksResponse = zod.array(ListTodoTasksResponseItem);
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.string(),
+  "startDate": zod.string(),
+  "dueDate": zod.string(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "createdByUserId": zod.number().nullish(),
+  "createdByName": zod.string(),
+  "assignees": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string()
+})),
+  "checklist": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "text": zod.string(),
+  "isCompleted": zod.boolean()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "userId": zod.number().nullish(),
+  "userName": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListTodoTasksResponse = zod.array(ListTodoTasksResponseItem)
+
 
 /**
  * @summary Create a to-do task
  */
 export const CreateTodoTaskBody = zod.object({
-  title: zod.string(),
-  description: zod.string().optional(),
-  type: zod.string(),
-  startDate: zod.string(),
-  dueDate: zod.string(),
-  priority: zod.string(),
-  assigneeIds: zod.array(zod.number()).optional(),
-  checklist: zod.array(zod.string()).optional(),
-});
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "type": zod.string(),
+  "startDate": zod.string(),
+  "dueDate": zod.string(),
+  "priority": zod.string(),
+  "assigneeIds": zod.array(zod.number()).optional(),
+  "checklist": zod.array(zod.string()).optional()
+})
+
 
 /**
  * @summary Get to-do task detail
  */
 export const GetTodoTaskParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const GetTodoTaskResponse = zod.object({
-  id: zod.number(),
-  title: zod.string(),
-  description: zod.string().nullish(),
-  type: zod.string(),
-  startDate: zod.string(),
-  dueDate: zod.string(),
-  priority: zod.string(),
-  status: zod.string(),
-  createdByUserId: zod.number().nullish(),
-  createdByName: zod.string(),
-  assignees: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      userId: zod.number(),
-      userName: zod.string(),
-    }),
-  ),
-  checklist: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      text: zod.string(),
-      isCompleted: zod.boolean(),
-    }),
-  ),
-  comments: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      userId: zod.number().nullish(),
-      userName: zod.string(),
-      comment: zod.string(),
-      createdAt: zod.string(),
-    }),
-  ),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.string(),
+  "startDate": zod.string(),
+  "dueDate": zod.string(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "createdByUserId": zod.number().nullish(),
+  "createdByName": zod.string(),
+  "assignees": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string()
+})),
+  "checklist": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "text": zod.string(),
+  "isCompleted": zod.boolean()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "userId": zod.number().nullish(),
+  "userName": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Update to-do task status
  */
 export const UpdateTodoTaskStatusParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const UpdateTodoTaskStatusBody = zod.object({
-  status: zod.string(),
-});
+  "status": zod.string()
+})
 
 export const UpdateTodoTaskStatusResponse = zod.object({
-  id: zod.number(),
-  title: zod.string(),
-  description: zod.string().nullish(),
-  type: zod.string(),
-  startDate: zod.string(),
-  dueDate: zod.string(),
-  priority: zod.string(),
-  status: zod.string(),
-  createdByUserId: zod.number().nullish(),
-  createdByName: zod.string(),
-  assignees: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      userId: zod.number(),
-      userName: zod.string(),
-    }),
-  ),
-  checklist: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      text: zod.string(),
-      isCompleted: zod.boolean(),
-    }),
-  ),
-  comments: zod.array(
-    zod.object({
-      id: zod.number(),
-      taskId: zod.number(),
-      userId: zod.number().nullish(),
-      userName: zod.string(),
-      comment: zod.string(),
-      createdAt: zod.string(),
-    }),
-  ),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.string(),
+  "startDate": zod.string(),
+  "dueDate": zod.string(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "createdByUserId": zod.number().nullish(),
+  "createdByName": zod.string(),
+  "assignees": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string()
+})),
+  "checklist": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "text": zod.string(),
+  "isCompleted": zod.boolean()
+})),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "userId": zod.number().nullish(),
+  "userName": zod.string(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Update to-do checklist item
  */
 export const UpdateTodoChecklistParams = zod.object({
-  taskId: zod.coerce.number(),
-  itemId: zod.coerce.number(),
-});
+  "taskId": zod.coerce.number(),
+  "itemId": zod.coerce.number()
+})
 
 export const UpdateTodoChecklistBody = zod.object({
-  isCompleted: zod.boolean(),
-});
+  "isCompleted": zod.boolean()
+})
 
 export const UpdateTodoChecklistResponse = zod.object({
-  id: zod.number(),
-  taskId: zod.number(),
-  text: zod.string(),
-  isCompleted: zod.boolean(),
-});
+  "id": zod.number(),
+  "taskId": zod.number(),
+  "text": zod.string(),
+  "isCompleted": zod.boolean()
+})
+
 
 /**
  * @summary Add a comment to a to-do task
  */
 export const CreateTodoCommentParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const CreateTodoCommentBody = zod.object({
-  comment: zod.string(),
-});
+  "comment": zod.string()
+})
+
 
 /**
  * @summary List PO/Projects with filters
  */
 export const ListPoQueryParams = zod.object({
-  month: zod.coerce.number().optional(),
-  year: zod.coerce.number().optional(),
-  status: zod.coerce.string().optional(),
-  departmentId: zod.coerce.number().optional(),
-  picUserId: zod.coerce.number().optional(),
-  customer: zod.coerce.string().optional(),
-  search: zod.coerce.string().optional(),
-  nominalSort: zod.enum(["asc", "desc"]).optional(),
-});
+  "month": zod.coerce.number().optional(),
+  "year": zod.coerce.number().optional(),
+  "status": zod.coerce.string().optional(),
+  "departmentId": zod.coerce.number().optional(),
+  "picUserId": zod.coerce.number().optional(),
+  "customer": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional(),
+  "nominalSort": zod.enum(['asc', 'desc']).optional()
+})
 
 export const ListPoResponseItem = zod.object({
-  id: zod.number(),
-  noPo: zod.string(),
-  namaProject: zod.string(),
-  customer: zod.string().nullish(),
-  qty: zod.string().nullish(),
-  poAmount: zod.number().nullish(),
-  tanggalPoMasuk: zod.string().optional(),
-  targetPenyelesaian: zod.string().nullish(),
-  deadline: zod.string(),
-  targetPengiriman: zod.string(),
-  aktualPengiriman: zod.string().nullish(),
-  deliveryStatus: zod.string(),
-  delayDays: zod.number().nullish(),
-  aktualPengirimanBelumDiisi: zod.boolean(),
-  sisaHari: zod.number().nullable(),
-  picUserId: zod.number().nullish(),
-  picName: zod.string().nullish(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  status: zod.string(),
-  statusLabel: zod.string().optional(),
-  progress: zod.number(),
-  hasPainting: zod.boolean().optional(),
-  trackingStages: zod.array(zod.string()).optional(),
-  trackingTimeline: zod
-    .array(
-      zod.object({
-        date: zod.string(),
-        description: zod.string(),
-      }),
-    )
-    .optional(),
-  catatan: zod.string().nullish(),
-  closedAt: zod.string().nullish(),
-  isEditLocked: zod.boolean(),
-  editLockNotice: zod.string().nullish(),
-  createdByUserId: zod.number().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
-export const ListPoResponse = zod.array(ListPoResponseItem);
+  "id": zod.number(),
+  "noPo": zod.string(),
+  "namaProject": zod.string(),
+  "customer": zod.string().nullish(),
+  "qty": zod.string().nullish(),
+  "poAmount": zod.number().nullish(),
+  "tanggalPoMasuk": zod.string().optional(),
+  "targetPenyelesaian": zod.string().nullish(),
+  "deadline": zod.string(),
+  "targetPengiriman": zod.string(),
+  "aktualPengiriman": zod.string().nullish(),
+  "deliveryStatus": zod.string(),
+  "delayDays": zod.number().nullish(),
+  "aktualPengirimanBelumDiisi": zod.boolean(),
+  "sisaHari": zod.number().nullable(),
+  "picUserId": zod.number().nullish(),
+  "picName": zod.string().nullish(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "status": zod.string(),
+  "statusLabel": zod.string().optional(),
+  "progress": zod.number(),
+  "hasPainting": zod.boolean().optional(),
+  "trackingStages": zod.array(zod.string()).optional(),
+  "trackingTimeline": zod.array(zod.object({
+  "date": zod.string(),
+  "description": zod.string()
+})).optional(),
+  "catatan": zod.string().nullish(),
+  "closedAt": zod.string().nullish(),
+  "isEditLocked": zod.boolean(),
+  "editLockNotice": zod.string().nullish(),
+  "createdByUserId": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListPoResponse = zod.array(ListPoResponseItem)
+
 
 /**
  * @summary Create a new PO/Project
  */
 export const CreatePoBody = zod.object({
-  noPo: zod.string(),
-  namaProject: zod.string(),
-  customer: zod.string().optional(),
-  qty: zod.string().optional(),
-  poAmount: zod.number().nullish(),
-  tanggalPoMasuk: zod.string(),
-  deadline: zod.string().optional(),
-  targetPengiriman: zod.string(),
-  aktualPengiriman: zod.string().optional(),
-  picUserId: zod.number().optional(),
-  picProject: zod.string().optional(),
-  departmentId: zod.number().optional(),
-  status: zod.string().optional(),
-  hasPainting: zod.boolean().optional(),
-  trackingStages: zod.array(zod.string()).optional(),
-  trackingTimeline: zod
-    .array(
-      zod.object({
-        date: zod.string().optional(),
-        description: zod.string().optional(),
-      }),
-    )
-    .optional(),
-  catatan: zod.string().optional(),
-});
+  "noPo": zod.string(),
+  "namaProject": zod.string(),
+  "customer": zod.string().optional(),
+  "qty": zod.string().optional(),
+  "poAmount": zod.number().nullish(),
+  "tanggalPoMasuk": zod.string(),
+  "deadline": zod.string().optional(),
+  "targetPengiriman": zod.string(),
+  "aktualPengiriman": zod.string().optional(),
+  "picUserId": zod.number().optional(),
+  "picProject": zod.string().optional(),
+  "departmentId": zod.number().optional(),
+  "status": zod.string().optional(),
+  "hasPainting": zod.boolean().optional(),
+  "trackingStages": zod.array(zod.string()).optional(),
+  "trackingTimeline": zod.array(zod.object({
+  "date": zod.string().optional(),
+  "description": zod.string().optional()
+})).optional(),
+  "catatan": zod.string().optional()
+})
+
 
 /**
  * @summary Get monthly PO summary stats
  */
 export const GetPoSummaryQueryParams = zod.object({
-  month: zod.coerce.number().optional(),
-  year: zod.coerce.number().optional(),
-});
+  "month": zod.coerce.number().optional(),
+  "year": zod.coerce.number().optional()
+})
 
 export const GetPoSummaryResponse = zod.object({
-  canViewAmount: zod.boolean().optional(),
-  totalPo: zod.number(),
-  poSelesai: zod.number(),
-  poBelumSelesai: zod.number(),
-  poDelay: zod.number(),
-  poHampirDeadline: zod.number(),
-  persentasePencapaian: zod.number().optional(),
-  month: zod.number(),
-  year: zod.number(),
-});
+  "canViewAmount": zod.boolean().optional(),
+  "totalPo": zod.number(),
+  "poSelesai": zod.number(),
+  "poBelumSelesai": zod.number(),
+  "poDelay": zod.number(),
+  "poHampirDeadline": zod.number(),
+  "persentasePencapaian": zod.number().optional(),
+  "month": zod.number(),
+  "year": zod.number()
+})
+
 
 /**
  * @summary Get yearly PO trend
  */
 export const GetPoYearlyTrendQueryParams = zod.object({
-  year: zod.coerce.number().optional(),
-});
+  "year": zod.coerce.number().optional()
+})
 
 export const GetPoYearlyTrendResponse = zod.object({
-  year: zod.number(),
-  canViewAmount: zod.boolean(),
-  items: zod.array(
-    zod.object({
-      month: zod.string(),
-      monthNumber: zod.number(),
-      totalPo: zod.number(),
-      totalAmount: zod.number().nullish(),
-      targetAmount: zod.number().nullish(),
-    }),
-  ),
-});
+  "year": zod.number(),
+  "canViewAmount": zod.boolean(),
+  "items": zod.array(zod.object({
+  "month": zod.string(),
+  "monthNumber": zod.number(),
+  "totalPo": zod.number(),
+  "totalAmount": zod.number().nullish(),
+  "targetAmount": zod.number().nullish()
+}))
+})
+
 
 /**
  * @summary Get PO detail
  */
 export const GetPoParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const GetPoResponse = zod.object({
-  id: zod.number(),
-  noPo: zod.string(),
-  namaProject: zod.string(),
-  customer: zod.string().nullish(),
-  qty: zod.string().nullish(),
-  poAmount: zod.number().nullish(),
-  tanggalPoMasuk: zod.string().optional(),
-  targetPenyelesaian: zod.string().nullish(),
-  deadline: zod.string(),
-  targetPengiriman: zod.string(),
-  aktualPengiriman: zod.string().nullish(),
-  deliveryStatus: zod.string(),
-  delayDays: zod.number().nullish(),
-  aktualPengirimanBelumDiisi: zod.boolean(),
-  sisaHari: zod.number().nullable(),
-  picUserId: zod.number().nullish(),
-  picName: zod.string().nullish(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  status: zod.string(),
-  statusLabel: zod.string().optional(),
-  progress: zod.number(),
-  hasPainting: zod.boolean().optional(),
-  trackingStages: zod.array(zod.string()).optional(),
-  trackingTimeline: zod
-    .array(
-      zod.object({
-        date: zod.string(),
-        description: zod.string(),
-      }),
-    )
-    .optional(),
-  catatan: zod.string().nullish(),
-  closedAt: zod.string().nullish(),
-  isEditLocked: zod.boolean(),
-  editLockNotice: zod.string().nullish(),
-  createdByUserId: zod.number().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "noPo": zod.string(),
+  "namaProject": zod.string(),
+  "customer": zod.string().nullish(),
+  "qty": zod.string().nullish(),
+  "poAmount": zod.number().nullish(),
+  "tanggalPoMasuk": zod.string().optional(),
+  "targetPenyelesaian": zod.string().nullish(),
+  "deadline": zod.string(),
+  "targetPengiriman": zod.string(),
+  "aktualPengiriman": zod.string().nullish(),
+  "deliveryStatus": zod.string(),
+  "delayDays": zod.number().nullish(),
+  "aktualPengirimanBelumDiisi": zod.boolean(),
+  "sisaHari": zod.number().nullable(),
+  "picUserId": zod.number().nullish(),
+  "picName": zod.string().nullish(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "status": zod.string(),
+  "statusLabel": zod.string().optional(),
+  "progress": zod.number(),
+  "hasPainting": zod.boolean().optional(),
+  "trackingStages": zod.array(zod.string()).optional(),
+  "trackingTimeline": zod.array(zod.object({
+  "date": zod.string(),
+  "description": zod.string()
+})).optional(),
+  "catatan": zod.string().nullish(),
+  "closedAt": zod.string().nullish(),
+  "isEditLocked": zod.boolean(),
+  "editLockNotice": zod.string().nullish(),
+  "createdByUserId": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Update a PO/Project
  */
 export const UpdatePoParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const UpdatePoBody = zod.object({
-  noPo: zod.string().optional(),
-  namaProject: zod.string().optional(),
-  customer: zod.string().optional(),
-  qty: zod.string().optional(),
-  poAmount: zod.number().nullish(),
-  tanggalPoMasuk: zod.string().optional(),
-  deadline: zod.string().optional(),
-  targetPengiriman: zod.string().optional(),
-  aktualPengiriman: zod.string().optional(),
-  picUserId: zod.number().optional(),
-  picProject: zod.string().optional(),
-  departmentId: zod.number().optional(),
-  status: zod.string().optional(),
-  hasPainting: zod.boolean().optional(),
-  trackingStages: zod.array(zod.string()).optional(),
-  trackingTimeline: zod
-    .array(
-      zod.object({
-        date: zod.string().optional(),
-        description: zod.string().optional(),
-      }),
-    )
-    .optional(),
-  catatan: zod.string().optional(),
-});
+  "noPo": zod.string().optional(),
+  "namaProject": zod.string().optional(),
+  "customer": zod.string().optional(),
+  "qty": zod.string().optional(),
+  "poAmount": zod.number().nullish(),
+  "tanggalPoMasuk": zod.string().optional(),
+  "deadline": zod.string().optional(),
+  "targetPengiriman": zod.string().optional(),
+  "aktualPengiriman": zod.string().optional(),
+  "picUserId": zod.number().optional(),
+  "picProject": zod.string().optional(),
+  "departmentId": zod.number().optional(),
+  "status": zod.string().optional(),
+  "hasPainting": zod.boolean().optional(),
+  "trackingStages": zod.array(zod.string()).optional(),
+  "trackingTimeline": zod.array(zod.object({
+  "date": zod.string().optional(),
+  "description": zod.string().optional()
+})).optional(),
+  "catatan": zod.string().optional()
+})
 
 export const UpdatePoResponse = zod.object({
-  id: zod.number(),
-  noPo: zod.string(),
-  namaProject: zod.string(),
-  customer: zod.string().nullish(),
-  qty: zod.string().nullish(),
-  poAmount: zod.number().nullish(),
-  tanggalPoMasuk: zod.string().optional(),
-  targetPenyelesaian: zod.string().nullish(),
-  deadline: zod.string(),
-  targetPengiriman: zod.string(),
-  aktualPengiriman: zod.string().nullish(),
-  deliveryStatus: zod.string(),
-  delayDays: zod.number().nullish(),
-  aktualPengirimanBelumDiisi: zod.boolean(),
-  sisaHari: zod.number().nullable(),
-  picUserId: zod.number().nullish(),
-  picName: zod.string().nullish(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  status: zod.string(),
-  statusLabel: zod.string().optional(),
-  progress: zod.number(),
-  hasPainting: zod.boolean().optional(),
-  trackingStages: zod.array(zod.string()).optional(),
-  trackingTimeline: zod
-    .array(
-      zod.object({
-        date: zod.string(),
-        description: zod.string(),
-      }),
-    )
-    .optional(),
-  catatan: zod.string().nullish(),
-  closedAt: zod.string().nullish(),
-  isEditLocked: zod.boolean(),
-  editLockNotice: zod.string().nullish(),
-  createdByUserId: zod.number().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "noPo": zod.string(),
+  "namaProject": zod.string(),
+  "customer": zod.string().nullish(),
+  "qty": zod.string().nullish(),
+  "poAmount": zod.number().nullish(),
+  "tanggalPoMasuk": zod.string().optional(),
+  "targetPenyelesaian": zod.string().nullish(),
+  "deadline": zod.string(),
+  "targetPengiriman": zod.string(),
+  "aktualPengiriman": zod.string().nullish(),
+  "deliveryStatus": zod.string(),
+  "delayDays": zod.number().nullish(),
+  "aktualPengirimanBelumDiisi": zod.boolean(),
+  "sisaHari": zod.number().nullable(),
+  "picUserId": zod.number().nullish(),
+  "picName": zod.string().nullish(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "status": zod.string(),
+  "statusLabel": zod.string().optional(),
+  "progress": zod.number(),
+  "hasPainting": zod.boolean().optional(),
+  "trackingStages": zod.array(zod.string()).optional(),
+  "trackingTimeline": zod.array(zod.object({
+  "date": zod.string(),
+  "description": zod.string()
+})).optional(),
+  "catatan": zod.string().nullish(),
+  "closedAt": zod.string().nullish(),
+  "isEditLocked": zod.boolean(),
+  "editLockNotice": zod.string().nullish(),
+  "createdByUserId": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Delete a PO/Project
  */
 export const DeletePoParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const DeletePoResponse = zod.object({
-  success: zod.boolean(),
-  message: zod.string().optional(),
-});
+  "success": zod.boolean(),
+  "message": zod.string().optional()
+})
+
 
 /**
  * @summary Mark PO as closed/completed
  */
 export const ClosePoParams = zod.object({
-  id: zod.coerce.number(),
-});
+  "id": zod.coerce.number()
+})
 
 export const ClosePoResponse = zod.object({
-  id: zod.number(),
-  noPo: zod.string(),
-  namaProject: zod.string(),
-  customer: zod.string().nullish(),
-  qty: zod.string().nullish(),
-  poAmount: zod.number().nullish(),
-  tanggalPoMasuk: zod.string().optional(),
-  targetPenyelesaian: zod.string().nullish(),
-  deadline: zod.string(),
-  targetPengiriman: zod.string(),
-  aktualPengiriman: zod.string().nullish(),
-  deliveryStatus: zod.string(),
-  delayDays: zod.number().nullish(),
-  aktualPengirimanBelumDiisi: zod.boolean(),
-  sisaHari: zod.number().nullable(),
-  picUserId: zod.number().nullish(),
-  picName: zod.string().nullish(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  status: zod.string(),
-  statusLabel: zod.string().optional(),
-  progress: zod.number(),
-  hasPainting: zod.boolean().optional(),
-  trackingStages: zod.array(zod.string()).optional(),
-  trackingTimeline: zod
-    .array(
-      zod.object({
-        date: zod.string(),
-        description: zod.string(),
-      }),
-    )
-    .optional(),
-  catatan: zod.string().nullish(),
-  closedAt: zod.string().nullish(),
-  isEditLocked: zod.boolean(),
-  editLockNotice: zod.string().nullish(),
-  createdByUserId: zod.number().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string(),
-});
+  "id": zod.number(),
+  "noPo": zod.string(),
+  "namaProject": zod.string(),
+  "customer": zod.string().nullish(),
+  "qty": zod.string().nullish(),
+  "poAmount": zod.number().nullish(),
+  "tanggalPoMasuk": zod.string().optional(),
+  "targetPenyelesaian": zod.string().nullish(),
+  "deadline": zod.string(),
+  "targetPengiriman": zod.string(),
+  "aktualPengiriman": zod.string().nullish(),
+  "deliveryStatus": zod.string(),
+  "delayDays": zod.number().nullish(),
+  "aktualPengirimanBelumDiisi": zod.boolean(),
+  "sisaHari": zod.number().nullable(),
+  "picUserId": zod.number().nullish(),
+  "picName": zod.string().nullish(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "status": zod.string(),
+  "statusLabel": zod.string().optional(),
+  "progress": zod.number(),
+  "hasPainting": zod.boolean().optional(),
+  "trackingStages": zod.array(zod.string()).optional(),
+  "trackingTimeline": zod.array(zod.object({
+  "date": zod.string(),
+  "description": zod.string()
+})).optional(),
+  "catatan": zod.string().nullish(),
+  "closedAt": zod.string().nullish(),
+  "isEditLocked": zod.boolean(),
+  "editLockNotice": zod.string().nullish(),
+  "createdByUserId": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
 
 /**
  * @summary Get dashboard summary stats
  */
 export const GetDashboardSummaryQueryParams = zod.object({
-  date: zod.coerce.string().optional(),
-  period: zod.enum(["daily", "weekly", "monthly", "yearly"]).optional(),
-});
+  "date": zod.coerce.string().optional(),
+  "period": zod.enum(['daily', 'weekly', 'monthly', 'yearly']).optional()
+})
 
 export const GetDashboardSummaryResponse = zod.object({
-  totalEmployees: zod.number(),
-  expectedWorkDays: zod.number(),
-  expectedSubmissions: zod.number(),
-  submittedEmployeeCount: zod.number(),
-  requiredEmployeeCount: zod.number(),
-  submittedToday: zod.number(),
-  notSubmittedToday: zod.number(),
-  submittedSelectedDate: zod.number(),
-  notSubmittedSelectedDate: zod.number(),
-  totalTasksToday: zod.number(),
-  tasksCompleted: zod.number(),
-  tasksPending: zod.number(),
-  submitRate: zod.number(),
-  completionRate: zod.number(),
-  pendingAssignedTasksCount: zod.number(),
-  pendingAssignedTasksByAssigner: zod.array(
-    zod.object({
-      assignedByName: zod.string(),
-      count: zod.number(),
-    }),
-  ),
-  missingEmployees: zod.array(
-    zod.object({
-      id: zod.number(),
-      name: zod.string(),
-    }),
-  ),
-  missingEmployeeCount: zod.number(),
-  scope: zod.enum(["company", "personal"]),
-  period: zod.enum(["daily", "weekly", "monthly", "yearly"]),
-  periodStartDate: zod.string(),
-  periodEndDate: zod.string(),
-  weekStartDate: zod.string(),
-  weekEndDate: zod.string(),
-});
+  "totalEmployees": zod.number(),
+  "expectedWorkDays": zod.number(),
+  "expectedSubmissions": zod.number(),
+  "submittedEmployeeCount": zod.number(),
+  "requiredEmployeeCount": zod.number(),
+  "submittedToday": zod.number(),
+  "notSubmittedToday": zod.number(),
+  "submittedSelectedDate": zod.number(),
+  "notSubmittedSelectedDate": zod.number(),
+  "totalTasksToday": zod.number(),
+  "tasksCompleted": zod.number(),
+  "tasksPending": zod.number(),
+  "submitRate": zod.number(),
+  "completionRate": zod.number(),
+  "pendingAssignedTasksCount": zod.number(),
+  "pendingAssignedTasksByAssigner": zod.array(zod.object({
+  "assignedByName": zod.string(),
+  "count": zod.number()
+})),
+  "missingEmployees": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+})),
+  "missingEmployeeCount": zod.number(),
+  "scope": zod.enum(['company', 'personal']),
+  "period": zod.enum(['daily', 'weekly', 'monthly', 'yearly']),
+  "periodStartDate": zod.string(),
+  "periodEndDate": zod.string(),
+  "weekStartDate": zod.string(),
+  "weekEndDate": zod.string()
+})
+
 
 /**
  * @summary Get department productivity breakdown
  */
 export const GetDepartmentProductivityQueryParams = zod.object({
-  date: zod.coerce.string().optional(),
-  period: zod.enum(["daily", "weekly", "monthly", "yearly"]).optional(),
-});
+  "date": zod.coerce.string().optional(),
+  "period": zod.enum(['daily', 'weekly', 'monthly', 'yearly']).optional()
+})
 
 export const GetDepartmentProductivityResponseItem = zod.object({
-  departmentId: zod.number(),
-  departmentName: zod.string(),
-  employeeCount: zod.number(),
-  submittedCount: zod.number(),
-  avgProgress: zod.number(),
-  submitRate: zod.number(),
-});
-export const GetDepartmentProductivityResponse = zod.array(
-  GetDepartmentProductivityResponseItem,
-);
+  "departmentId": zod.number(),
+  "departmentName": zod.string(),
+  "employeeCount": zod.number(),
+  "submittedCount": zod.number(),
+  "avgProgress": zod.number(),
+  "submitRate": zod.number()
+})
+export const GetDepartmentProductivityResponse = zod.array(GetDepartmentProductivityResponseItem)
+
 
 /**
  * @summary List departments
  */
 export const ListDepartmentsResponseItem = zod.object({
-  id: zod.number(),
-  name: zod.string(),
-  code: zod.string(),
-});
-export const ListDepartmentsResponse = zod.array(ListDepartmentsResponseItem);
+  "id": zod.number(),
+  "name": zod.string(),
+  "code": zod.string()
+})
+export const ListDepartmentsResponse = zod.array(ListDepartmentsResponseItem)
+
 
 /**
  * @summary List employees
  */
 export const ListEmployeesResponseItem = zod.object({
-  id: zod.number(),
-  name: zod.string(),
-  email: zod.string(),
-  role: zod.string(),
-  departmentId: zod.number().nullish(),
-  departmentName: zod.string().nullish(),
-  departmentCode: zod.string().nullish(),
-  avatarInitials: zod.string(),
-});
-export const ListEmployeesResponse = zod.array(ListEmployeesResponseItem);
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.string(),
+  "departmentId": zod.number().nullish(),
+  "departmentName": zod.string().nullish(),
+  "departmentCode": zod.string().nullish(),
+  "avatarInitials": zod.string()
+})
+export const ListEmployeesResponse = zod.array(ListEmployeesResponseItem)
+
+
