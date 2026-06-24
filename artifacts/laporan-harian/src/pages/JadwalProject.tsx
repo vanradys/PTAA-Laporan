@@ -526,6 +526,10 @@ function isClosedPoItem(po: Pick<PoItem, "status" | "closedAt">) {
   return isClosedPo(po.status) || Boolean(po.closedAt);
 }
 
+function isOpenPoItem(po: Pick<PoItem, "status" | "closedAt">) {
+  return !isFinishedPo(po.status) && !po.closedAt;
+}
+
 function isDateOnly(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;
@@ -704,8 +708,9 @@ export default function JadwalProject() {
   const { data: poList, isLoading: poLoading } = useListPo(poParams, {
     query: { queryKey: getListPoQueryKey(poParams) },
   });
-  const { data: allPoList, isLoading: allPoLoading } = useListPo(undefined, {
-    query: { queryKey: getListPoQueryKey() },
+  const allPoParams = { openOnly: "true" } as any;
+  const { data: allPoList, isLoading: allPoLoading } = useListPo(allPoParams, {
+    query: { queryKey: getListPoQueryKey(allPoParams) },
   });
 
   const { data: summary } = useGetPoSummary(
@@ -735,6 +740,9 @@ export default function JadwalProject() {
     (localCanViewPoAmount ||
       Boolean((summary as { canViewAmount?: boolean } | undefined)?.canViewAmount) ||
       Boolean((yearlyTrend as { canViewAmount?: boolean } | undefined)?.canViewAmount));
+  const canViewPoTrendAmount = Boolean(
+    (yearlyTrend as { canViewAmount?: boolean } | undefined)?.canViewAmount,
+  );
 
   const { data: poActivityLogs } = useQuery({
     queryKey: ["po-activity"],
@@ -864,7 +872,7 @@ export default function JadwalProject() {
       return nominalSort === "asc" ? difference : -difference;
     });
   };
-  const pos = sortByNominal(posRaw.filter((po) => !isClosedPoItem(po) && matchesDeliveryFilter(po)));
+  const pos = sortByNominal(posRaw.filter((po) => isOpenPoItem(po) && matchesDeliveryFilter(po)));
   const allPos = sortByNominal(allPosRaw.filter(
     (po) =>
       !isClosedPoItem(po) &&
@@ -1630,7 +1638,7 @@ export default function JadwalProject() {
                 Grafik Monitoring PO {filterYear}
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                {canViewPoAmount
+                {canViewPoTrendAmount
                   ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO dan target tetap 3M."
                   : "Grafik menunjukkan jumlah PO per bulan."}
               </p>
@@ -1670,7 +1678,7 @@ export default function JadwalProject() {
                       }}
                       width={0}
                     />
-                    {canViewPoAmount && (
+                    {canViewPoTrendAmount && (
                       <YAxis
                         yAxisId="right"
                         orientation="right"
@@ -1714,7 +1722,7 @@ export default function JadwalProject() {
                       fill="#2563eb"
                       radius={[6, 6, 0, 0]}
                     />
-                    {canViewPoAmount && (
+                    {canViewPoTrendAmount && (
                       <>
                         <Line
                           yAxisId="right"

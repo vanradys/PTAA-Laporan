@@ -874,7 +874,7 @@ router.get("/po", async (req, res) => {
       : items;
   const filteredItems =
     String(openOnly) === "true"
-      ? filteredByStatus.filter((item) => item.status !== "closed" && !item.closedAt)
+      ? filteredByStatus.filter((item) => !isProjectFinished(item.status) && !item.closedAt)
       : filteredByStatus;
 
   res.json(filteredItems);
