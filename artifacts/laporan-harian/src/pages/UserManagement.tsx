@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Users } from "lucide-react";
+import { Loader2, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,6 +105,35 @@ export default function UserManagement() {
     }
   };
 
+  const deleteUser = async (item: UserRow) => {
+    if (updatingUserId !== null) return;
+    if (
+      !window.confirm(
+        `Hapus permanen akun ${item.name} (${item.email}) dari database? Aksi ini tidak bisa dibatalkan.`,
+      )
+    ) {
+      return;
+    }
+
+    setUpdatingUserId(item.id);
+    try {
+      await apiRequest(`/api/users/${item.id}`, { method: "DELETE" });
+      await queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      toast({ title: "Berhasil", description: "Akun berhasil dihapus permanen." });
+    } catch (error) {
+      toast({
+        title: "Akun tidak bisa dihapus permanen",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Nonaktifkan akun jika user sudah punya histori data.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   if (user?.role !== "admin") {
     return <Layout><div className="page-shell text-sm text-red-600">Halaman ini hanya dapat diakses Admin.</div></Layout>;
   }
@@ -151,13 +180,14 @@ export default function UserManagement() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[920px] text-sm">
+                <table className="w-full min-w-[1040px] text-sm">
                   <thead><tr className="border-b bg-muted/40">
                     <th className="px-4 py-3 text-left">Nama</th>
                     <th className="px-4 py-3 text-left">Email</th>
                     <th className="px-4 py-3 text-left">Role</th>
                     <th className="px-4 py-3 text-left">Departemen</th>
                     <th className="px-4 py-3 text-left">Status</th>
+                    <th className="px-4 py-3 text-left">Aksi</th>
                   </tr></thead>
                   <tbody>
                     {(users ?? []).map((item) => (
@@ -218,6 +248,27 @@ export default function UserManagement() {
                           >
                             {updatingUserId === item.id && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                             {item.isActive ? "Nonaktifkan" : "Aktifkan"}
+                          </Button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            disabled={updatingUserId !== null || item.id === user.id}
+                            onClick={() => void deleteUser(item)}
+                            title={
+                              item.id === user.id
+                                ? "Akun Admin yang sedang digunakan tidak dapat dihapus"
+                                : "Hapus akun permanen dari database"
+                            }
+                          >
+                            {updatingUserId === item.id ? (
+                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                            )}
+                            Hapus
                           </Button>
                         </td>
                       </tr>

@@ -83,6 +83,7 @@ const PO_AMOUNT_VISIBLE_EMAILS = [
   "marketing@adiyasa.com",
   "finance@adiyasa.com",
 ];
+const FULL_ACCESS_ROLES = ["admin", "direktur", "director", "dir"];
 const PO_AMOUNT_HIDDEN_ROLES = ["admin_marketing", "monitoring_dummy", "monitoring", "monitor"];
 const PO_AMOUNT_HIDDEN_EMAILS = ["monitoring.progress@adiyasa.com"];
 const MONTHLY_PO_TARGET = 3_000_000_000;
@@ -127,9 +128,10 @@ function canViewPoAmount(user?: {
   departmentName?: string | null;
 }): boolean {
   const email = String(user?.email ?? "").toLowerCase();
+  const role = String(user?.role ?? "").toLowerCase();
+  if (FULL_ACCESS_ROLES.includes(role)) return true;
   if (PO_AMOUNT_HIDDEN_EMAILS.includes(email) || email.includes("monitor")) return false;
 
-  const role = String(user?.role ?? "").toLowerCase();
   if (PO_AMOUNT_HIDDEN_ROLES.includes(role)) return false;
   if (PO_AMOUNT_VISIBLE_EMAILS.includes(email)) return true;
   if (PO_AMOUNT_VISIBLE_ROLES.includes(role)) return true;
@@ -700,13 +702,15 @@ router.get("/po/summary", async (req, res) => {
   );
 
   res.json({
-    canViewAmount: canSeeAmount,
+    canViewAmount: true,
+    canViewPoListAmount: canSeeAmount,
     totalPo,
     poSelesai,
     poBelumSelesai,
     poDelay,
     poHampirDeadline,
-    ...(canSeeAmount ? { totalNominal, monthlyTarget } : {}),
+    totalNominal,
+    monthlyTarget,
     persentasePencapaian,
     targetMonthName: MONTH_NAMES[month - 1] ?? String(month),
     targetStartDate,
@@ -1047,6 +1051,7 @@ router.get("/po/yearly-trend", async (req, res) => {
   const year = parseInt(req.query.year as string) || new Date().getFullYear();
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
+  const canSeeAmount = canViewPoAmount(user);
 
   const pos = await db
     .select()
@@ -1095,6 +1100,7 @@ router.get("/po/yearly-trend", async (req, res) => {
   res.json({
     year,
     canViewAmount: true,
+    canViewPoListAmount: canSeeAmount,
     items: trend,
   });
 });

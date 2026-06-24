@@ -657,25 +657,21 @@ export default function JadwalProject() {
     ["PUR", "ENG"].includes(departmentCode) ||
     departmentName.includes("purchasing") ||
     departmentName.includes("engineering");
+  const hasFullPoAccess = ["admin", "direktur", "director", "dir"].includes(
+    role,
+  );
 
   const localCanViewPoAmount =
-    !["monitoring_dummy", "monitoring", "monitor"].includes(role) &&
-    !email.includes("monitor") &&
-    [
-      "admin@adiyasa.com",
-      "director@adiyasa.com",
-      "marketing@adiyasa.com",
-      "finance@adiyasa.com",
-    ].includes(email) ||
+    hasFullPoAccess ||
     (!["monitoring_dummy", "monitoring", "monitor"].includes(role) &&
       !email.includes("monitor") &&
       ([
-        "admin",
-        "direktur",
-        "director",
-        "dir",
-        "finance",
-      ].includes(role) ||
+        "admin@adiyasa.com",
+        "director@adiyasa.com",
+        "marketing@adiyasa.com",
+        "finance@adiyasa.com",
+      ].includes(email) ||
+        role === "finance" ||
         ["AAF", "FIN"].includes(departmentCode) ||
         departmentName.includes("finance")));
 
@@ -768,11 +764,18 @@ export default function JadwalProject() {
   );
 
   const canViewPoAmount =
-    !["monitoring_dummy", "monitoring", "monitor"].includes(role) &&
-    !email.includes("monitor") &&
-    (localCanViewPoAmount ||
-      Boolean((summary as { canViewAmount?: boolean } | undefined)?.canViewAmount) ||
-      Boolean((yearlyTrend as { canViewAmount?: boolean } | undefined)?.canViewAmount));
+    hasFullPoAccess ||
+    (!["monitoring_dummy", "monitoring", "monitor"].includes(role) &&
+      !email.includes("monitor") &&
+      (localCanViewPoAmount ||
+        Boolean(
+          (summary as { canViewPoListAmount?: boolean } | undefined)
+            ?.canViewPoListAmount,
+        ) ||
+        Boolean(
+          (yearlyTrend as { canViewPoListAmount?: boolean } | undefined)
+            ?.canViewPoListAmount,
+        )));
   const canViewPoTrendAmount = true;
 
   const { data: poActivityLogs } = useQuery({
@@ -1536,11 +1539,7 @@ export default function JadwalProject() {
         {
           label: "Pencapaian Target",
           value: `${Number.isFinite(targetPercentage) ? targetPercentage : 0}%`,
-          ...(canViewPoAmount
-            ? {
-                description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? 0))}`,
-              }
-            : {}),
+          description: `${formatRupiahCompact(Number((summary as { totalNominal?: number }).totalNominal ?? 0))} / ${formatRupiahCompact(Number((summary as { monthlyTarget?: number }).monthlyTarget ?? MONTHLY_PO_TARGET))}`,
           targetLabel: `Target Bulan ${(summary as { targetMonthName?: string }).targetMonthName ?? months.find((item) => item.v === filterMonth)?.l ?? ""}`,
           icon: TrendingUp,
           color: "text-purple-600",
@@ -1885,7 +1884,7 @@ export default function JadwalProject() {
               <p className="text-xs text-muted-foreground">
                 {canViewPoTrendAmount
                   ? "Bar menunjukkan jumlah PO per bulan, line menunjukkan total nominal PO dan target tetap 3M."
-                  : "Grafik menunjukkan jumlah PO per bulan."}
+                  : "Bar menunjukkan jumlah PO per bulan, garis merah menunjukkan target tetap 3M."}
               </p>
             </CardHeader>
             <CardContent className="overflow-x-auto p-4">
@@ -1893,7 +1892,7 @@ export default function JadwalProject() {
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
                     data={yearlyTrendItems}
-                    margin={{ top: 10, right: 24, left: 24, bottom: 0 }}
+                    margin={{ top: 10, right: 64, left: 24, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} />
@@ -1923,26 +1922,24 @@ export default function JadwalProject() {
                       }}
                       width={0}
                     />
-                    {canViewPoTrendAmount && (
-                      <YAxis
-                        yAxisId="right"
-                        orientation="right"
-                        tick={{ fontSize: 12 }}
-                        width={84}
-                        domain={[0, 5]}
-                        ticks={[1, 2, 3, 4, 5]}
-                        interval={0}
-                        tickMargin={8}
-                        tickFormatter={(value) =>
-                          formatNominalAxisLabel(Number(value))
-                        }
-                        label={{
-                          value: "Nominal PO",
-                          angle: 90,
-                          position: "insideRight",
-                        }}
-                      />
-                    )}
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 12 }}
+                      width={84}
+                      domain={[0, 5]}
+                      ticks={[1, 2, 3, 4, 5]}
+                      interval={0}
+                      tickMargin={8}
+                      tickFormatter={(value) =>
+                        formatNominalAxisLabel(Number(value))
+                      }
+                      label={{
+                        value: "Nominal PO",
+                        angle: 90,
+                        position: "insideRight",
+                      }}
+                    />
                     <Tooltip
                       formatter={(value, name, item) => {
                         if (name === "Total Nominal PO" || name === "Target 3M") {
@@ -1967,27 +1964,32 @@ export default function JadwalProject() {
                       fill="#2563eb"
                       radius={[6, 6, 0, 0]}
                     />
+                    <ReferenceLine
+                      yAxisId="right"
+                      y={getNominalAxisValue(MONTHLY_PO_TARGET)}
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      ifOverflow="extendDomain"
+                      label={{
+                        value: "Target 3M",
+                        position: "right",
+                        fill: "#ef4444",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    />
                     {canViewPoTrendAmount && (
-                      <>
-                        <ReferenceLine
-                          yAxisId="right"
-                          y={getNominalAxisValue(3_000_000_000)}
-                          stroke="#ef4444"
-                          strokeWidth={2}
-                          ifOverflow="extendDomain"
-                        />
-                        <Line
-                          yAxisId="right"
-                          type="monotone"
-                          dataKey="totalAmountAxis"
-                          name="Total Nominal PO"
-                          stroke="#f97316"
-                          strokeWidth={2}
-                          connectNulls
-                          dot={{ r: 3, fill: "#ffffff", stroke: "#f97316", strokeWidth: 2 }}
-                          activeDot={{ r: 5 }}
-                        />
-                      </>
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="totalAmountAxis"
+                        name="Total Nominal PO"
+                        stroke="#f97316"
+                        strokeWidth={2}
+                        connectNulls
+                        dot={{ r: 3, fill: "#ffffff", stroke: "#f97316", strokeWidth: 2 }}
+                        activeDot={{ r: 5 }}
+                      />
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>

@@ -211,4 +211,92 @@ router.patch("/users/:id", async (req, res) => {
   res.json(updated);
 });
 
+router.delete("/users/:id", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat menghapus user" });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "ID user tidak valid" });
+    return;
+  }
+  if (id === user.id) {
+    res.status(400).json({ error: "Admin tidak dapat menghapus akunnya sendiri" });
+    return;
+  }
+
+  const [existingUser] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, id))
+    .limit(1);
+  if (!existingUser) {
+    res.status(404).json({ error: "User tidak ditemukan" });
+    return;
+  }
+
+  const dependencyResult = await db.execute(sql`
+    select
+      (
+        (select count(*) from daily_reports where user_id = ${id}) +
+        (select count(*) from report_comments where user_id = ${id}) +
+        (select count(*) from assigned_daily_tasks where assignee_user_id = ${id} or assigned_by_user_id = ${id}) +
+        (select count(*) from projects_po where pic_user_id = ${id} or created_by_user_id = ${id} or closed_by_user_id = ${id}) +
+        (select count(*) from po_change_logs where changed_by_user_id = ${id}) +
+        (select count(*) from po_internal_comments where user_id = ${id}) +
+        (select count(*) from daily_tasks where reviewed_by_user_id = ${id}) +
+        (select count(*) from todo_tasks where created_by_user_id = ${id}) +
+        (select count(*) from todo_task_assignees where user_id = ${id}) +
+        (select count(*) from todo_task_comments where user_id = ${id}) +
+        (select count(*) from attendance_mappings where user_id = ${id}) +
+        (select count(*) from attendance_scans where user_id = ${id}) +
+        (select count(*) from attendance_daily where user_id = ${id}) +
+        (select count(*) from attendance_import_batches where uploaded_by = ${id}) +
+        (select count(*) from attendance_notification_logs where user_id = ${id})
+      )::int as blocking_count
+  `);
+  const dependencyRow =
+    ((dependencyResult as { rows?: Array<{ blocking_count?: number | string }> }).rows?.[0]) ??
+    ((dependencyResult as unknown as Array<{ blocking_count?: number | string }>)[0]);
+  const blockingCount = Number(dependencyRow?.blocking_count ?? 0);
+
+  if (blockingCount > 0) {
+    res.status(409).json({
+      error:
+        "User ini punya histori laporan/tugas/PO/absensi, jadi tidak aman dihapus permanen. Nonaktifkan akun agar hilang dari flow aktif tanpa merusak histori.",
+      blockingCount,
+    });
+    return;
+  }
+
+  await db.execute(sql`delete from sessions where user_id = ${id}`);
+  await db.execute(sql`delete from notifications where user_id = ${id}`);
+  await db.execute(sql`delete from device_tokens where user_id = ${id}`);
+  await db.execute(sql`delete from daily_report_reminder_logs where user_id = ${id}`);
+  await db.execute(sql`update daily_report_reminder_logs set sent_by = null where sent_by = ${id}`);
+  await db.execute(sql`delete from name_change_requests where user_id = ${id}`);
+  await db.execute(sql`update name_change_requests set reviewed_by_user_id = null where reviewed_by_user_id = ${id}`);
+
+  const [deletedUser] = await db
+    .delete(usersTable)
+    .where(eq(usersTable.id, id))
+    .returning({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+    });
+
+  res.json({ deleted: true, user: deletedUser });
+});
+
 export default router;
