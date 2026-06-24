@@ -522,6 +522,10 @@ function isClosedPo(status: string) {
   return ["closed", "close"].includes(status);
 }
 
+function isClosedPoItem(po: Pick<PoItem, "status" | "closedAt">) {
+  return isClosedPo(po.status) || Boolean(po.closedAt);
+}
+
 function isDateOnly(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;
@@ -685,6 +689,7 @@ export default function JadwalProject() {
   const [formLoading, setFormLoading] = useState(false);
 
   const poParams = {
+    openOnly: "true",
     ...(!filterDateFrom && !filterDateTo
       ? { month: parseInt(filterMonth), year: parseInt(filterYear) }
       : {}),
@@ -859,10 +864,10 @@ export default function JadwalProject() {
       return nominalSort === "asc" ? difference : -difference;
     });
   };
-  const pos = sortByNominal(posRaw.filter(matchesDeliveryFilter));
+  const pos = sortByNominal(posRaw.filter((po) => !isClosedPoItem(po) && matchesDeliveryFilter(po)));
   const allPos = sortByNominal(allPosRaw.filter(
     (po) =>
-      !isClosedPo(po.status) &&
+      !isClosedPoItem(po) &&
       matchesOverallFilters(po),
   ));
   const yearlyTrendItems = Array.isArray(

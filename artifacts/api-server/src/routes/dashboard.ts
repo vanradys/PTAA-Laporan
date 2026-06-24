@@ -212,7 +212,7 @@ router.get("/dashboard/department-productivity", async (req, res) => {
           sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
         ))
       : [];
-    const submittedCount = new Set(reports.map((item) => item.userId)).size;
+    const submittedCount = new Set(reports.map((item) => `${item.userId}:${item.date}`)).size;
     const expectedSubmissions = employees.length * workingDates.length;
     result.push({
       departmentId: department.id,
@@ -220,7 +220,7 @@ router.get("/dashboard/department-productivity", async (req, res) => {
       employeeCount: employees.length,
       submittedCount,
       expectedSubmissions,
-      submitRate: employees.length ? Math.round(submittedCount / employees.length * 100) : 0,
+      submitRate: expectedSubmissions ? Math.round(submittedCount / expectedSubmissions * 100) : 0,
       period,
       periodStartDate: start,
       periodEndDate: end,

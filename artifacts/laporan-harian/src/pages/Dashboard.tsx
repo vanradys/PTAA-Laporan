@@ -253,7 +253,7 @@ Terima kasih.`;
           const name = formatDepartmentChartLabel(dept.departmentName);
           const current = groups.get(name) ?? { name, Submit: 0, Target: 0 };
           current.Submit += Number(dept.submittedCount ?? 0);
-          current.Target += Number(dept.employeeCount ?? 0);
+          current.Target += Number(dept.expectedSubmissions ?? dept.employeeCount ?? 0);
           groups.set(name, current);
           return groups;
         }, new Map<string, { name: string; Submit: number; Target: number }>())
