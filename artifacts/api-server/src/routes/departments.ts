@@ -1,5 +1,5 @@
-import { db, departmentsTable, usersTable, eq, inArray, sql } from "@workspace/db";
-import { getUserFromToken } from "./auth";
+import { db, departmentsTable, usersTable, eq, ilike, inArray, sql } from "@workspace/db";
+import { getUserFromToken, hashPassword } from "./auth";
 import { activeDepartmentCodes } from "./auth";
 import { Router } from "express";
 import { activeUserCondition } from "../services/dailyReportReminder";
@@ -92,6 +92,139 @@ router.get("/user-management/departments", async (req, res) => {
   res.json(departments);
 });
 
+const allowedUserManagementRoles = new Set([
+  "admin",
+  "direktur",
+  "karyawan",
+  "admin_marketing",
+  "marketing_specialist",
+  "monitoring_dummy",
+]);
+
+async function resolveUserManagementDepartmentId(
+  role: string,
+  departmentId: unknown,
+) {
+  const requiredDepartmentCodeByRole: Record<string, string> = {
+    direktur: "DIR",
+    admin_marketing: "MKT",
+    marketing_specialist: "MKT",
+    monitoring_dummy: "ADM",
+  };
+  const requiredDepartmentCode = requiredDepartmentCodeByRole[role];
+
+  if (requiredDepartmentCode) {
+    const [requiredDepartment] = await db
+      .select({ id: departmentsTable.id })
+      .from(departmentsTable)
+      .where(eq(departmentsTable.code, requiredDepartmentCode))
+      .limit(1);
+    if (!requiredDepartment) {
+      throw new Error(`Departemen wajib ${requiredDepartmentCode} belum tersedia`);
+    }
+    return requiredDepartment.id;
+  }
+
+  if (departmentId === undefined || departmentId === null || departmentId === "") {
+    return null;
+  }
+
+  const parsedDepartmentId = Number(departmentId);
+  if (!Number.isInteger(parsedDepartmentId) || parsedDepartmentId <= 0) {
+    const error = new Error("Departemen tidak valid");
+    (error as Error & { status?: number }).status = 400;
+    throw error;
+  }
+
+  const [department] = await db
+    .select({ id: departmentsTable.id })
+    .from(departmentsTable)
+    .where(eq(departmentsTable.id, parsedDepartmentId))
+    .limit(1);
+  if (!department) {
+    const error = new Error("Departemen tidak ditemukan");
+    (error as Error & { status?: number }).status = 400;
+    throw error;
+  }
+
+  return parsedDepartmentId;
+}
+
+router.post("/users", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat membuat akun" });
+    return;
+  }
+
+  const name = String(req.body?.name ?? "").trim();
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const password = String(req.body?.password ?? "").trim();
+  const role = String(req.body?.role ?? "karyawan").toLowerCase();
+
+  if (!name || !email || !password) {
+    res.status(400).json({ error: "Nama, email, dan password wajib diisi" });
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "Format email tidak valid" });
+    return;
+  }
+  if (password.length < 6) {
+    res.status(400).json({ error: "Password minimal 6 karakter" });
+    return;
+  }
+  if (!allowedUserManagementRoles.has(role)) {
+    res.status(400).json({ error: "Role tidak valid" });
+    return;
+  }
+
+  const [existingUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(ilike(usersTable.email, email))
+    .limit(1);
+  if (existingUser) {
+    res.status(409).json({ error: "Email sudah digunakan" });
+    return;
+  }
+
+  try {
+    const departmentId = await resolveUserManagementDepartmentId(
+      role,
+      req.body?.departmentId,
+    );
+    const [created] = await db
+      .insert(usersTable)
+      .values({
+        name,
+        email,
+        password: hashPassword(password),
+        role,
+        departmentId,
+        isActive: req.body?.isActive !== false,
+      })
+      .returning({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: usersTable.role,
+        departmentId: usersTable.departmentId,
+        isActive: usersTable.isActive,
+      });
+
+    res.status(201).json(created);
+  } catch (error) {
+    const typedError = error as Error & { status?: number };
+    res.status(typedError.status ?? 500).json({
+      error: typedError.message || "Gagal membuat akun",
+    });
+  }
+});
+
 router.patch("/users/:id", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
@@ -134,65 +267,23 @@ router.patch("/users/:id", async (req, res) => {
     res.status(400).json({ error: "Nama user tidak boleh kosong" });
     return;
   }
-  const allowedRoles = new Set([
-    "admin",
-    "direktur",
-    "karyawan",
-    "admin_marketing",
-    "marketing_specialist",
-    "monitoring_dummy",
-  ]);
-  if (role !== undefined && !allowedRoles.has(String(role).toLowerCase())) {
+  if (role !== undefined && !allowedUserManagementRoles.has(String(role).toLowerCase())) {
     res.status(400).json({ error: "Role tidak valid" });
     return;
   }
 
   const normalizedRole =
     role !== undefined ? String(role).toLowerCase() : existingUser.role;
-  const requiredDepartmentCodeByRole: Record<string, string> = {
-    direktur: "DIR",
-    admin_marketing: "MKT",
-    marketing_specialist: "MKT",
-    monitoring_dummy: "ADM",
-  };
-  const requiredDepartmentCode = requiredDepartmentCodeByRole[normalizedRole];
-  let normalizedDepartmentId =
-    departmentId === undefined
-      ? undefined
-      : departmentId === null || departmentId === ""
-        ? null
-        : Number(departmentId);
-
-  if (requiredDepartmentCode) {
-    const [requiredDepartment] = await db
-      .select({ id: departmentsTable.id })
-      .from(departmentsTable)
-      .where(eq(departmentsTable.code, requiredDepartmentCode))
-      .limit(1);
-    if (!requiredDepartment) {
-      res.status(500).json({
-        error: `Departemen wajib ${requiredDepartmentCode} belum tersedia`,
-      });
-      return;
-    }
-    normalizedDepartmentId = requiredDepartment.id;
-  }
-
-  if (normalizedDepartmentId !== undefined && normalizedDepartmentId !== null) {
-    const parsedDepartmentId = Number(normalizedDepartmentId);
-    if (!Number.isInteger(parsedDepartmentId) || parsedDepartmentId <= 0) {
-      res.status(400).json({ error: "Departemen tidak valid" });
-      return;
-    }
-    const [department] = await db
-      .select({ id: departmentsTable.id })
-      .from(departmentsTable)
-      .where(eq(departmentsTable.id, parsedDepartmentId))
-      .limit(1);
-    if (!department) {
-      res.status(400).json({ error: "Departemen tidak ditemukan" });
-      return;
-    }
+  let normalizedDepartmentId: number | null | undefined;
+  try {
+    normalizedDepartmentId =
+      departmentId === undefined
+        ? undefined
+        : await resolveUserManagementDepartmentId(normalizedRole, departmentId);
+  } catch (error) {
+    const typedError = error as Error & { status?: number };
+    res.status(typedError.status ?? 500).json({ error: typedError.message });
+    return;
   }
 
   const [updated] = await db

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Trash2, Users } from "lucide-react";
+import { Loader2, Plus, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +32,15 @@ type NameChangeRequest = {
   createdAt: string;
 };
 
+type CreateAccountForm = {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  departmentId: string;
+  isActive: boolean;
+};
+
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
   { value: "direktur", label: "Direktur" },
@@ -46,6 +55,15 @@ export default function UserManagement() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateAccountForm>({
+    name: "",
+    email: "",
+    password: "",
+    role: "karyawan",
+    departmentId: "none",
+    isActive: true,
+  });
   const { data: users, isLoading, error: usersError } = useQuery({
     queryKey: ["user-management"],
     queryFn: () => apiRequest<UserRow[]>("/api/users"),
@@ -134,6 +152,70 @@ export default function UserManagement() {
     }
   };
 
+  const setCreateField = <Key extends keyof CreateAccountForm>(
+    key: Key,
+    value: CreateAccountForm[Key],
+  ) => {
+    setCreateForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const resetCreateForm = () => {
+    setCreateForm({
+      name: "",
+      email: "",
+      password: "",
+      role: "karyawan",
+      departmentId: "none",
+      isActive: true,
+    });
+  };
+
+  const createAccount = async () => {
+    const name = createForm.name.trim();
+    const email = createForm.email.trim().toLowerCase();
+    const password = createForm.password.trim();
+
+    if (!name || !email || !password) {
+      toast({
+        title: "Data belum lengkap",
+        description: "Nama, email, dan password wajib diisi.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreatingAccount(true);
+    try {
+      await apiRequest("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          role: createForm.role,
+          departmentId:
+            createForm.departmentId === "none"
+              ? null
+              : Number(createForm.departmentId),
+          isActive: createForm.isActive,
+        }),
+      });
+      resetCreateForm();
+      await queryClient.invalidateQueries({ queryKey: ["user-management"] });
+      toast({ title: "Berhasil", description: "Akun baru berhasil dibuat." });
+    } catch (error) {
+      toast({
+        title: "Gagal membuat akun",
+        description:
+          error instanceof Error ? error.message : "Terjadi kesalahan saat membuat akun.",
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingAccount(false);
+    }
+  };
+
   if (user?.role !== "admin") {
     return <Layout><div className="page-shell text-sm text-red-600">Halaman ini hanya dapat diakses Admin.</div></Layout>;
   }
@@ -145,6 +227,132 @@ export default function UserManagement() {
           <h1 className="text-xl font-bold">User Management</h1>
           <p className="text-sm text-muted-foreground">Kelola nama, role, departemen, dan status akun.</p>
         </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Plus className="h-4 w-4" />
+              Add / Create Account
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+              <div className="space-y-1 xl:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Nama
+                </label>
+                <Input
+                  value={createForm.name}
+                  onChange={(event) => setCreateField("name", event.target.value)}
+                  placeholder="Nama user"
+                  disabled={creatingAccount}
+                />
+              </div>
+              <div className="space-y-1 xl:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Email
+                </label>
+                <Input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(event) => setCreateField("email", event.target.value)}
+                  placeholder="user@adiyasa.com"
+                  disabled={creatingAccount}
+                />
+              </div>
+              <div className="space-y-1 xl:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Password
+                </label>
+                <Input
+                  type="text"
+                  value={createForm.password}
+                  onChange={(event) =>
+                    setCreateField("password", event.target.value)
+                  }
+                  placeholder="Minimal 6 karakter"
+                  disabled={creatingAccount}
+                />
+              </div>
+              <div className="space-y-1 xl:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Role
+                </label>
+                <Select
+                  value={createForm.role}
+                  disabled={creatingAccount}
+                  onValueChange={(role) => setCreateField("role", role)}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ROLE_OPTIONS.map((role) => (
+                      <SelectItem key={role.value} value={role.value}>
+                        {role.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 xl:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Departemen
+                </label>
+                <Select
+                  value={createForm.departmentId}
+                  disabled={creatingAccount}
+                  onValueChange={(departmentId) =>
+                    setCreateField("departmentId", departmentId)
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa Departemen</SelectItem>
+                    {(departments ?? []).map((department) => (
+                      <SelectItem key={department.id} value={String(department.id)}>
+                        {department.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {["direktur", "admin_marketing", "marketing_specialist", "monitoring_dummy"].includes(createForm.role) && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Departemen akan disesuaikan otomatis sesuai role.
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-end gap-2 xl:col-span-2">
+                <Select
+                  value={createForm.isActive ? "active" : "inactive"}
+                  disabled={creatingAccount}
+                  onValueChange={(value) =>
+                    setCreateField("isActive", value === "active")
+                  }
+                >
+                  <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Aktif</SelectItem>
+                    <SelectItem value="inactive">Nonaktif</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={createAccount} disabled={creatingAccount}>
+                  {creatingAccount ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Buat Akun
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetCreateForm}
+                  disabled={creatingAccount}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
         {(nameRequests ?? []).some((item) => item.status === "pending") && (
           <Card>
             <CardHeader>
