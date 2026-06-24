@@ -411,7 +411,7 @@ Terima kasih.`;
                       Periode: {periodRangeText}
                     </span>
                     <span className="rounded-md bg-blue-50 px-2 py-1 font-semibold text-blue-700">
-                      Submit: {summary.submittedEmployeeCount} / {summary.requiredEmployeeCount}
+                      Submit: {summary.submittedToday} / {summary.expectedSubmissions}
                     </span>
                     <span className="rounded-md bg-violet-50 px-2 py-1 font-semibold text-violet-700">
                       Total Tugas: {summary.totalTasksToday}

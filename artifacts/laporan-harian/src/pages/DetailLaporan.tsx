@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useLocation, useSearch } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetReport, useCreateComment,
   getGetReportQueryKey, getListReportsQueryKey
@@ -53,6 +53,7 @@ interface Task {
   reviewComment?: string | null;
   reviewedByName?: string | null;
   revisionWorkTaskId?: number | null;
+  reportDate?: string | null;
 }
 
 interface Comment {
@@ -76,16 +77,28 @@ export default function DetailLaporan() {
   const [reviewingTaskId, setReviewingTaskId] = useState<number | null>(null);
 
   const reportId = parseInt(id ?? "0");
-  const returnTo = new URLSearchParams(search).get("returnTo") || "/monitoring";
+  const searchParams = new URLSearchParams(search);
+  const returnTo = searchParams.get("returnTo") || "/monitoring";
+  const periodUserId = searchParams.get("periodUserId");
+  const periodDateFrom = searchParams.get("dateFrom");
+  const periodDateTo = searchParams.get("dateTo");
+  const isPeriodDetail = Boolean(periodUserId && periodDateFrom && periodDateTo);
   const { data: report, isLoading } = useGetReport(
     reportId,
-    { query: { enabled: !!reportId, queryKey: getGetReportQueryKey(reportId) } }
+    { query: { enabled: !!reportId && !isPeriodDetail, queryKey: getGetReportQueryKey(reportId) } }
   );
+  const { data: periodReport, isLoading: isLoadingPeriod } = useQuery({
+    queryKey: ["period-report-detail", periodUserId, periodDateFrom, periodDateTo],
+    queryFn: () =>
+      apiRequest(`/api/reports/period-detail?userId=${periodUserId}&dateFrom=${periodDateFrom}&dateTo=${periodDateTo}`),
+    enabled: isPeriodDetail,
+  });
 
   const createComment = useCreateComment();
 
   const canReview = ["admin", "direktur", "director", "dir"].includes(user?.role ?? "");
-  const r = report as (typeof report & {
+  const activeReport = isPeriodDetail ? periodReport : report;
+  const r = activeReport as (typeof report & {
     tasks?: Task[];
     comments?: Comment[];
     obstacles?: string | null;
@@ -98,6 +111,8 @@ export default function DetailLaporan() {
     dayName?: string;
     avgProgress?: number;
     taskCount?: number;
+    periodStartDate?: string;
+    periodEndDate?: string;
   }) | null;
 
   const handleAddComment = async () => {
@@ -168,7 +183,7 @@ export default function DetailLaporan() {
     queryClient.invalidateQueries({ queryKey: getGetReportQueryKey(reportId) });
   };
 
-  if (isLoading) {
+  if (isLoading || isLoadingPeriod) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-full">
@@ -217,7 +232,11 @@ export default function DetailLaporan() {
                 {statusInfo.label}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground">{r.dayName}, {r.date && new Date(r.date + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}</p>
+            <p className="text-sm text-muted-foreground">
+              {isPeriodDetail && r.periodStartDate && r.periodEndDate
+                ? `Periode ${new Date(r.periodStartDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })} - ${new Date(r.periodEndDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}`
+                : `${r.dayName}, ${r.date && new Date(r.date + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}`}
+            </p>
           </div>
         </div>
 
@@ -288,7 +307,14 @@ export default function DetailLaporan() {
                     const ts = TASK_STATUSES[task.status] ?? TASK_STATUSES.belum_mulai;
                     return (
                       <tr key={task.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-3 font-medium text-foreground">{task.title}</td>
+                        <td className="px-4 py-3 font-medium text-foreground">
+                          {task.title}
+                          {task.reportDate && (
+                            <p className="mt-1 text-xs font-normal text-muted-foreground">
+                              Laporan {new Date(task.reportDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+                            </p>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-muted-foreground">{task.project ?? "—"}</td>
                         <td className="px-4 py-3 text-muted-foreground">{task.deadline ?? "-"}</td>
                         <td className="px-4 py-3 text-muted-foreground">{task.completionValue ?? "-"}</td>

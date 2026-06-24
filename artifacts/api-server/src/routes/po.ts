@@ -874,7 +874,7 @@ router.get("/po", async (req, res) => {
       : items;
   const filteredItems =
     String(openOnly) === "true"
-      ? filteredByStatus.filter((item) => item.status !== "closed")
+      ? filteredByStatus.filter((item) => item.status !== "closed" && !item.closedAt)
       : filteredByStatus;
 
   res.json(filteredItems);
@@ -1058,8 +1058,6 @@ router.get("/po/yearly-trend", async (req, res) => {
       ),
     );
 
-  const canSeeAmount = canViewPoAmount(user);
-
   const monthLabels = [
     "Jan",
     "Feb",
@@ -1083,21 +1081,20 @@ router.get("/po/yearly-trend", async (req, res) => {
       return date.getFullYear() === year && date.getMonth() + 1 === monthNumber;
     });
 
-    const totalAmount = canSeeAmount
-      ? monthlyPos.reduce((sum, po) => sum + Number(po.poAmount ?? 0), 0)
-      : 0;
+    const totalAmount = monthlyPos.reduce((sum, po) => sum + Number(po.poAmount ?? 0), 0);
 
     return {
       month,
       monthNumber,
       totalPo: monthlyPos.length,
-      ...(canSeeAmount ? { totalAmount, targetAmount: MONTHLY_PO_TARGET } : {}),
+      totalAmount,
+      targetAmount: MONTHLY_PO_TARGET,
     };
   });
 
   res.json({
     year,
-    canViewAmount: canSeeAmount,
+    canViewAmount: true,
     items: trend,
   });
 });

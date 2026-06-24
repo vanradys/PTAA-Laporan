@@ -217,6 +217,156 @@ async function buildReportDetail(reportId: number) {
   };
 }
 
+async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo: string) {
+  const reports = await db
+    .select({
+      id: dailyReportsTable.id,
+      userId: dailyReportsTable.userId,
+      departmentId: dailyReportsTable.departmentId,
+      date: dailyReportsTable.date,
+      obstacles: dailyReportsTable.obstacles,
+      additionalNotes: dailyReportsTable.additionalNotes,
+      tomorrowPlan: dailyReportsTable.tomorrowPlan,
+      status: dailyReportsTable.status,
+      submittedAt: dailyReportsTable.submittedAt,
+      createdAt: dailyReportsTable.createdAt,
+      updatedAt: dailyReportsTable.updatedAt,
+      userName: usersTable.name,
+      userEmail: usersTable.email,
+      departmentName: departmentsTable.name,
+    })
+    .from(dailyReportsTable)
+    .leftJoin(usersTable, eq(dailyReportsTable.userId, usersTable.id))
+    .leftJoin(departmentsTable, eq(dailyReportsTable.departmentId, departmentsTable.id))
+    .where(and(
+      eq(dailyReportsTable.userId, userId),
+      gte(dailyReportsTable.date, dateFrom),
+      lte(dailyReportsTable.date, dateTo),
+    ))
+    .orderBy(dailyReportsTable.date, dailyReportsTable.createdAt);
+
+  if (!reports.length) return null;
+
+  const reportIds = reports.map((report) => report.id);
+  const tasks = await db
+    .select({
+      id: dailyTasksTable.id,
+      reportId: dailyTasksTable.reportId,
+      title: dailyTasksTable.title,
+      project: dailyTasksTable.project,
+      deadline: dailyTasksTable.deadline,
+      completionInputType: dailyTasksTable.completionInputType,
+      completionValue: dailyTasksTable.completionValue,
+      progress: dailyTasksTable.progress,
+      status: dailyTasksTable.status,
+      notes: dailyTasksTable.notes,
+      reviewStatus: dailyTasksTable.reviewStatus,
+      reviewComment: dailyTasksTable.reviewComment,
+      reviewedByUserId: dailyTasksTable.reviewedByUserId,
+      reviewedByName: dailyTasksTable.reviewedByName,
+      reviewedAt: dailyTasksTable.reviewedAt,
+      correctedAt: dailyTasksTable.correctedAt,
+      revisionSourceTaskId: dailyTasksTable.revisionSourceTaskId,
+      revisionWorkTaskId: dailyTasksTable.revisionWorkTaskId,
+      editCount: dailyTasksTable.editCount,
+      createdAt: dailyTasksTable.createdAt,
+      updatedAt: dailyTasksTable.updatedAt,
+      reportDate: dailyReportsTable.date,
+    })
+    .from(dailyTasksTable)
+    .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+    .where(inArray(dailyTasksTable.reportId, reportIds))
+    .orderBy(dailyReportsTable.date, dailyTasksTable.createdAt);
+
+  const comments = await db
+    .select({
+      id: reportCommentsTable.id,
+      reportId: reportCommentsTable.reportId,
+      userId: reportCommentsTable.userId,
+      comment: reportCommentsTable.comment,
+      createdAt: reportCommentsTable.createdAt,
+      userName: usersTable.name,
+      userRole: usersTable.role,
+    })
+    .from(reportCommentsTable)
+    .leftJoin(usersTable, eq(reportCommentsTable.userId, usersTable.id))
+    .where(inArray(reportCommentsTable.reportId, reportIds))
+    .orderBy(reportCommentsTable.createdAt);
+
+  const revisionCount = tasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length;
+  const correctedCount = tasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length;
+  const reviewedCount = tasks.filter((task) => task.reviewStatus === "direview").length;
+  const avgProgress = tasks.length > 0
+    ? Math.round(tasks.reduce((sum, task) => sum + task.progress, 0) / tasks.length)
+    : 0;
+  const latestReport = reports[reports.length - 1];
+
+  return {
+    id: latestReport.id,
+    userId: latestReport.userId,
+    userName: latestReport.userName ?? "",
+    userEmail: latestReport.userEmail ?? "",
+    departmentId: latestReport.departmentId ?? null,
+    departmentName: latestReport.departmentName ?? null,
+    date: `${dateFrom} s/d ${dateTo}`,
+    dayName: "Periode",
+    periodStartDate: dateFrom,
+    periodEndDate: dateTo,
+    reportIds,
+    obstacles: reports.map((report) => report.obstacles).filter(Boolean).join("\n") || null,
+    additionalNotes: reports.map((report) => report.additionalNotes).filter(Boolean).join("\n") || null,
+    tomorrowPlan: reports.map((report) => report.tomorrowPlan).filter(Boolean).join("\n") || null,
+    status: getMonitoringReviewStatus(latestReport.status, revisionCount, correctedCount, reviewedCount),
+    storedStatus: latestReport.status,
+    revisionCount,
+    submittedAt: latestReport.submittedAt ? latestReport.submittedAt.toISOString() : null,
+    tasks: tasks.map((task) => {
+      const editCount = task.editCount ?? 0;
+
+      return {
+        id: task.id,
+        reportId: task.reportId,
+        reportDate: task.reportDate,
+        title: task.title,
+        project: task.project ?? null,
+        deadline: task.deadline ?? null,
+        completionInputType: task.completionInputType ?? null,
+        completionValue: task.completionValue ?? null,
+        progress: task.progress,
+        status: task.status,
+        notes: task.notes ?? null,
+        reviewStatus: task.reviewStatus ?? null,
+        reviewComment: task.reviewComment ?? null,
+        reviewedByUserId: task.reviewedByUserId ?? null,
+        reviewedByName: task.reviewedByName ?? null,
+        reviewedAt: task.reviewedAt?.toISOString() ?? null,
+        correctedAt: task.correctedAt?.toISOString() ?? null,
+        revisionSourceTaskId: task.revisionSourceTaskId ?? null,
+        revisionWorkTaskId: task.revisionWorkTaskId ?? null,
+        editCount,
+        remainingActions: getRemainingActions(editCount),
+        isLocked: isTaskLockedByCount(editCount),
+        isDelay: isTaskDelay(task.deadline, task.status),
+        createdAt: task.createdAt.toISOString(),
+        updatedAt: task.updatedAt.toISOString(),
+      };
+    }),
+    comments: comments.map((comment) => ({
+      id: comment.id,
+      reportId: comment.reportId,
+      userId: comment.userId,
+      userName: comment.userName ?? "",
+      userRole: comment.userRole ?? "",
+      comment: comment.comment,
+      createdAt: comment.createdAt.toISOString(),
+    })),
+    taskCount: tasks.length,
+    avgProgress,
+    createdAt: reports[0].createdAt.toISOString(),
+    updatedAt: latestReport.updatedAt.toISOString(),
+  };
+}
+
 router.get("/reports", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
@@ -404,6 +554,88 @@ router.get("/reports", async (req, res) => {
     tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, item]));
   }
 
+  if (dateFrom && dateTo && dateFrom !== dateTo) {
+    const grouped = new Map<number, {
+      id: number;
+      reportId: number;
+      reportIds: number[];
+      userId: number;
+      userName: string;
+      departmentId: number | null;
+      departmentName: string | null;
+      latestDate: string;
+      submittedAt: string | null;
+      taskCount: number;
+      progressTotal: number;
+      revisions: number;
+      corrected: number;
+      reviewed: number;
+      latestStatus: string;
+      createdAt: string;
+    }>();
+
+    for (const report of reports) {
+      const stats = tasksByReport[report.id] ?? { count: 0, avg: 0, revisions: 0, corrected: 0, reviewed: 0 };
+      const current = grouped.get(report.userId) ?? {
+        id: report.id,
+        reportId: report.id,
+        reportIds: [],
+        userId: report.userId,
+        userName: report.userName ?? "",
+        departmentId: report.departmentId ?? null,
+        departmentName: report.departmentName ?? null,
+        latestDate: report.date,
+        submittedAt: report.submittedAt?.toISOString() ?? null,
+        taskCount: 0,
+        progressTotal: 0,
+        revisions: 0,
+        corrected: 0,
+        reviewed: 0,
+        latestStatus: report.status,
+        createdAt: report.createdAt.toISOString(),
+      };
+
+      current.reportIds.push(report.id);
+      current.taskCount += stats.count;
+      current.progressTotal += stats.avg * stats.count;
+      current.revisions += stats.revisions;
+      current.corrected += stats.corrected;
+      current.reviewed += stats.reviewed;
+      if (report.date >= current.latestDate) {
+        current.id = report.id;
+        current.reportId = report.id;
+        current.latestDate = report.date;
+        current.submittedAt = report.submittedAt?.toISOString() ?? null;
+        current.latestStatus = report.status;
+      }
+      grouped.set(report.userId, current);
+    }
+
+    res.json(Array.from(grouped.values()).map((item) => ({
+      id: item.id,
+      reportId: item.reportId,
+      reportIds: item.reportIds,
+      hasReport: true,
+      userId: item.userId,
+      userName: item.userName,
+      departmentId: item.departmentId,
+      departmentName: item.departmentName,
+      date: item.latestDate,
+      dayName: "Periode",
+      periodStartDate: dateFrom,
+      periodEndDate: dateTo,
+      taskCount: item.taskCount,
+      avgProgress: item.taskCount ? Math.round(item.progressTotal / item.taskCount) : 0,
+      status: getMonitoringReviewStatus(item.latestStatus, item.revisions, item.corrected, item.reviewed),
+      storedStatus: item.latestStatus,
+      revisionCount: item.revisions,
+      isSubmitted: true,
+      submittedAt: item.submittedAt,
+      createdAt: item.createdAt,
+    })));
+    return;
+  }
+
   res.json(reports.map((report) => {
     const stats = tasksByReport[report.id] ?? { count: 0, avg: 0, revisions: 0, corrected: 0, reviewed: 0 };
     return {
@@ -499,6 +731,26 @@ router.get("/reports/today", async (req, res) => {
   }
 
   const detail = await buildReportDetail(reports[0].id);
+  res.json(detail);
+});
+
+router.get("/reports/period-detail", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  const userId = Number(req.query.userId);
+  const dateFrom = String(req.query.dateFrom ?? "");
+  const dateTo = String(req.query.dateTo ?? "");
+
+  if (!Number.isFinite(userId) || !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+    res.status(400).json({ error: "Parameter periode tidak valid" });
+    return;
+  }
+
+  const detail = await buildPeriodReportDetail(userId, dateFrom, dateTo);
+  if (!detail) { res.status(404).json({ error: "Laporan periode tidak ditemukan" }); return; }
   res.json(detail);
 });
 

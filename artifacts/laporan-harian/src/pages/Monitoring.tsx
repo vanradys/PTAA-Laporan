@@ -68,6 +68,9 @@ type ReportSummaryLike = {
   avgProgress: number;
   status: string;
   submittedAt?: string | null;
+  reportIds?: number[];
+  periodStartDate?: string;
+  periodEndDate?: string;
 };
 
 type MonitoringReportRow = {
@@ -86,6 +89,9 @@ type MonitoringReportRow = {
   submittedAt: string | null;
   hasReport: boolean;
   isSubmitted: boolean;
+  reportIds?: number[];
+  periodStartDate?: string;
+  periodEndDate?: string;
 };
 
 function getStatusInfo(status: string) {
@@ -167,6 +173,9 @@ function buildRowsFromEmployeesAndReports(
       submittedAt: report?.submittedAt ?? null,
       hasReport: !!report,
       isSubmitted: isSubmittedStatus(status),
+      reportIds: report?.reportIds,
+      periodStartDate: report?.periodStartDate,
+      periodEndDate: report?.periodEndDate,
     };
   });
 }
@@ -257,6 +266,9 @@ export default function Monitoring() {
       submittedAt: report.submittedAt ?? null,
       hasReport: true,
       isSubmitted: isSubmittedStatus(report.status),
+      reportIds: report.reportIds,
+      periodStartDate: report.periodStartDate,
+      periodEndDate: report.periodEndDate,
     }));
   }, [employeeList, filters.dateFrom, filters.dateTo, reportList]);
 
@@ -574,6 +586,14 @@ export default function Monitoring() {
                   <tbody>
                     {filteredRows.map((report) => {
                       const statusInfo = getStatusInfo(report.status);
+                      const detailParams = new URLSearchParams({
+                        returnTo: monitoringReturnTo,
+                      });
+                      if (filters.dateFrom && filters.dateTo && filters.dateFrom !== filters.dateTo) {
+                        detailParams.set("periodUserId", String(report.userId));
+                        detailParams.set("dateFrom", filters.dateFrom);
+                        detailParams.set("dateTo", filters.dateTo);
+                      }
                       return (
                         <tr key={`${report.userId}-${report.date}-${report.id}`} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                           <td className="px-4 py-3">
@@ -614,7 +634,7 @@ export default function Monitoring() {
                           </td>
                           <td className="px-4 py-3 text-center">
                             {report.reportId ? (
-                              <Link href={`/laporan/${report.reportId}?returnTo=${encodeURIComponent(monitoringReturnTo)}`}>
+                              <Link href={`/laporan/${report.reportId}?${detailParams.toString()}`}>
                                 <Button variant="ghost" size="icon" className="w-7 h-7">
                                   <Eye className="w-3.5 h-3.5" />
                                 </Button>
