@@ -97,6 +97,7 @@ export default function DetailLaporan() {
   const createComment = useCreateComment();
 
   const canReview = ["admin", "direktur", "director", "dir"].includes(user?.role ?? "");
+  const canManageComments = String(user?.role ?? "").toLowerCase() === "admin";
   const activeReport = isPeriodDetail ? periodReport : report;
   const r = activeReport as (typeof report & {
     tasks?: Task[];
@@ -447,7 +448,7 @@ export default function DetailLaporan() {
                       </span>
                     </div>
                     <p className="text-sm text-foreground whitespace-pre-wrap">{c.comment}</p>
-                    {user?.role === "admin" && (
+                    {canManageComments && (
                       <div className="mt-2 flex gap-1">
                         <Button variant="ghost" size="sm" onClick={() => handleEditComment(c)}>
                           <Pencil className="mr-1 h-3.5 w-3.5" />
