@@ -16,6 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
 import { apiRequest } from "@/lib/apiRequest";
@@ -31,6 +38,15 @@ const TASK_STATUSES: Record<string, { label: string; color: string }> = {
   delivered: { label: "Delivered", color: "bg-green-100 text-green-700 border-green-200" },
   selesai: { label: "Delivered", color: "bg-green-100 text-green-700 border-green-200" },
 };
+
+const TASK_STATUS_FILTER_OPTIONS = [
+  { value: "semua", label: "Semua Status", statuses: [] },
+  { value: "belum_mulai", label: "Belum Mulai", statuses: ["belum_mulai"] },
+  { value: "menerima_permintaan", label: "Menerima Permintaan", statuses: ["menerima_permintaan", "inquiry"] },
+  { value: "input_data_proses", label: "Input Data/Proses", statuses: ["input_data_proses", "proses"] },
+  { value: "review_approval", label: "Review/Approval", statuses: ["review_approval"] },
+  { value: "delivered", label: "Delivered", statuses: ["delivered", "selesai"] },
+];
 
 const REPORT_STATUSES: Record<string, { label: string; color: string }> = {
   draf: { label: "Draf", color: "bg-gray-100 text-gray-700 border-gray-200" },
@@ -75,6 +91,8 @@ export default function DetailLaporan() {
   const [commentText, setCommentText] = useState("");
   const [taskReviewDrafts, setTaskReviewDrafts] = useState<Record<number, string>>({});
   const [reviewingTaskId, setReviewingTaskId] = useState<number | null>(null);
+  const [taskSortOrder, setTaskSortOrder] = useState<"asc" | "desc">("asc");
+  const [taskStatusFilter, setTaskStatusFilter] = useState("semua");
 
   const reportId = parseInt(id ?? "0");
   const searchParams = new URLSearchParams(search);
@@ -217,6 +235,22 @@ export default function DetailLaporan() {
           : REPORT_STATUSES[r.status ?? "draf"] ?? REPORT_STATUSES.draf;
   const tasks: Task[] = r.tasks ?? [];
   const comments: Comment[] = r.comments ?? [];
+  const selectedTaskStatus = TASK_STATUS_FILTER_OPTIONS.find((item) => item.value === taskStatusFilter);
+  const getTaskSortTime = (task: Task) => {
+    const value = task.reportDate || task.deadline || task.completionValue;
+    const time = value ? new Date(`${value}T00:00:00`).getTime() : Number.NaN;
+    return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+  };
+  const displayedTasks = [...tasks]
+    .filter((task) =>
+      !selectedTaskStatus ||
+      selectedTaskStatus.value === "semua" ||
+      selectedTaskStatus.statuses.includes(task.status),
+    )
+    .sort((left, right) => {
+      const difference = getTaskSortTime(left) - getTaskSortTime(right);
+      return taskSortOrder === "asc" ? difference : -difference;
+    });
 
   return (
     <Layout>
@@ -280,14 +314,51 @@ export default function DetailLaporan() {
         {/* Tasks */}
         <Card className="border border-border">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center justify-between">
-              Daftar Tugas
-              <span className="text-sm font-normal text-muted-foreground">{tasks.length} tugas</span>
-            </CardTitle>
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <CardTitle className="text-base flex items-center gap-3">
+                Daftar Tugas
+                <span className="text-sm font-normal text-muted-foreground">
+                  {displayedTasks.length === tasks.length
+                    ? `${tasks.length} tugas`
+                    : `${displayedTasks.length} dari ${tasks.length} tugas`}
+                </span>
+              </CardTitle>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Sort by</p>
+                  <Select value={taskSortOrder} onValueChange={(value) => setTaskSortOrder(value as "asc" | "desc")}>
+                    <SelectTrigger className="h-8 w-44 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="asc">Tanggal Paling Awal</SelectItem>
+                      <SelectItem value="desc">Tanggal Paling Akhir</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Status</p>
+                  <Select value={taskStatusFilter} onValueChange={setTaskStatusFilter}>
+                    <SelectTrigger className="h-8 w-44 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TASK_STATUS_FILTER_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {tasks.length === 0 ? (
               <div className="px-5 py-8 text-center text-muted-foreground text-sm">Tidak ada tugas</div>
+            ) : displayedTasks.length === 0 ? (
+              <div className="px-5 py-8 text-center text-muted-foreground text-sm">Tidak ada tugas sesuai filter</div>
             ) : (
               <div className="overflow-x-auto">
               <table className="w-full min-w-[1120px] table-fixed text-sm">
@@ -304,7 +375,7 @@ export default function DetailLaporan() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.map((task) => {
+                  {displayedTasks.map((task) => {
                     const ts = TASK_STATUSES[task.status] ?? TASK_STATUSES.belum_mulai;
                     return (
                       <tr key={task.id} className="border-b border-border last:border-0">
