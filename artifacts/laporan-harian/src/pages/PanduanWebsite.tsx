@@ -24,6 +24,7 @@ type Tutorial = {
   sortOrder: number;
   screenshotData: string | null;
   screenshotMimeType: string | null;
+  screenshotUrl?: string | null;
 };
 
 type TutorialDraft = Pick<Tutorial, "title" | "content" | "sortOrder"> & {
@@ -50,9 +51,9 @@ function stepsFromContent(content: string) {
     .filter(Boolean);
 }
 
-const MAX_SCREENSHOT_BYTES = 700 * 1024;
-const INITIAL_SCREENSHOT_DIMENSION = 1200;
-const MIN_SCREENSHOT_DIMENSION = 480;
+const MAX_SCREENSHOT_BYTES = 120 * 1024;
+const INITIAL_SCREENSHOT_DIMENSION = 900;
+const MIN_SCREENSHOT_DIMENSION = 320;
 
 async function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -100,7 +101,7 @@ async function prepareScreenshot(file: File) {
     context.fillRect(0, 0, width, height);
     context.drawImage(image, 0, 0, width, height);
 
-    for (const quality of [0.78, 0.68, 0.58, 0.48]) {
+    for (const quality of [0.72, 0.62, 0.52, 0.42, 0.34]) {
       const compressed = canvas.toDataURL("image/jpeg", quality);
       const estimatedBytes = Math.ceil((compressed.length - compressed.indexOf(",") - 1) * 0.75);
       if (estimatedBytes <= MAX_SCREENSHOT_BYTES) {
@@ -121,6 +122,8 @@ export default function PanduanWebsite() {
   const [draft, setDraft] = useState<TutorialDraft>(emptyDraft);
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [screenshotChanged, setScreenshotChanged] = useState(false);
+  const [existingScreenshotUrl, setExistingScreenshotUrl] = useState<string | null>(null);
 
   const tutorialsQuery = useQuery({
     queryKey: ["tutorials"],
@@ -135,9 +138,11 @@ export default function PanduanWebsite() {
       title: item.title,
       content: normalizeTutorialContent(item.content),
       sortOrder: item.sortOrder,
-      screenshotData: item.screenshotData,
+      screenshotData: null,
       screenshotMimeType: item.screenshotMimeType,
     });
+    setScreenshotChanged(false);
+    setExistingScreenshotUrl(item.screenshotUrl ?? item.screenshotData ?? null);
   };
 
   const save = async () => {
@@ -145,8 +150,15 @@ export default function PanduanWebsite() {
     setIsSaving(true);
     try {
       const payload = {
-        ...draft,
+        title: draft.title,
+        sortOrder: draft.sortOrder,
         content: normalizeTutorialContent(draft.content),
+        ...(editingId === "new" || screenshotChanged
+          ? {
+              screenshotData: draft.screenshotData ?? null,
+              screenshotMimeType: draft.screenshotMimeType ?? null,
+            }
+          : {}),
       };
       await apiRequest(editingId === "new" ? "/api/tutorials" : `/api/tutorials/${editingId}`, {
         method: editingId === "new" ? "POST" : "PATCH",
@@ -155,6 +167,8 @@ export default function PanduanWebsite() {
       });
       setEditingId(null);
       setDraft(emptyDraft);
+      setScreenshotChanged(false);
+      setExistingScreenshotUrl(null);
       await queryClient.invalidateQueries({ queryKey: ["tutorials"] });
       toast({ title: "Panduan disimpan" });
     } catch (error) {
@@ -179,7 +193,7 @@ export default function PanduanWebsite() {
             <p className="text-sm text-slate-500">FAQ dan tutorial penggunaan sistem PTAA.</p>
           </div>
           {isAdmin && (
-            <Button onClick={() => { setEditingId("new"); setDraft({ ...emptyDraft, sortOrder: (tutorials.length + 1) * 10 }); }}>
+            <Button onClick={() => { setEditingId("new"); setDraft({ ...emptyDraft, sortOrder: (tutorials.length + 1) * 10 }); setScreenshotChanged(false); setExistingScreenshotUrl(null); }}>
               <Plus className="mr-2 h-4 w-4" />
               Tambah Panduan
             </Button>
@@ -219,6 +233,7 @@ export default function PanduanWebsite() {
                           screenshotData: screenshot.dataUrl,
                           screenshotMimeType: screenshot.mimeType,
                         }));
+                        setScreenshotChanged(true);
                       } catch (error) {
                         toast({
                           title: "Gagal upload foto",
@@ -231,13 +246,20 @@ export default function PanduanWebsite() {
                     }}
                   />
                 </label>
-                {draft.screenshotData && <Button type="button" variant="outline" disabled={isSaving} onClick={() => setDraft({ ...draft, screenshotData: null, screenshotMimeType: null })}>Hapus Gambar</Button>}
+                {(draft.screenshotData || (!screenshotChanged && existingScreenshotUrl)) && <Button type="button" variant="outline" disabled={isSaving} onClick={() => { setDraft({ ...draft, screenshotData: null, screenshotMimeType: null }); setScreenshotChanged(true); setExistingScreenshotUrl(null); }}>Hapus Gambar</Button>}
                 <Button type="button" onClick={save} disabled={isSaving || isProcessingImage || !draft.title.trim() || !draft.content.trim()}>
                   <Save className="mr-2 h-4 w-4" />
                   {isSaving ? "Menyimpan..." : isProcessingImage ? "Memproses..." : "Simpan"}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => setEditingId(null)}>Batal</Button>
+                <Button type="button" variant="outline" onClick={() => { setEditingId(null); setScreenshotChanged(false); setExistingScreenshotUrl(null); }}>Batal</Button>
               </div>
+              {(draft.screenshotData || (!screenshotChanged && existingScreenshotUrl)) && (
+                <img
+                  src={draft.screenshotData ?? existingScreenshotUrl ?? undefined}
+                  alt="Preview screenshot"
+                  className="h-40 w-full rounded border object-cover"
+                />
+              )}
             </CardContent>
           </Card>
         )}
@@ -257,8 +279,8 @@ export default function PanduanWebsite() {
                     ))}
                   </div>
                   <div className="rounded-md border border-dashed bg-slate-50 p-3">
-                    {item.screenshotData ? (
-                      <img src={item.screenshotData} alt={item.title} className="h-40 w-full rounded object-cover" />
+                    {item.screenshotUrl || item.screenshotData ? (
+                      <img src={item.screenshotUrl ?? item.screenshotData ?? undefined} alt={item.title} className="h-40 w-full rounded object-cover" />
                     ) : (
                       <div className="flex h-40 items-center justify-center text-center text-xs font-semibold text-slate-400">Screenshot placeholder</div>
                     )}

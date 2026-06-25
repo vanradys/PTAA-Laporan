@@ -51,8 +51,9 @@ function buildTutorial(item: typeof websiteTutorialsTable.$inferSelect) {
     title: item.title,
     content: item.content,
     sortOrder: item.sortOrder,
-    screenshotData: item.screenshotData ?? null,
+    screenshotData: null,
     screenshotMimeType: item.screenshotMimeType ?? null,
+    screenshotUrl: item.screenshotData ? `/api/tutorials/${item.id}/screenshot` : null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
@@ -65,6 +66,27 @@ router.get("/tutorials", async (req, res) => {
   const items = await db.select().from(websiteTutorialsTable)
     .orderBy(websiteTutorialsTable.sortOrder, websiteTutorialsTable.id);
   res.json(items.map(buildTutorial));
+});
+
+router.get("/tutorials/:id/screenshot", async (req, res) => {
+  const user = await authenticate(req, res);
+  if (!user) return;
+  const [item] = await db.select({
+    screenshotData: websiteTutorialsTable.screenshotData,
+    screenshotMimeType: websiteTutorialsTable.screenshotMimeType,
+  }).from(websiteTutorialsTable)
+    .where(eq(websiteTutorialsTable.id, Number(req.params.id)))
+    .limit(1);
+  if (!item?.screenshotData) { res.status(404).json({ error: "Screenshot tidak ditemukan" }); return; }
+
+  const match = item.screenshotData.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) { res.status(422).json({ error: "Format screenshot tidak valid" }); return; }
+
+  const mimeType = item.screenshotMimeType || match[1] || "image/jpeg";
+  const buffer = Buffer.from(match[2], "base64");
+  res.setHeader("Content-Type", mimeType);
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.send(buffer);
 });
 
 router.post("/tutorials", async (req, res) => {
