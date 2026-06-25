@@ -289,17 +289,17 @@ export default function DetailLaporan() {
               <div className="px-5 py-8 text-center text-muted-foreground text-sm">Tidak ada tugas</div>
             ) : (
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[1120px] text-sm">
+              <table className="w-full min-w-[1120px] table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Tugas</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Project</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diberikan</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diselesaikan</th>
-                    <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
-                    <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Job yang dikerjakan</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Revisi</th>
+                    <th className="w-[16%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Tugas</th>
+                    <th className="w-[12%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Project</th>
+                    <th className="w-[11%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diberikan</th>
+                    <th className="w-[11%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diselesaikan</th>
+                    <th className="w-[13%] text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
+                    <th className="w-[13%] text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
+                    <th className="w-[14%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Job yang dikerjakan</th>
+                    <th className="w-[10%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Revisi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -307,23 +307,23 @@ export default function DetailLaporan() {
                     const ts = TASK_STATUSES[task.status] ?? TASK_STATUSES.belum_mulai;
                     return (
                       <tr key={task.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-3 font-medium text-foreground">
-                          {task.title}
+                        <td className="px-4 py-3 align-top font-medium text-foreground">
+                          <div className="whitespace-pre-wrap break-words">{task.title}</div>
                           {task.reportDate && (
                             <p className="mt-1 text-xs font-normal text-muted-foreground">
                               Laporan {new Date(task.reportDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
                             </p>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{task.project ?? "—"}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{task.deadline ?? "-"}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{task.completionValue ?? "-"}</td>
-                        <td className="px-4 py-3 text-center">
-                          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${ts.color}`}>
+                        <td className="px-4 py-3 align-top text-muted-foreground"><div className="whitespace-pre-wrap break-words">{task.project ?? "—"}</div></td>
+                        <td className="px-4 py-3 align-top text-muted-foreground">{task.deadline ?? "-"}</td>
+                        <td className="px-4 py-3 align-top text-muted-foreground">{task.completionValue ?? "-"}</td>
+                        <td className="px-4 py-3 align-top text-center">
+                          <span className={`inline-flex max-w-full whitespace-normal break-words text-xs px-2 py-0.5 rounded-full border font-medium ${ts.color}`}>
                             {ts.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 align-top">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 bg-muted rounded-full h-1.5 w-16">
                               <div className="bg-primary h-1.5 rounded-full" style={{ width: `${task.progress}%` }} />
@@ -331,8 +331,8 @@ export default function DetailLaporan() {
                             <span className="text-xs font-medium w-8">{task.progress}%</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{task.notes ?? "-"}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 align-top text-muted-foreground text-xs"><div className="whitespace-pre-wrap break-words">{task.notes ?? "-"}</div></td>
+                        <td className="px-4 py-3 align-top">
                           {task.reviewStatus && task.reviewStatus !== "komentar" && (
                             <div className="mb-2">
                               <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
@@ -355,14 +355,14 @@ export default function DetailLaporan() {
                                   <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                                     Komentar
                                   </span>
-                                  <p className="mt-1 max-w-xs text-xs text-slate-600">{task.reviewComment}</p>
+                                  <p className="mt-1 max-w-xs whitespace-pre-wrap break-words text-xs text-slate-600">{task.reviewComment}</p>
                                 </div>
                               )}
                               {task.reviewedByName && <p className="mt-0.5 text-[11px] text-slate-400">oleh {task.reviewedByName}</p>}
                             </div>
                           )}
                           {canReview && (
-                            <div className="min-w-[270px] space-y-2">
+                            <div className="min-w-[220px] space-y-2">
                               <Textarea
                                 value={taskReviewDrafts[task.id] ?? ""}
                                 onChange={(event) => setTaskReviewDrafts((current) => ({ ...current, [task.id]: event.target.value }))}
@@ -376,8 +376,8 @@ export default function DetailLaporan() {
                             </div>
                           )}
                           {user?.id === r.userId && task.reviewStatus === "revisi" && (
-                            <div className="mt-2 min-w-[270px] space-y-2 rounded-lg border border-orange-200 bg-orange-50 p-2">
-                              <p className="text-xs text-orange-800">
+                            <div className="mt-2 min-w-[220px] space-y-2 rounded-lg border border-orange-200 bg-orange-50 p-2">
+                              <p className="whitespace-pre-wrap break-words text-xs text-orange-800">
                                 {task.reviewComment || "Tugas ini perlu diperbaiki sesuai arahan reviewer."}
                               </p>
                               <Button size="sm" className="bg-orange-600 hover:bg-orange-700" onClick={() => handleTaskCorrection(task)} disabled={reviewingTaskId === task.id}>
