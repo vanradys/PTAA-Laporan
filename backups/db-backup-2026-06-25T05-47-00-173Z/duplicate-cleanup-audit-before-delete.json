@@ -1,0 +1,503 @@
+{
+  "createdAt": "2026-06-25T05:49:03.640Z",
+  "taskPlan": [
+    {
+      "keep": 94,
+      "delete": 95,
+      "reason": "exact duplicate task; keep lower id"
+    },
+    {
+      "keep": 242,
+      "delete": 244,
+      "reason": "same report/title/project/deadline; keep row with higher progress and job_items"
+    },
+    {
+      "keep": 247,
+      "delete": 243,
+      "reason": "same report/title/project/deadline; keep row with job_items/start_date"
+    },
+    {
+      "keep": 309,
+      "delete": 310,
+      "reason": "same report/title/project/deadline; keep row with active progress/status"
+    }
+  ],
+  "poPlan": [
+    {
+      "keep": 44,
+      "delete": 49,
+      "reason": "same no_po/project and same business fields"
+    }
+  ],
+  "logPlan": [
+    {
+      "keep": 82,
+      "delete": 83,
+      "reason": "duplicate PO created log for kept PO"
+    }
+  ],
+  "rowsBeforeDelete": {
+    "daily_tasks": [
+      {
+        "id": 94,
+        "report_id": 24,
+        "title": "PT. Esitas Pacific",
+        "project": "Automation Conveyor System Group C",
+        "progress": 100,
+        "status": "delivered",
+        "notes": "Tinggal Input Zahir",
+        "created_at": "2026-06-08T11:54:45.304Z",
+        "deadline": "2026-06-08",
+        "edit_count": 0,
+        "job_items": [],
+        "review_notes": null,
+        "start_date": null,
+        "completed_date": null,
+        "completion_input_type": null,
+        "completion_value": null,
+        "revision_source_task_id": null,
+        "revision_work_task_id": null,
+        "updated_at": "2026-06-08T11:54:45.304Z",
+        "review_status": null,
+        "review_comment": null,
+        "reviewed_by_user_id": null,
+        "reviewed_by_name": null,
+        "reviewed_at": null,
+        "corrected_at": null
+      },
+      {
+        "id": 95,
+        "report_id": 24,
+        "title": "PT. Esitas Pacific",
+        "project": "Automation Conveyor System Group C",
+        "progress": 100,
+        "status": "delivered",
+        "notes": "Tinggal Input Zahir",
+        "created_at": "2026-06-08T11:54:45.732Z",
+        "deadline": "2026-06-08",
+        "edit_count": 0,
+        "job_items": [],
+        "review_notes": null,
+        "start_date": null,
+        "completed_date": null,
+        "completion_input_type": null,
+        "completion_value": null,
+        "revision_source_task_id": null,
+        "revision_work_task_id": null,
+        "updated_at": "2026-06-08T11:54:45.732Z",
+        "review_status": null,
+        "review_comment": null,
+        "reviewed_by_user_id": null,
+        "reviewed_by_name": null,
+        "reviewed_at": null,
+        "corrected_at": null
+      },
+      {
+        "id": 242,
+        "report_id": 62,
+        "title": "Membuat notebook untuk customer",
+        "project": "Desain Buku",
+        "progress": 75,
+        "status": "review_approval",
+        "notes": "Mau nego untuk ukuran boleh pakai ukuran A5 atau tidak, lalu mau ditanya boleh pakai hard cover + ditambah penutup karet, harganya kurang lebih 70rb/pcs dari Tangerang pembayarannya pakai Tokopedia",
+        "created_at": "2026-06-18T00:24:35.367Z",
+        "deadline": "2026-06-19",
+        "edit_count": 1,
+        "job_items": [
+          {
+            "id": "task-job-1781742275368-0-pfqsdx",
+            "text": "Mau nego untuk ukuran boleh pakai ukuran A5 atau tidak, lalu mau ditanya boleh pakai hard cover + ditambah penutup karet, harganya kurang lebih 70rb/pcs dari Tangerang pembayarannya pakai Tokopedia",
+            "createdAt": "2026-06-18T00:24:35.368Z",
+            "createdByName": "Marketing Specialist",
+            "createdByUserId": 19
+          }
+        ],
+        "review_notes": "",
+        "start_date": "2026-06-17T17:00:00.000Z",
+        "completed_date": null,
+        "completion_input_type": null,
+        "completion_value": null,
+        "revision_source_task_id": null,
+        "revision_work_task_id": null,
+        "updated_at": "2026-06-24T08:48:30.095Z",
+        "review_status": null,
+        "review_comment": null,
+        "reviewed_by_user_id": null,
+        "reviewed_by_name": null,
+        "reviewed_at": null,
+        "corrected_at": null
+      },
+      {
+        "id": 243,
+        "report_id": 62,
+        "title": "Pendaftaran OSS Export-Import",
+        "project": "OSS API-U",
+        "progress": 50,
+        "status": "input_data_proses",
+        "notes": "Sudah dapat kontaknya dari Pak Darsono, namanya Pak Wahyu. Sedang ditanyakan prosedurnya, akan ditanyakan harga jasa pengurusan API-U, serta berkasnya apa saja yang perlu dipersiapkan.",
+        "created_at": "2026-06-18T09:46:41.121Z",
+        "deadline": "2026-06-27",
+        "edit_count": 0,
+        "job_items": [],
+        "review_notes": null,
+        "start_date": null,
+        "completed_date": null,
+        "completion_input_type": null,
+        "completion_value": null,
+        "revision_source_task_id": null,
+        "revision_work_task_id": null,
+        "updated_at": "2026-06-24T08:48:30.095Z",
+        "review_status": null,
+        "review_comment": null,
+        "reviewed_by_user_id": null,
+        "reviewed_by_name": null,
+        "reviewed_at": null,
+        "corrected_at": null
+      },
+      {
+        "id": 244,
+        "report_id": 62,
+        "title": "Membuat notebook untuk customer",
+        "project": "Desain Buku",
+        "progress": 50,
+        "status": "input_data_proses",
+        "notes": "Mau nego untuk ukuran boleh pakai ukuran A5 atau tidak, lalu mau ditanya boleh pakai hard cover + ditambah penutup karet, harganya kurang lebih 70rb/pcs dari Tangerang pembayarannya pakai Tokopedia",
+        "created_at": "2026-06-18T09:46:40.504Z",
+        "deadline": "2026-06-19",
+        "edit_count": 0,
+        "job_items": [],
+        "review_notes": null,
+        "start_date": null,
+        "completed_date": null,
+        "completion_input_type": null,
+        "completion_value": null,
+        "revision_source_task_id": null,
+        "revision_work_task_id": null,
+        "updated_at": "2026-06-24T08:48:30.095Z",
+        "review_status": null,
+        "review_comment": null,
+        "reviewed_by_user_id": null,
+        "reviewed_by_name": null,
+        "reviewed_at": null,
+        "corrected_at": null
+      },
+      {
+        "id": 247,
+        "report_id": 62,
+        "title": "Pendaftaran OSS Export-Import",
+        "project": "OSS API-U",
+        "progress": 50,
+        "status": "input_data_proses",
+        "notes": "Sudah dapat kontaknya dari Pak Darsono, namanya Pak Wahyu. Sedang ditanyakan prosedurnya, akan ditanyakan harga jasa pengurusan API-U, serta berkasnya apa saja yang perlu dipersiapkan.",
+        "created_at": "2026-06-18T00:24:36.019Z",
+        "deadline": "2026-06-27",
+        "edit_count": 0,
+        "job_items": [
+          {
+            "id": "task-job-1781742276020-0-vw5hfd",
+            "text": "Sudah dapat kontaknya dari Pak Darsono, namanya Pak Wahyu. Sedang ditanyakan prosedurnya, akan ditanyakan harga jasa pengurusan API-U, serta berkasnya apa saja yang perlu dipersiapkan.",
+            "createdAt": "2026-06-18T00:24:36.020Z",
+            "createdByName": "Marketing Specialist",
+            "createdByUserId": 19
+          }
+        ],
+        "review_notes": "",
+        "start_date": "2026-06-17T17:00:00.000Z",
+        "completed_date": null,
+        "completion_input_type": null,
+        "completion_value": null,
+        "revision_source_task_id": null,
+        "revision_work_task_id": null,
+        "updated_at": "2026-06-24T08:48:30.095Z",
+        "review_status": null,
+        "review_comment": null,
+        "reviewed_by_user_id": null,
+        "reviewed_by_name": null,
+        "reviewed_at": null,
+        "corrected_at": null
+      },
+      {
+        "id": 309,
+        "report_id": 75,
+        "title": "Buat delivery ticket utpe ",
+        "project": "side scrapper ",
+        "progress": 50,
+        "status": "proses",
+        "notes": "",
+        "created_at": "2026-06-19T09:44:53.047Z",
+        "deadline": "2026-06-22",
+        "edit_count": 0,
+        "job_items": [],
+        "review_notes": null,
+        "start_date": null,
+        "completed_date": null,
+        "completion_input_type": null,
+        "completion_value": null,
+        "revision_source_task_id": null,
+        "revision_work_task_id": null,
+        "updated_at": "2026-06-24T08:48:30.095Z",
+        "review_status": null,
+        "review_comment": null,
+        "reviewed_by_user_id": null,
+        "reviewed_by_name": null,
+        "reviewed_at": null,
+        "corrected_at": null
+      },
+      {
+        "id": 310,
+        "report_id": 75,
+        "title": "Buat delivery ticket utpe ",
+        "project": "side scrapper ",
+        "progress": 0,
+        "status": "belum_mulai",
+        "notes": "",
+        "created_at": "2026-06-19T09:16:19.384Z",
+        "deadline": "2026-06-22",
+        "edit_count": 2,
+        "job_items": [],
+        "review_notes": null,
+        "start_date": null,
+        "completed_date": null,
+        "completion_input_type": null,
+        "completion_value": null,
+        "revision_source_task_id": null,
+        "revision_work_task_id": null,
+        "updated_at": "2026-06-24T08:48:30.095Z",
+        "review_status": null,
+        "review_comment": null,
+        "reviewed_by_user_id": null,
+        "reviewed_by_name": null,
+        "reviewed_at": null,
+        "corrected_at": null
+      }
+    ],
+    "projects_po": [
+      {
+        "id": 44,
+        "no_po": "1281909",
+        "nama_project": "Belt for Transmission",
+        "customer": "PT Indo World",
+        "tanggal_po_masuk": "2026-03-01T17:00:00.000Z",
+        "target_penyelesaian": null,
+        "deadline": "2026-03-16",
+        "pic_user_id": 6,
+        "department_id": 12,
+        "status": "closed",
+        "progress": 100,
+        "catatan": null,
+        "closed_at": "2026-06-21T13:31:43.403Z",
+        "closed_by_user_id": 6,
+        "created_by_user_id": 6,
+        "notified_14_days": false,
+        "notified_7_days": false,
+        "notified_passed": false,
+        "created_at": "2026-06-21T13:31:43.405Z",
+        "updated_at": "2026-06-21T13:31:43.405Z",
+        "po_amount": "2200000.00",
+        "qty": "2 Roll",
+        "tracking_stages": [],
+        "tracking_timeline": [],
+        "pic_project": "Ines",
+        "has_painting": false,
+        "job_items": [],
+        "review_evaluation": null,
+        "accounting_comment": "Info dari pak Mulyadi BAST akan di ttd apabila sudah di trial",
+        "target_pengiriman": "2026-03-16",
+        "aktual_pengiriman": "2026-03-16"
+      },
+      {
+        "id": 49,
+        "no_po": "1281909",
+        "nama_project": "Belt for Transmission",
+        "customer": "PT Indo World",
+        "tanggal_po_masuk": "2026-03-01T17:00:00.000Z",
+        "target_penyelesaian": null,
+        "deadline": "2026-03-16",
+        "pic_user_id": 6,
+        "department_id": 12,
+        "status": "closed",
+        "progress": 100,
+        "catatan": null,
+        "closed_at": "2026-06-21T13:31:45.518Z",
+        "closed_by_user_id": 6,
+        "created_by_user_id": 6,
+        "notified_14_days": false,
+        "notified_7_days": false,
+        "notified_passed": false,
+        "created_at": "2026-06-21T13:31:45.520Z",
+        "updated_at": "2026-06-21T13:31:45.520Z",
+        "po_amount": "2200000.00",
+        "qty": "2 Roll",
+        "tracking_stages": [],
+        "tracking_timeline": [],
+        "pic_project": "Ines",
+        "has_painting": false,
+        "job_items": [],
+        "review_evaluation": null,
+        "accounting_comment": "Info dari pak Mulyadi BAST akan di ttd apabila sudah di trial",
+        "target_pengiriman": "2026-03-16",
+        "aktual_pengiriman": "2026-03-16"
+      }
+    ],
+    "po_change_logs": [
+      {
+        "id": 82,
+        "po_id": 44,
+        "no_po": "1281909",
+        "action": "created",
+        "changes": {
+          "qty": {
+            "after": "2 Roll",
+            "before": null
+          },
+          "noPo": {
+            "after": "1281909",
+            "before": null
+          },
+          "status": {
+            "after": "closed",
+            "before": null
+          },
+          "customer": {
+            "after": "PT Indo World",
+            "before": null
+          },
+          "deadline": {
+            "after": "2026-03-16",
+            "before": null
+          },
+          "poAmount": {
+            "after": "2200000.00",
+            "before": null
+          },
+          "progress": {
+            "after": 100,
+            "before": null
+          },
+          "picUserId": {
+            "after": 6,
+            "before": null
+          },
+          "picProject": {
+            "after": "Ines",
+            "before": null
+          },
+          "hasPainting": {
+            "after": false,
+            "before": null
+          },
+          "namaProject": {
+            "after": "Belt for Transmission",
+            "before": null
+          },
+          "departmentId": {
+            "after": 12,
+            "before": null
+          },
+          "tanggalPoMasuk": {
+            "after": "2026-03-02",
+            "before": null
+          },
+          "trackingStages": {
+            "after": [],
+            "before": null
+          },
+          "aktualPengiriman": {
+            "after": "2026-03-16",
+            "before": null
+          },
+          "targetPengiriman": {
+            "after": "2026-03-16",
+            "before": null
+          },
+          "trackingTimeline": {
+            "after": [],
+            "before": null
+          }
+        },
+        "changed_by_user_id": 6,
+        "changed_by_name": "Admin Marketing 1 PTAA",
+        "created_at": "2026-06-21T13:31:43.410Z"
+      },
+      {
+        "id": 83,
+        "po_id": 44,
+        "no_po": "1281909",
+        "action": "created",
+        "changes": {
+          "qty": {
+            "after": "2 Roll",
+            "before": null
+          },
+          "noPo": {
+            "after": "1281909",
+            "before": null
+          },
+          "status": {
+            "after": "closed",
+            "before": null
+          },
+          "customer": {
+            "after": "PT Indo World",
+            "before": null
+          },
+          "deadline": {
+            "after": "2026-03-16",
+            "before": null
+          },
+          "poAmount": {
+            "after": "2200000.00",
+            "before": null
+          },
+          "progress": {
+            "after": 100,
+            "before": null
+          },
+          "picUserId": {
+            "after": 6,
+            "before": null
+          },
+          "picProject": {
+            "after": "Ines",
+            "before": null
+          },
+          "hasPainting": {
+            "after": false,
+            "before": null
+          },
+          "namaProject": {
+            "after": "Belt for Transmission",
+            "before": null
+          },
+          "departmentId": {
+            "after": 12,
+            "before": null
+          },
+          "tanggalPoMasuk": {
+            "after": "2026-03-02",
+            "before": null
+          },
+          "trackingStages": {
+            "after": [],
+            "before": null
+          },
+          "aktualPengiriman": {
+            "after": "2026-03-16",
+            "before": null
+          },
+          "targetPengiriman": {
+            "after": "2026-03-16",
+            "before": null
+          },
+          "trackingTimeline": {
+            "after": [],
+            "before": null
+          }
+        },
+        "changed_by_user_id": 6,
+        "changed_by_name": "Admin Marketing 1 PTAA",
+        "created_at": "2026-06-21T13:31:45.525Z"
+      }
+    ]
+  }
+}

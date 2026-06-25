@@ -1,0 +1,15 @@
+{
+  "createdAt": "2026-06-25T05:47:00.173Z",
+  "files": [
+    {
+      "path": "C:\\PTAA\\PTAA-Laporan\\backups\\db-backup-2026-06-25T05-47-00-173Z\\database-full.dump",
+      "bytes": 231398,
+      "format": "pg_dump custom"
+    },
+    {
+      "path": "C:\\PTAA\\PTAA-Laporan\\backups\\db-backup-2026-06-25T05-47-00-173Z\\database-full.sql",
+      "bytes": 1029592,
+      "format": "pg_dump plain sql"
+    }
+  ]
+}
