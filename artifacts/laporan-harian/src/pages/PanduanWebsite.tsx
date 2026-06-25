@@ -50,8 +50,9 @@ function stepsFromContent(content: string) {
     .filter(Boolean);
 }
 
-const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
-const MAX_SCREENSHOT_DIMENSION = 1400;
+const MAX_SCREENSHOT_BYTES = 700 * 1024;
+const INITIAL_SCREENSHOT_DIMENSION = 1200;
+const MIN_SCREENSHOT_DIMENSION = 480;
 
 async function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -78,27 +79,37 @@ async function prepareScreenshot(file: File) {
 
   const dataUrl = await fileToDataUrl(file);
   const image = await loadImage(dataUrl);
-  const scale = Math.min(
-    1,
-    MAX_SCREENSHOT_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight),
-  );
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Browser tidak dapat memproses gambar");
-  context.drawImage(image, 0, 0, width, height);
 
-  const mimeType = file.type === "image/png" ? "image/png" : "image/jpeg";
-  const compressed = canvas.toDataURL(mimeType, mimeType === "image/jpeg" ? 0.82 : undefined);
-  const estimatedBytes = Math.ceil((compressed.length - compressed.indexOf(",") - 1) * 0.75);
-  if (estimatedBytes > MAX_SCREENSHOT_BYTES) {
-    throw new Error("Ukuran gambar terlalu besar. Gunakan gambar maksimal sekitar 5 MB.");
+  for (
+    let maxDimension = INITIAL_SCREENSHOT_DIMENSION;
+    maxDimension >= MIN_SCREENSHOT_DIMENSION;
+    maxDimension = Math.floor(maxDimension * 0.8)
+  ) {
+    const scale = Math.min(
+      1,
+      maxDimension / Math.max(image.naturalWidth, image.naturalHeight),
+    );
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.width = width;
+    canvas.height = height;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    for (const quality of [0.78, 0.68, 0.58, 0.48]) {
+      const compressed = canvas.toDataURL("image/jpeg", quality);
+      const estimatedBytes = Math.ceil((compressed.length - compressed.indexOf(",") - 1) * 0.75);
+      if (estimatedBytes <= MAX_SCREENSHOT_BYTES) {
+        return { dataUrl: compressed, mimeType: "image/jpeg" };
+      }
+    }
   }
 
-  return { dataUrl: compressed, mimeType };
+  throw new Error("Ukuran gambar masih terlalu besar. Coba crop gambar atau gunakan screenshot yang lebih kecil.");
 }
 
 export default function PanduanWebsite() {
