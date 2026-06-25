@@ -737,7 +737,14 @@ export default function JadwalProject() {
   const { data: poList, isLoading: poLoading } = useListPo(poParams, {
     query: { queryKey: getListPoQueryKey(poParams) },
   });
-  const allPoParams = { openOnly: "true" } as any;
+  const shouldIncludeClosedInOverall =
+    Boolean(normalizeFlexibleSearch(searchText)) || overallProgress === "closed";
+  const allPoParams = {
+    ...(shouldIncludeClosedInOverall
+      ? {}
+      : { openOnly: "true" }),
+    ...(searchText.trim() ? { search: searchText.trim() } : {}),
+  } as any;
   const { data: allPoList, isLoading: allPoLoading } = useListPo(allPoParams, {
     query: { queryKey: getListPoQueryKey(allPoParams) },
   });
@@ -909,7 +916,7 @@ export default function JadwalProject() {
   const pos = sortByNominal(posRaw.filter((po) => isOpenPoItem(po) && matchesDeliveryFilter(po)));
   const allPos = sortByNominal(allPosRaw.filter(
     (po) =>
-      !isClosedPoItem(po) &&
+      (shouldIncludeClosedInOverall || !isClosedPoItem(po)) &&
       matchesOverallFilters(po),
   ));
   const rawYearlyTrendItems = Array.isArray(
