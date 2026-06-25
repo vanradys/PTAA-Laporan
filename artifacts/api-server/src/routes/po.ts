@@ -663,23 +663,23 @@ router.get("/po/summary", async (req, res) => {
   const pos = await db.select().from(projectsPoTable);
 
   const totalPo = pos.length;
-  const poSelesai = pos.filter((p) => isProjectFinished(p.status)).length;
-  const poBelumSelesai = totalPo - poSelesai;
-  const poDelay = pos.filter(
+  const poSelesai = pos.filter((p) => isProjectClosed(p.status)).length;
+  const ongoingPos = pos.filter((p) => !isProjectClosed(p.status));
+  const poBelumSelesai = ongoingPos.length;
+  const poDelay = ongoingPos.filter(
     (p) =>
-      ((calcSisaHari(
+      (calcSisaHari(
         p.targetPengiriman || p.deadline,
         p.aktualPengiriman,
-      ) ?? Number.POSITIVE_INFINITY) < 0 &&
-        !isProjectClosed(p.status)),
+      ) ?? Number.POSITIVE_INFINITY) < 0,
   ).length;
-  const poHampirDeadline = pos.filter((p) => {
+  const poHampirDeadline = ongoingPos.filter((p) => {
     const s = calcSisaHari(
       p.targetPengiriman || p.deadline,
       p.aktualPengiriman,
     );
     if (s === null) return false;
-    return s >= 0 && s <= 7 && !isProjectClosed(p.status);
+    return s >= 0 && s <= 7;
   }).length;
   const monthlyTarget = MONTHLY_PO_TARGET;
   const canSeeAmount = canViewPoAmount(user);
@@ -878,7 +878,7 @@ router.get("/po", async (req, res) => {
       : items;
   const filteredItems =
     String(openOnly) === "true"
-      ? filteredByStatus.filter((item) => !isProjectFinished(item.status) && !item.closedAt)
+      ? filteredByStatus.filter((item) => !isProjectClosed(item.status))
       : filteredByStatus;
 
   res.json(filteredItems);

@@ -80,6 +80,9 @@ const PO_STATUS_OPTS = [
   { value: "project_invoiced", label: "Project Invoiced (PIC Finance)" },
   { value: "closed", label: "Project Sudah Dibayar (Closed)" },
 ];
+const OVERALL_PO_STATUS_OPTS = PO_STATUS_OPTS.filter(
+  (status) => status.value !== "closed",
+);
 
 const CUSTOMER_TRACKING_STAGES = [
   { key: "po_received", label: "PO Received" },
@@ -908,7 +911,7 @@ export default function JadwalProject() {
   const pos = sortByNominal(posRaw.filter(matchesDeliveryFilter));
   const allPos = sortByNominal(allPosRaw.filter(
     (po) =>
-      !isClosedPoItem(po) &&
+      !isClosedPo(po.status) &&
       matchesOverallFilters(po),
   ));
   const rawYearlyTrendItems = Array.isArray(
@@ -2497,7 +2500,7 @@ export default function JadwalProject() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {PO_STATUS_OPTS.map((status) => (
+                    {OVERALL_PO_STATUS_OPTS.map((status) => (
                       <SelectItem key={status.value} value={status.value}>
                         {status.label}
                       </SelectItem>
