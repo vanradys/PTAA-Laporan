@@ -722,7 +722,6 @@ export default function JadwalProject() {
   const [formLoading, setFormLoading] = useState(false);
 
   const poParams = {
-    openOnly: "true",
     ...(!filterDateFrom && !filterDateTo
       ? { month: parseInt(filterMonth), year: parseInt(filterYear) }
       : {}),
@@ -737,14 +736,7 @@ export default function JadwalProject() {
   const { data: poList, isLoading: poLoading } = useListPo(poParams, {
     query: { queryKey: getListPoQueryKey(poParams) },
   });
-  const shouldIncludeClosedInOverall =
-    Boolean(normalizeFlexibleSearch(searchText)) || overallProgress === "closed";
-  const allPoParams = {
-    ...(shouldIncludeClosedInOverall
-      ? {}
-      : { openOnly: "true" }),
-    ...(searchText.trim() ? { search: searchText.trim() } : {}),
-  } as any;
+  const allPoParams = { openOnly: "true" } as any;
   const { data: allPoList, isLoading: allPoLoading } = useListPo(allPoParams, {
     query: { queryKey: getListPoQueryKey(allPoParams) },
   });
@@ -913,10 +905,10 @@ export default function JadwalProject() {
       return nominalSort === "asc" ? difference : -difference;
     });
   };
-  const pos = sortByNominal(posRaw.filter((po) => isOpenPoItem(po) && matchesDeliveryFilter(po)));
+  const pos = sortByNominal(posRaw.filter(matchesDeliveryFilter));
   const allPos = sortByNominal(allPosRaw.filter(
     (po) =>
-      (shouldIncludeClosedInOverall || !isClosedPoItem(po)) &&
+      !isClosedPoItem(po) &&
       matchesOverallFilters(po),
   ));
   const rawYearlyTrendItems = Array.isArray(
