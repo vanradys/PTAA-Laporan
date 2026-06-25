@@ -50,6 +50,9 @@ function stepsFromContent(content: string) {
     .filter(Boolean);
 }
 
+const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
+const MAX_SCREENSHOT_DIMENSION = 1400;
+
 async function fileToDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -59,6 +62,45 @@ async function fileToDataUrl(file: File) {
   });
 }
 
+async function loadImage(dataUrl: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Gambar tidak dapat diproses"));
+    image.src = dataUrl;
+  });
+}
+
+async function prepareScreenshot(file: File) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("File harus berupa gambar");
+  }
+
+  const dataUrl = await fileToDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const scale = Math.min(
+    1,
+    MAX_SCREENSHOT_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight),
+  );
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Browser tidak dapat memproses gambar");
+  context.drawImage(image, 0, 0, width, height);
+
+  const mimeType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  const compressed = canvas.toDataURL(mimeType, mimeType === "image/jpeg" ? 0.82 : undefined);
+  const estimatedBytes = Math.ceil((compressed.length - compressed.indexOf(",") - 1) * 0.75);
+  if (estimatedBytes > MAX_SCREENSHOT_BYTES) {
+    throw new Error("Ukuran gambar terlalu besar. Gunakan gambar maksimal sekitar 5 MB.");
+  }
+
+  return { dataUrl: compressed, mimeType };
+}
+
 export default function PanduanWebsite() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -66,6 +108,8 @@ export default function PanduanWebsite() {
   const isAdmin = String(user?.role ?? "").toLowerCase() === "admin";
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [draft, setDraft] = useState<TutorialDraft>(emptyDraft);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
 
   const tutorialsQuery = useQuery({
     queryKey: ["tutorials"],
@@ -86,7 +130,8 @@ export default function PanduanWebsite() {
   };
 
   const save = async () => {
-    if (!draft.title.trim() || !draft.content.trim()) return;
+    if (isSaving || isProcessingImage || !draft.title.trim() || !draft.content.trim()) return;
+    setIsSaving(true);
     try {
       const payload = {
         ...draft,
@@ -103,6 +148,8 @@ export default function PanduanWebsite() {
       toast({ title: "Panduan disimpan" });
     } catch (error) {
       toast({ title: "Gagal menyimpan panduan", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -148,17 +195,37 @@ export default function PanduanWebsite() {
                     type="file"
                     accept="image/*"
                     className="hidden"
+                    disabled={isProcessingImage || isSaving}
                     onChange={async (event) => {
                       const file = event.target.files?.[0];
+                      event.currentTarget.value = "";
                       if (!file) return;
-                      const dataUrl = await fileToDataUrl(file);
-                      setDraft({ ...draft, screenshotData: dataUrl, screenshotMimeType: file.type });
+                      setIsProcessingImage(true);
+                      try {
+                        const screenshot = await prepareScreenshot(file);
+                        setDraft((current) => ({
+                          ...current,
+                          screenshotData: screenshot.dataUrl,
+                          screenshotMimeType: screenshot.mimeType,
+                        }));
+                      } catch (error) {
+                        toast({
+                          title: "Gagal upload foto",
+                          description: error instanceof Error ? error.message : "Terjadi kesalahan",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsProcessingImage(false);
+                      }
                     }}
                   />
                 </label>
-                {draft.screenshotData && <Button type="button" variant="outline" onClick={() => setDraft({ ...draft, screenshotData: null, screenshotMimeType: null })}>Hapus Gambar</Button>}
-                <Button onClick={save}><Save className="mr-2 h-4 w-4" />Simpan</Button>
-                <Button variant="outline" onClick={() => setEditingId(null)}>Batal</Button>
+                {draft.screenshotData && <Button type="button" variant="outline" disabled={isSaving} onClick={() => setDraft({ ...draft, screenshotData: null, screenshotMimeType: null })}>Hapus Gambar</Button>}
+                <Button type="button" onClick={save} disabled={isSaving || isProcessingImage || !draft.title.trim() || !draft.content.trim()}>
+                  <Save className="mr-2 h-4 w-4" />
+                  {isSaving ? "Menyimpan..." : isProcessingImage ? "Memproses..." : "Simpan"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setEditingId(null)}>Batal</Button>
               </div>
             </CardContent>
           </Card>
