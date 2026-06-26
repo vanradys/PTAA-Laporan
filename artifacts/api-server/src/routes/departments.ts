@@ -92,6 +92,95 @@ router.get("/user-management/departments", async (req, res) => {
   res.json(departments);
 });
 
+router.get("/user-management/department-visibility", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengakses visibility departemen" });
+    return;
+  }
+
+  await ensureDepartmentVisibilityTable();
+
+  const departments = await db
+    .select({
+      id: departmentsTable.id,
+      name: departmentsTable.name,
+      code: departmentsTable.code,
+    })
+    .from(departmentsTable)
+    .orderBy(departmentsTable.name);
+
+  const savedPermissionsResult = await db.execute(sql`
+    select department_code, feature_key, can_view
+    from department_feature_permissions
+  `);
+  const savedPermissions =
+    (savedPermissionsResult as unknown as { rows?: Array<{ department_code: string; feature_key: string; can_view: boolean }> }).rows ??
+    (savedPermissionsResult as unknown as Array<{ department_code: string; feature_key: string; can_view: boolean }>);
+
+  const savedByKey = new Map(
+    savedPermissions.map((item) => [`${item.department_code}:${item.feature_key}`, item.can_view]),
+  );
+
+  res.json({
+    features: departmentVisibilityFeatures,
+    departments,
+    permissions: departments.flatMap((department) =>
+      departmentVisibilityFeatures.map((feature) => ({
+        departmentCode: department.code,
+        featureKey: feature.key,
+        canView:
+          savedByKey.get(`${department.code}:${feature.key}`) ??
+          getDefaultDepartmentVisibility(department.code, feature.key),
+      })),
+    ),
+  });
+});
+
+router.patch("/user-management/department-visibility", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengubah visibility departemen" });
+    return;
+  }
+
+  const departmentCode = String(req.body?.departmentCode ?? "").trim().toUpperCase();
+  const featureKey = String(req.body?.featureKey ?? "").trim();
+  const canView = Boolean(req.body?.canView);
+
+  if (!departmentCode || !departmentVisibilityFeatureKeys.has(featureKey)) {
+    res.status(400).json({ error: "Departemen atau fitur tidak valid" });
+    return;
+  }
+
+  const [department] = await db
+    .select({ code: departmentsTable.code })
+    .from(departmentsTable)
+    .where(eq(departmentsTable.code, departmentCode))
+    .limit(1);
+
+  if (!department) {
+    res.status(404).json({ error: "Departemen tidak ditemukan" });
+    return;
+  }
+
+  await ensureDepartmentVisibilityTable();
+  await db.execute(sql`
+    insert into department_feature_permissions (department_code, feature_key, can_view, updated_at)
+    values (${departmentCode}, ${featureKey}, ${canView}, now())
+    on conflict (department_code, feature_key)
+    do update set can_view = excluded.can_view, updated_at = now()
+  `);
+
+  res.json({ success: true, departmentCode, featureKey, canView });
+});
+
 const allowedUserManagementRoles = new Set([
   "admin",
   "direktur",
@@ -100,6 +189,51 @@ const allowedUserManagementRoles = new Set([
   "marketing_specialist",
   "monitoring_dummy",
 ]);
+
+const departmentVisibilityFeatures = [
+  { key: "daily_reports", label: "LAPORAN HARIAN" },
+  { key: "todo_list", label: "To Do List" },
+  { key: "monitoring_reports", label: "Monitoring Laporan" },
+  { key: "project_schedule", label: "Jadwal Project" },
+  { key: "po_input", label: "Penginputan Data PO" },
+  { key: "project_progress", label: "Project Progress" },
+  { key: "po_received_date", label: "Tanggal Masuk PO" },
+  { key: "target_delivery", label: "Target Pengiriman" },
+  { key: "actual_delivery", label: "Aktual Pengiriman" },
+  { key: "customer_progress_timeline", label: "Timeline Progress Customer" },
+  { key: "notes", label: "Catatan" },
+] as const;
+
+const departmentVisibilityFeatureKeys = new Set<string>(
+  departmentVisibilityFeatures.map((feature) => feature.key),
+);
+
+const defaultDepartmentVisibility: Record<string, string[]> = {
+  DIR: ["todo_list", "monitoring_reports", "po_input", "project_progress", "notes"],
+  MKT: ["daily_reports", "todo_list", "project_schedule", "po_input", "project_progress", "po_received_date", "target_delivery", "notes"],
+  ENG: ["daily_reports", "todo_list", "project_progress", "customer_progress_timeline", "notes"],
+  AAF: ["daily_reports", "todo_list", "project_progress", "actual_delivery", "notes"],
+  FIN: ["daily_reports", "todo_list", "project_progress", "actual_delivery", "notes"],
+  PUR: ["daily_reports", "todo_list", "project_progress", "notes"],
+  GA: ["daily_reports", "todo_list", "notes"],
+  ADM: departmentVisibilityFeatures.map((feature) => feature.key),
+};
+
+async function ensureDepartmentVisibilityTable() {
+  await db.execute(sql`
+    create table if not exists department_feature_permissions (
+      department_code text not null,
+      feature_key text not null,
+      can_view boolean not null default false,
+      updated_at timestamptz not null default now(),
+      primary key (department_code, feature_key)
+    )
+  `);
+}
+
+function getDefaultDepartmentVisibility(departmentCode: string, featureKey: string) {
+  return Boolean(defaultDepartmentVisibility[departmentCode]?.includes(featureKey));
+}
 
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
 
@@ -309,6 +443,46 @@ router.get("/users/:id/password", async (req, res) => {
     message:
       "Password akun ini sudah tersimpan sebagai hash, jadi password asli tidak bisa dilihat. Buat password baru jika user lupa password.",
   });
+});
+
+router.patch("/users/:id/password", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengubah password akun" });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "ID user tidak valid" });
+    return;
+  }
+
+  const password = String(req.body?.password ?? "").trim();
+  if (password.length < 6) {
+    res.status(400).json({ error: "Password minimal 6 karakter" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({ password })
+    .where(eq(usersTable.id, id))
+    .returning({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+    });
+
+  if (!updated) {
+    res.status(404).json({ error: "User tidak ditemukan" });
+    return;
+  }
+
+  res.json({ success: true, user: updated });
 });
 
 router.patch("/users/:id", async (req, res) => {

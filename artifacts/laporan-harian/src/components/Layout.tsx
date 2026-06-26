@@ -75,8 +75,15 @@ export default function Layout({ children }: LayoutProps) {
   );
   const userRole = String(user?.role ?? "").toLowerCase();
   const canViewOverallMonitoring = ["admin", "monitoring_dummy"].includes(userRole);
+  const userDepartmentCode = String(user?.departmentCode ?? "").toUpperCase();
+  const userDepartmentName = String(user?.departmentName ?? "").toLowerCase();
+  const canViewProjectComments =
+    ["admin", "direktur", "director", "monitoring_dummy"].includes(userRole) ||
+    userDepartmentCode === "ENG" ||
+    userDepartmentName.includes("engineering");
   const visibleNavItems = [
-    ...navItems.slice(0, 6),
+    ...navItems.slice(0, 5),
+    ...(canViewProjectComments ? [navItems[5]] : []),
     ...(canViewOverallMonitoring
       ? [{
           href: "/monitoring-keseluruhan",

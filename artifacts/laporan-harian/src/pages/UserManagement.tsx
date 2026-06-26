@@ -3,10 +3,13 @@ import { Eye, Loader2, Plus, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -43,6 +46,23 @@ type PasswordLookup = {
   message?: string;
 };
 
+type DepartmentVisibilityFeature = {
+  key: string;
+  label: string;
+};
+
+type DepartmentVisibilityPermission = {
+  departmentCode: string;
+  featureKey: string;
+  canView: boolean;
+};
+
+type DepartmentVisibilityResponse = {
+  features: DepartmentVisibilityFeature[];
+  departments: Department[];
+  permissions: DepartmentVisibilityPermission[];
+};
+
 type CreateAccountForm = {
   name: string;
   email: string;
@@ -69,6 +89,9 @@ export default function UserManagement() {
   const [viewingPasswordUserId, setViewingPasswordUserId] = useState<number | null>(null);
   const [passwordLookup, setPasswordLookup] = useState<PasswordLookup | null>(null);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [updatingVisibilityKey, setUpdatingVisibilityKey] = useState<string | null>(null);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createForm, setCreateForm] = useState<CreateAccountForm>({
     name: "",
@@ -93,6 +116,18 @@ export default function UserManagement() {
     queryFn: () => apiRequest<NameChangeRequest[]>("/api/name-change-requests"),
     enabled: user?.role === "admin",
   });
+  const { data: visibilityMatrix, isLoading: visibilityLoading, error: visibilityError } = useQuery({
+    queryKey: ["department-visibility"],
+    queryFn: () => apiRequest<DepartmentVisibilityResponse>("/api/user-management/department-visibility"),
+    enabled: user?.role === "admin",
+  });
+
+  const visibilityByKey = new Map(
+    (visibilityMatrix?.permissions ?? []).map((permission) => [
+      `${permission.departmentCode}:${permission.featureKey}`,
+      permission.canView,
+    ]),
+  );
 
   const reviewNameRequest = async (id: number, action: "approve" | "reject") => {
     await apiRequest(`/api/name-change-requests/${id}`, {
@@ -143,6 +178,7 @@ export default function UserManagement() {
     try {
       const result = await apiRequest<PasswordLookup>(`/api/users/${item.id}/password`);
       setPasswordLookup(result);
+      setNewPassword("");
       setPasswordDialogOpen(true);
     } catch (error) {
       toast({
@@ -155,6 +191,41 @@ export default function UserManagement() {
       });
     } finally {
       setViewingPasswordUserId(null);
+    }
+  };
+
+  const changePassword = async () => {
+    if (!passwordLookup || changingPassword) return;
+    const password = newPassword.trim();
+    if (password.length < 6) {
+      toast({
+        title: "Password terlalu pendek",
+        description: "Password minimal 6 karakter.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await apiRequest(`/api/users/${passwordLookup.userId}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const refreshed = await apiRequest<PasswordLookup>(`/api/users/${passwordLookup.userId}/password`);
+      setPasswordLookup(refreshed);
+      setNewPassword("");
+      toast({ title: "Password berhasil diubah" });
+    } catch (error) {
+      toast({
+        title: "Gagal mengubah password",
+        description:
+          error instanceof Error ? error.message : "Terjadi kesalahan saat mengubah password.",
+        variant: "destructive",
+      });
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -251,6 +322,35 @@ export default function UserManagement() {
     }
   };
 
+  const updateDepartmentVisibility = async (
+    departmentCode: string,
+    featureKey: string,
+    canView: boolean,
+  ) => {
+    const updateKey = `${departmentCode}:${featureKey}`;
+    if (updatingVisibilityKey !== null) return;
+    setUpdatingVisibilityKey(updateKey);
+    try {
+      await apiRequest("/api/user-management/department-visibility", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ departmentCode, featureKey, canView }),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["department-visibility"] });
+      toast({ title: "Visibility departemen diperbarui" });
+    } catch (error) {
+      toast({
+        title: "Gagal mengubah visibility",
+        description:
+          error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan visibility.",
+        variant: "destructive",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["department-visibility"] });
+    } finally {
+      setUpdatingVisibilityKey(null);
+    }
+  };
+
   if (user?.role !== "admin") {
     return <Layout><div className="page-shell text-sm text-red-600">Halaman ini hanya dapat diakses Admin.</div></Layout>;
   }
@@ -262,6 +362,12 @@ export default function UserManagement() {
           <h1 className="text-xl font-bold">User Management</h1>
           <p className="text-sm text-muted-foreground">Kelola nama, role, departemen, dan status akun.</p>
         </div>
+        <Tabs defaultValue="accounts" className="space-y-5">
+          <TabsList>
+            <TabsTrigger value="accounts">Accounts</TabsTrigger>
+            <TabsTrigger value="visibility">Department Visibility</TabsTrigger>
+          </TabsList>
+          <TabsContent value="accounts" className="space-y-5">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -537,8 +643,89 @@ export default function UserManagement() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+          <TabsContent value="visibility" className="space-y-5">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Department Visibility</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {visibilityLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : visibilityError ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                    Gagal memuat pengaturan visibility departemen.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full min-w-[980px] text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/40">
+                          <th className="sticky left-0 z-10 bg-muted px-4 py-3 text-left font-semibold">
+                            Features
+                          </th>
+                          {(visibilityMatrix?.departments ?? []).map((department) => (
+                            <th
+                              key={department.code}
+                              className="min-w-36 px-4 py-3 text-center font-semibold"
+                            >
+                              <div>{department.name}</div>
+                              <div className="text-xs font-normal text-muted-foreground">
+                                {department.code}
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(visibilityMatrix?.features ?? []).map((feature) => (
+                          <tr key={feature.key} className="border-b last:border-0">
+                            <td className="sticky left-0 z-10 bg-white px-4 py-3 font-semibold">
+                              {feature.label}
+                            </td>
+                            {(visibilityMatrix?.departments ?? []).map((department) => {
+                              const permissionKey = `${department.code}:${feature.key}`;
+                              const checked = visibilityByKey.get(permissionKey) ?? false;
+                              return (
+                                <td key={permissionKey} className="px-4 py-3 text-center">
+                                  <Checkbox
+                                    checked={checked}
+                                    disabled={updatingVisibilityKey !== null}
+                                    onCheckedChange={(value) =>
+                                      void updateDepartmentVisibility(
+                                        department.code,
+                                        feature.key,
+                                        value === true,
+                                      )
+                                    }
+                                    aria-label={`${feature.label} ${department.name}`}
+                                    className="mx-auto"
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
-      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+      <Dialog
+        open={passwordDialogOpen}
+        onOpenChange={(open) => {
+          setPasswordDialogOpen(open);
+          if (!open) {
+            setNewPassword("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>View Password</DialogTitle>
@@ -564,13 +751,37 @@ export default function UserManagement() {
                     "Password akun ini tidak bisa dilihat karena sudah tersimpan sebagai hash."}
                 </div>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setPasswordDialogOpen(false)}
-              >
-                Tutup
-              </Button>
+              <div className="rounded-lg border p-3">
+                <Label htmlFor="change-password">Change Password</Label>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="change-password"
+                    type="text"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    placeholder="Password baru minimal 6 karakter"
+                    disabled={changingPassword}
+                  />
+                  <Button
+                    type="button"
+                    onClick={changePassword}
+                    disabled={changingPassword || newPassword.trim().length < 6}
+                    className="sm:w-44"
+                  >
+                    {changingPassword && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                    Change Password
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPasswordDialogOpen(false)}
+                >
+                  Tutup
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

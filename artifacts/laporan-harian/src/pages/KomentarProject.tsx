@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, Plus, Search, Send } from "lucide-react";
-import { useListPo } from "@workspace/api-client-react";
 import Layout from "@/components/Layout";
+import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,7 @@ function formatDateTime(value: string) {
 }
 
 export default function KomentarProject() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [poId, setPoId] = useState("");
@@ -56,7 +57,25 @@ export default function KomentarProject() {
   const [filterProject, setFilterProject] = useState("all");
   const [search, setSearch] = useState("");
 
-  const { data: poData } = useListPo(undefined, { query: { queryKey: ["project-comments-po"] } });
+  const canAccessPage = (() => {
+    const role = String(user?.role ?? "").toLowerCase();
+    const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
+    const departmentName = String(user?.departmentName ?? "").toLowerCase();
+    return (
+      role === "admin" ||
+      role === "direktur" ||
+      role === "director" ||
+      role === "monitoring_dummy" ||
+      departmentCode === "ENG" ||
+      departmentName.includes("engineering")
+    );
+  })();
+
+  const { data: poData } = useQuery({
+    queryKey: ["project-comments-po", "active"],
+    queryFn: () => apiRequest<PoItem[]>("/api/po?openOnly=true"),
+    enabled: canAccessPage,
+  });
   const pos = (Array.isArray(poData) ? poData : []) as PoItem[];
   const poById = new Map(pos.map((item) => [item.id, item]));
   const selectedPo = poId ? poById.get(Number(poId)) : null;
@@ -64,16 +83,21 @@ export default function KomentarProject() {
   const customerCommentsQuery = useQuery({
     queryKey: ["project-comments", "customer"],
     queryFn: () => apiRequest<ProjectComment[]>("/api/customer-tracking/internal/comments"),
+    enabled: canAccessPage,
     refetchInterval: 15000,
   });
   const internalCommentsQuery = useQuery({
     queryKey: ["project-comments", "internal"],
     queryFn: () => apiRequest<ProjectComment[]>("/api/po/internal-comments"),
+    enabled: canAccessPage,
     refetchInterval: 15000,
   });
 
   const customers = [...new Set(pos.map((item) => item.customer).filter(Boolean))] as string[];
   const projects = [...new Set(pos.map((item) => item.namaProject).filter(Boolean))];
+  const posByCustomer = customerName
+    ? pos.filter((item) => item.customer === customerName)
+    : pos;
 
   const enrich = (items: ProjectComment[]) => items.map((item) => {
     const po = poById.get(item.poId);
@@ -103,6 +127,7 @@ export default function KomentarProject() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["project-comments", "customer"] }),
       queryClient.invalidateQueries({ queryKey: ["project-comments", "internal"] }),
+      queryClient.invalidateQueries({ queryKey: ["project-comments-po", "active"] }),
     ]);
   };
 
@@ -120,6 +145,19 @@ export default function KomentarProject() {
     } catch (error) {
       toast({ title: "Gagal menambah customer note", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
     }
+  };
+
+  const selectCustomer = (value: string) => {
+    setCustomerName(value);
+    if (selectedPo?.customer !== value) {
+      setPoId("");
+    }
+  };
+
+  const selectPo = (value: string) => {
+    setPoId(value);
+    const po = poById.get(Number(value));
+    setCustomerName(po?.customer ?? "");
   };
 
   const sendInternalComment = async () => {
@@ -156,6 +194,14 @@ export default function KomentarProject() {
   return (
     <Layout>
       <div className="page-shell max-w-6xl space-y-5">
+        {!canAccessPage ? (
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-red-600">
+              Halaman Komentar Project hanya dapat diakses Admin, Direktur, Monitoring Laporan, dan Engineering.
+            </CardContent>
+          </Card>
+        ) : (
+          <>
         <div>
           <h1 className="text-xl font-bold text-slate-950">Komentar Project</h1>
           <p className="text-sm text-slate-500">Komentar Internal dan Customer Notes dari data project yang sama.</p>
@@ -174,8 +220,8 @@ export default function KomentarProject() {
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Plus className="h-4 w-4" />Tambah Komentar</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1"><Label>Pilih PO</Label><Select value={poId} onValueChange={(value) => { setPoId(value); const po = poById.get(Number(value)); setCustomerName(po?.customer ?? ""); }}><SelectTrigger><SelectValue placeholder="Pilih No PO" /></SelectTrigger><SelectContent>{pos.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.noPo} - {item.namaProject}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1"><Label>Customer</Label><Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder={selectedPo?.customer ?? "Nama customer"} /></div>
+              <div className="space-y-1"><Label>Pilih PO</Label><Select value={poId} onValueChange={selectPo}><SelectTrigger><SelectValue placeholder="Pilih No PO" /></SelectTrigger><SelectContent>{posByCustomer.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.noPo} - {item.namaProject}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1"><Label>Customer</Label><Select value={customerName} onValueChange={selectCustomer}><SelectTrigger><SelectValue placeholder="Pilih customer aktif" /></SelectTrigger><SelectContent>{customers.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
             </div>
             <Tabs defaultValue="internal">
               <TabsList><TabsTrigger value="internal">Komentar Internal</TabsTrigger><TabsTrigger value="customer">Customer Notes</TabsTrigger></TabsList>
@@ -189,6 +235,8 @@ export default function KomentarProject() {
           <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Komentar Internal</CardTitle></CardHeader><CardContent>{renderComments(internalComments, "userName")}</CardContent></Card>
           <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Customer Notes</CardTitle></CardHeader><CardContent>{renderComments(customerComments, "customerName")}</CardContent></Card>
         </div>
+          </>
+        )}
       </div>
     </Layout>
   );
