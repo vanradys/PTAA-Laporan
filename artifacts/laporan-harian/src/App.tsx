@@ -59,8 +59,20 @@ function AppRoutes() {
 
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/dashboard" component={Dashboard} />
+      <Route path="/">
+        {() => (
+          <FeatureGate featureKey="dashboard">
+            <Dashboard />
+          </FeatureGate>
+        )}
+      </Route>
+      <Route path="/dashboard">
+        {() => (
+          <FeatureGate featureKey="dashboard">
+            <Dashboard />
+          </FeatureGate>
+        )}
+      </Route>
       <Route path="/laporan-saya">
         {() => (
           <FeatureGate featureKey="daily_reports">
@@ -90,7 +102,13 @@ function AppRoutes() {
         )}
       </Route>
       <Route path="/user-management" component={UserManagement} />
-      <Route path="/absensi" component={Attendance} />
+      <Route path="/absensi">
+        {() => (
+          <FeatureGate featureKey="attendance">
+            <Attendance />
+          </FeatureGate>
+        )}
+      </Route>
       <Route path="/laporan/:id" component={DetailLaporan} />
       <Route path="/jadwal-project">
         {() => (
@@ -106,8 +124,20 @@ function AppRoutes() {
           </FeatureGate>
         )}
       </Route>
-      <Route path="/panduan-website" component={PanduanWebsite} />
-      <Route path="/notifikasi" component={Notifikasi} />
+      <Route path="/panduan-website">
+        {() => (
+          <FeatureGate featureKey="website_guide">
+            <PanduanWebsite />
+          </FeatureGate>
+        )}
+      </Route>
+      <Route path="/notifikasi">
+        {() => (
+          <FeatureGate featureKey="notifications">
+            <Notifikasi />
+          </FeatureGate>
+        )}
+      </Route>
       <Route>
         <Dashboard />
       </Route>

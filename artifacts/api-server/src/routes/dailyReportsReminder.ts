@@ -7,6 +7,7 @@ import {
   normalizeReportDate,
   sendDailyReportReminders,
 } from "../services/dailyReportReminder";
+import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
 
@@ -30,7 +31,10 @@ router.get("/daily-reports/missing/today", async (req, res) => {
     const user = await getAuthenticatedUser(req);
     if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
-    if (!canManageDailyReportReminder(user)) {
+    if (
+      !canManageDailyReportReminder(user) ||
+      !(await canEditByPermission(user, "monitoring_send_reminder"))
+    ) {
       res.status(403).json({ error: "Anda tidak memiliki akses monitoring reminder" });
       return;
     }
@@ -48,7 +52,10 @@ router.post("/daily-reports/remind-missing", async (req, res) => {
     const user = await getAuthenticatedUser(req);
     if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
-    if (!canManageDailyReportReminder(user)) {
+    if (
+      !canManageDailyReportReminder(user) ||
+      !(await canEditByPermission(user, "monitoring_send_reminder"))
+    ) {
       res.status(403).json({ error: "Anda tidak memiliki akses mengirim reminder" });
       return;
     }

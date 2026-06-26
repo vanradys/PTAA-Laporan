@@ -86,7 +86,7 @@ export default function Layout({ children }: LayoutProps) {
   const canViewProjectCommentsNav =
     canViewProjectComments && canViewFeature("project_comments", true);
   const visibleNavItems = [
-    navItems[0],
+    ...(canViewFeature("dashboard", true) ? [navItems[0]] : []),
     ...(canViewFeature("daily_reports", true) ? [navItems[1]] : []),
     ...(canViewFeature("todo_list", true) ? [navItems[2]] : []),
     ...(canViewFeature("monitoring_reports", true) ? [navItems[3]] : []),
@@ -108,7 +108,9 @@ export default function Layout({ children }: LayoutProps) {
           icon: UsersRound,
         }]
       : []),
-    ...navItems.slice(6),
+    ...(canViewFeature("attendance", true) ? [navItems[6]] : []),
+    ...(canViewFeature("website_guide", true) ? [navItems[7]] : []),
+    ...(canViewFeature("notifications", true) ? [navItems[8]] : []),
   ];
 
   return (

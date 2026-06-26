@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import Layout from "@/components/Layout";
 import { apiRequest } from "@/lib/apiRequest";
+import { useFeatureVisibility } from "@/hooks/use-feature-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -142,6 +143,7 @@ function includesText(value: unknown, search: string) {
 }
 
 export default function MonitoringKeseluruhan() {
+  const { canViewFeature } = useFeatureVisibility();
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
@@ -149,6 +151,10 @@ export default function MonitoringKeseluruhan() {
   const [projectFilter, setProjectFilter] = useState("");
   const [activityType, setActivityType] = useState("all");
   const [searchText, setSearchText] = useState("");
+  const canViewCustomerNotes = canViewFeature("customer_notes", true);
+  const activityTypeOptions = ACTIVITY_TYPE_OPTIONS.filter(
+    (option) => canViewCustomerNotes || option.value !== "customer",
+  );
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["monitoring-overall"],
@@ -260,14 +266,15 @@ export default function MonitoringKeseluruhan() {
 
     return {
       poActivities,
-      customerNotes: source.customerNotes.filter(filterComment),
+      customerNotes: canViewCustomerNotes ? source.customerNotes.filter(filterComment) : [],
       internalComments: source.internalComments.filter(filterComment),
       taskHistories,
     };
-  }, [data, startDate, endDate, departmentFilter, userFilter, projectFilter, searchText]);
+  }, [canViewCustomerNotes, data, startDate, endDate, departmentFilter, userFilter, projectFilter, searchText]);
 
   const showPo = activityType === "all" || activityType === "po";
-  const showCustomer = activityType === "all" || activityType === "customer";
+  const showCustomer =
+    canViewCustomerNotes && (activityType === "all" || activityType === "customer");
   const showInternal = activityType === "all" || activityType === "internal";
   const showTask = activityType === "all" || activityType === "task";
 
@@ -312,7 +319,7 @@ export default function MonitoringKeseluruhan() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ACTIVITY_TYPE_OPTIONS.map((option) => (
+                  {activityTypeOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>

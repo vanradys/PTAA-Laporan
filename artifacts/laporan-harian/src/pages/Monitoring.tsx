@@ -17,6 +17,7 @@ import {
   type MissingDailyReportUser,
   useMissingDailyReportsToday,
 } from "@/hooks/use-daily-report-reminder";
+import { useEditPermissions } from "@/hooks/use-edit-permissions";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 type MonitoringFilters = {
@@ -186,6 +187,7 @@ export default function Monitoring() {
   const searchParams = useSearch();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { canEdit } = useEditPermissions();
   const defaultDateFrom = `${todayString.slice(0, 8)}01`;
   const defaultFilters: MonitoringFilters = {
     dateFrom: defaultDateFrom,
@@ -211,7 +213,8 @@ export default function Monitoring() {
   const [showFilters, setShowFilters] = useState(false);
 
   const userRole = user?.role?.toLowerCase() ?? "";
-  const canManageReminder = REMINDER_ACCESS_ROLES.includes(userRole);
+  const canManageReminder =
+    REMINDER_ACCESS_ROLES.includes(userRole) && canEdit("monitoring_send_reminder", true);
   const jakartaHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Jakarta", hour: "2-digit", hour12: false }).format(new Date()));
   const isAfterReminderTime = jakartaHour >= 16;
   const showReminderNotice = true;

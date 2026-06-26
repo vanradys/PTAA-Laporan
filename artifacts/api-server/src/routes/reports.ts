@@ -25,6 +25,7 @@ import {
   isWeekendReportDate,
   reportingUserCondition,
 } from "../services/dailyReportReminder";
+import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
 
@@ -665,6 +666,10 @@ router.post("/reports", async (req, res) => {
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk mengedit laporan harian" });
+    return;
+  }
 
   const { date, obstacles, additionalNotes, tomorrowPlan, status } = req.body;
   if (!date) { res.status(400).json({ error: "Tanggal diperlukan" }); return; }
@@ -840,6 +845,10 @@ router.patch("/reports/:id", async (req, res) => {
   const existing = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   if (existing[0].userId !== user.id && user.role !== "admin") { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk mengedit laporan harian" });
+    return;
+  }
 
   const { date, obstacles, additionalNotes, tomorrowPlan, status } = req.body;
 
@@ -872,6 +881,10 @@ router.delete("/reports/:id", async (req, res) => {
   const existing = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   if (existing[0].userId !== user.id && user.role !== "admin") { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk menghapus laporan harian" });
+    return;
+  }
 
   await db.delete(dailyReportsTable).where(eq(dailyReportsTable.id, id));
   res.json({ success: true, message: "Laporan berhasil dihapus" });
@@ -887,6 +900,10 @@ router.post("/reports/:id/submit", async (req, res) => {
   const existing = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   if (existing[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_submit"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk submit laporan harian" });
+    return;
+  }
 
   if (isEmptyText(existing[0].tomorrowPlan)) {
     res.status(400).json({ error: "Rencana Besok & Target wajib diisi sebelum laporan dikirim" });
@@ -963,8 +980,10 @@ router.post("/reports/:id/review", async (req, res) => {
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
-  const allowedRoles = ["admin", "hr", "direktur"];
-  if (!allowedRoles.includes(user.role)) { res.status(403).json({ error: "Hanya HR/Admin/Direktur yang dapat mereview" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_review"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk review laporan harian" });
+    return;
+  }
 
   const { action } = req.body;
   if (!action) { res.status(400).json({ error: "Action diperlukan" }); return; }

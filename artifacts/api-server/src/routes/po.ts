@@ -19,6 +19,7 @@ import {
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router } from "express";
+import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
 
@@ -896,7 +897,7 @@ router.post("/po", async (req, res) => {
     return;
   }
 
-  if (!canManagePo(user)) {
+  if (!(await canEditByPermission(user, "po_create"))) {
     res.status(403).json({
       error:
         "Hanya Admin/Direktur atau departemen terkait yang dapat menambah PO",
@@ -1153,6 +1154,10 @@ router.post("/po/:id/notes", async (req, res) => {
   const token = req.cookies?.session_token;
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  if (!(await canEditByPermission(user, "po_add_notes"))) {
+    res.status(403).json({ error: "Tidak diizinkan menambah catatan PO" });
+    return;
+  }
   const poId = Number(req.params.id);
   const note = String(req.body?.note ?? "").trim();
   if (!note) { res.status(400).json({ error: "Isi catatan wajib diisi" }); return; }
@@ -1172,8 +1177,8 @@ router.patch("/po/:poId/notes/:noteId", async (req, res) => {
   const token = req.cookies?.session_token;
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  if (String(user.role).toLowerCase() !== "admin") {
-    res.status(403).json({ error: "Hanya Admin yang dapat mengedit catatan PO" }); return;
+  if (!(await canEditByPermission(user, "po_manage_notes"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk mengedit catatan PO" }); return;
   }
   const note = String(req.body?.note ?? "").trim();
   if (!note) { res.status(400).json({ error: "Isi catatan wajib diisi" }); return; }
@@ -1190,8 +1195,8 @@ router.delete("/po/:poId/notes/:noteId", async (req, res) => {
   const token = req.cookies?.session_token;
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  if (String(user.role).toLowerCase() !== "admin") {
-    res.status(403).json({ error: "Hanya Admin yang dapat menghapus catatan PO" }); return;
+  if (!(await canEditByPermission(user, "po_manage_notes"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk menghapus catatan PO" }); return;
   }
   const [deleted] = await db.delete(poNotesTable).where(and(
     eq(poNotesTable.id, Number(req.params.noteId)),
@@ -1213,10 +1218,11 @@ router.patch("/po/:id", async (req, res) => {
     return;
   }
 
-  const hasFullManagePermission = canEditPoData(user);
-  const hasProgressPermission = canUpdateProjectProgress(user);
+  const hasFullManagePermission = await canEditByPermission(user, "po_edit_data");
+  const hasProgressPermission = await canEditByPermission(user, "po_update_progress");
+  const hasTimelinePermission = await canEditByPermission(user, "po_edit_customer_timeline");
 
-  if (!hasProgressPermission) {
+  if (!hasFullManagePermission && !hasProgressPermission && !hasTimelinePermission) {
     res.status(403).json({
       error:
         "Hanya Admin/Direktur atau departemen terkait yang dapat mengubah PO",
@@ -1293,6 +1299,21 @@ router.patch("/po/:id", async (req, res) => {
       return;
     }
   }
+  if (!hasProgressPermission) {
+    const progressFields = [status, hasPainting, trackingStages];
+    if (progressFields.some((value) => value !== undefined)) {
+      res.status(403).json({
+        error: "Tidak diizinkan mengubah Project Progress",
+      });
+      return;
+    }
+  }
+  if (!hasTimelinePermission && trackingTimeline !== undefined) {
+    res.status(403).json({
+      error: "Tidak diizinkan mengubah Timeline Customer",
+    });
+    return;
+  }
 
   if (progress !== undefined) {
     res.status(400).json({
@@ -1325,11 +1346,6 @@ router.patch("/po/:id", async (req, res) => {
       updates.aktualPengiriman = aktualPengiriman ? String(aktualPengiriman).trim() : null;
     if (picProject !== undefined)
       updates.picProject = picProject ? String(picProject).trim() : null;
-    if (hasPainting !== undefined) updates.hasPainting = Boolean(hasPainting);
-    if (trackingStages !== undefined)
-      updates.trackingStages = normalizeTrackingStages(trackingStages);
-    if (trackingTimeline !== undefined)
-      updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
     // Catatan baru disimpan sebagai item terpisah melalui endpoint /po/:id/notes.
   }
 
@@ -1345,13 +1361,14 @@ router.patch("/po/:id", async (req, res) => {
     updates.departmentId = selectedPic.departmentId;
   }
 
-  if (!hasFullManagePermission && isPurchasingOrEngineering(user)) {
+  if (hasProgressPermission) {
     if (hasPainting !== undefined) updates.hasPainting = Boolean(hasPainting);
     if (trackingStages !== undefined)
       updates.trackingStages = normalizeTrackingStages(trackingStages);
-    if (trackingTimeline !== undefined)
-      updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
   }
+
+  if (hasTimelinePermission && trackingTimeline !== undefined)
+    updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
 
   if (status !== undefined) {
     const nextStatus = normalizeProjectProgress(status);
@@ -1452,7 +1469,7 @@ router.post("/po/:id/close", async (req, res) => {
     return;
   }
 
-  if (!canEditPoData(user)) {
+  if (!(await canEditByPermission(user, "po_mark_complete"))) {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }
@@ -1521,7 +1538,7 @@ router.delete("/po/:id", async (req, res) => {
     return;
   }
 
-  if (!canManagePo(user)) {
+  if (!(await canEditByPermission(user, "po_delete"))) {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }

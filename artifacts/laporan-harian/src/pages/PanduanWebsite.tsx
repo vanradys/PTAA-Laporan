@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Edit3, GripVertical, ImagePlus, Plus, Save, Trash2 } from "lucide-react";
 import Layout from "@/components/Layout";
-import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
+import { useEditPermissions } from "@/hooks/use-edit-permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -114,10 +114,10 @@ async function prepareScreenshot(file: File) {
 }
 
 export default function PanduanWebsite() {
-  const { user } = useAuth();
   const { toast } = useToast();
+  const { canEdit } = useEditPermissions();
   const queryClient = useQueryClient();
-  const isAdmin = String(user?.role ?? "").toLowerCase() === "admin";
+  const canManageTutorials = canEdit("tutorial_manage", false);
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [draft, setDraft] = useState<TutorialDraft>(emptyDraft);
   const [isSaving, setIsSaving] = useState(false);
@@ -136,7 +136,7 @@ export default function PanduanWebsite() {
   const tutorials = tutorialsQuery.data ?? [];
 
   const reorderTutorial = async (draggedId: number, targetId: number) => {
-    if (draggedId === targetId || isReordering) return;
+    if (!canManageTutorials || draggedId === targetId || isReordering) return;
 
     const fromIndex = tutorials.findIndex((item) => item.id === draggedId);
     const toIndex = tutorials.findIndex((item) => item.id === targetId);
@@ -188,7 +188,7 @@ export default function PanduanWebsite() {
   };
 
   const save = async () => {
-    if (isSaving || isProcessingImage || !draft.title.trim() || !draft.content.trim()) return;
+    if (!canManageTutorials || isSaving || isProcessingImage || !draft.title.trim() || !draft.content.trim()) return;
     setIsSaving(true);
     try {
       const payload = {
@@ -221,6 +221,7 @@ export default function PanduanWebsite() {
   };
 
   const remove = async (item: Tutorial) => {
+    if (!canManageTutorials) return;
     if (!window.confirm(`Hapus panduan "${item.title}"?`)) return;
     await apiRequest(`/api/tutorials/${item.id}`, { method: "DELETE" });
     await queryClient.invalidateQueries({ queryKey: ["tutorials"] });
@@ -234,7 +235,7 @@ export default function PanduanWebsite() {
             <h1 className="text-xl font-bold text-slate-950">Panduan Website</h1>
             <p className="text-sm text-slate-500">FAQ dan tutorial penggunaan sistem PTAA.</p>
           </div>
-          {isAdmin && (
+          {canManageTutorials && (
             <Button onClick={() => { setEditingId("new"); setDraft({ ...emptyDraft, sortOrder: (tutorials.length + 1) * 10 }); setScreenshotChanged(false); setExistingScreenshotUrl(null); }}>
               <Plus className="mr-2 h-4 w-4" />
               Tambah Panduan
@@ -242,7 +243,7 @@ export default function PanduanWebsite() {
           )}
         </div>
 
-        {editingId && isAdmin && (
+        {editingId && canManageTutorials && (
           <Card>
             <CardHeader><CardTitle className="text-base">{editingId === "new" ? "Tambah Panduan" : "Edit Panduan"}</CardTitle></CardHeader>
             <CardContent className="space-y-3">
@@ -315,7 +316,7 @@ export default function PanduanWebsite() {
                 dragOverTutorialId === item.id ? "border-[#06258d] bg-blue-50/40" : ""
               } ${draggedTutorialId === item.id ? "opacity-60" : ""}`}
               onDragOver={(event) => {
-                if (!isAdmin || draggedTutorialId === null) return;
+                if (!canManageTutorials || draggedTutorialId === null) return;
                 event.preventDefault();
                 setDragOverTutorialId(item.id);
               }}
@@ -327,13 +328,13 @@ export default function PanduanWebsite() {
               onDrop={(event) => {
                 event.preventDefault();
                 const droppedId = Number(event.dataTransfer.getData("text/plain")) || draggedTutorialId;
-                if (isAdmin && droppedId) {
+                if (canManageTutorials && droppedId) {
                   void reorderTutorial(droppedId, item.id);
                 }
               }}
             >
               <div className="flex items-center gap-2">
-                {isAdmin && (
+                {canManageTutorials && (
                   <button
                     type="button"
                     className="flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing"
@@ -377,7 +378,7 @@ export default function PanduanWebsite() {
                     )}
                   </div>
                 </div>
-                {isAdmin && (
+                {canManageTutorials && (
                   <div className="mt-4 flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => startEdit(item)}><Edit3 className="mr-1.5 h-3.5 w-3.5" />Edit</Button>
                     <Button size="sm" variant="outline" className="text-red-600" onClick={() => remove(item)}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Hapus</Button>

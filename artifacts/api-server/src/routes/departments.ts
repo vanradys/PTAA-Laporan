@@ -3,6 +3,14 @@ import { getUserFromToken, hashPassword, ptaaUsers } from "./auth";
 import { activeDepartmentCodes } from "./auth";
 import { Router } from "express";
 import { activeUserCondition } from "../services/dailyReportReminder";
+import {
+  editPermissionFeatureKeys,
+  editPermissionFeatures,
+  ensureEditPermissionTable,
+  getEditPermissionsForUser,
+  getEffectiveEditPermission,
+  getSavedEditPermissionMap,
+} from "../services/editPermissions";
 
 const router = Router();
 
@@ -231,6 +239,115 @@ router.patch("/user-management/department-visibility", async (req, res) => {
   res.json({ success: true, departmentCode: subject.key, subjectKey: subject.key, featureKey, canView });
 });
 
+router.get("/user-management/edit-permissions", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengakses edit permissions" });
+    return;
+  }
+
+  await ensureEditPermissionTable();
+
+  const departments = await db
+    .select({
+      id: departmentsTable.id,
+      name: departmentsTable.name,
+      code: departmentsTable.code,
+    })
+    .from(departmentsTable)
+    .orderBy(departmentsTable.name);
+  const subjects = buildVisibilitySubjects(departments);
+  const savedByKey = await getSavedEditPermissionMap();
+
+  res.json({
+    features: editPermissionFeatures,
+    departments: subjects.map(serializeVisibilitySubject),
+    permissions: subjects.flatMap((subject) =>
+      editPermissionFeatures.map((feature) => ({
+        departmentCode: subject.key,
+        subjectKey: subject.key,
+        permissionKey: feature.key,
+        canEdit: getEffectiveEditPermission(subject, feature.key, savedByKey),
+      })),
+    ),
+  });
+});
+
+router.get("/edit-permissions/me", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  const departments = await db
+    .select({
+      id: departmentsTable.id,
+      name: departmentsTable.name,
+      code: departmentsTable.code,
+    })
+    .from(departmentsTable)
+    .orderBy(departmentsTable.name);
+  const subject = getVisibilitySubjectForUser(user, buildVisibilitySubjects(departments));
+
+  res.json({
+    features: editPermissionFeatures,
+    subject: subject ? serializeVisibilitySubject(subject) : null,
+    permissions: await getEditPermissionsForUser(user),
+  });
+});
+
+router.patch("/user-management/edit-permissions", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat mengubah edit permissions" });
+    return;
+  }
+
+  const requestedSubject = String(req.body?.subjectKey ?? req.body?.departmentCode ?? "").trim();
+  const permissionKey = String(req.body?.permissionKey ?? "").trim();
+  const canEdit = Boolean(req.body?.canEdit);
+
+  if (!requestedSubject || !editPermissionFeatureKeys.has(permissionKey)) {
+    res.status(400).json({ error: "Profile atau permission tidak valid" });
+    return;
+  }
+
+  const departments = await db
+    .select({
+      id: departmentsTable.id,
+      name: departmentsTable.name,
+      code: departmentsTable.code,
+    })
+    .from(departmentsTable)
+    .orderBy(departmentsTable.name);
+  const subject = findVisibilitySubject(buildVisibilitySubjects(departments), requestedSubject);
+
+  if (!subject) {
+    res.status(404).json({ error: "Visibility profile tidak ditemukan" });
+    return;
+  }
+  if (subject.locked) {
+    res.status(403).json({ error: "Permission Admin bersifat absolute dan tidak bisa diubah" });
+    return;
+  }
+
+  await ensureEditPermissionTable();
+  await db.execute(sql`
+    insert into department_edit_permissions (subject_key, permission_key, can_edit, updated_at)
+    values (${subject.key}, ${permissionKey}, ${canEdit}, now())
+    on conflict (subject_key, permission_key)
+    do update set can_edit = excluded.can_edit, updated_at = now()
+  `);
+
+  res.json({ success: true, departmentCode: subject.key, subjectKey: subject.key, permissionKey, canEdit });
+});
+
 const allowedUserManagementRoles = new Set([
   "admin",
   "direktur",
@@ -241,19 +358,17 @@ const allowedUserManagementRoles = new Set([
 ]);
 
 const departmentVisibilityFeatures = [
+  { key: "dashboard", label: "Dashboard" },
   { key: "daily_reports", label: "LAPORAN HARIAN" },
   { key: "todo_list", label: "To Do List" },
   { key: "monitoring_reports", label: "Monitoring Laporan" },
   { key: "overall_monitoring", label: "Monitoring Keseluruhan" },
   { key: "project_schedule", label: "Jadwal Project" },
   { key: "project_comments", label: "Komentar Project" },
-  { key: "po_input", label: "Penginputan Data PO" },
-  { key: "project_progress", label: "Project Progress" },
-  { key: "po_received_date", label: "Tanggal Masuk PO" },
-  { key: "target_delivery", label: "Target Pengiriman" },
-  { key: "actual_delivery", label: "Aktual Pengiriman" },
-  { key: "customer_progress_timeline", label: "Timeline Progress Customer" },
-  { key: "notes", label: "Catatan" },
+  { key: "customer_notes", label: "Customer Notes" },
+  { key: "attendance", label: "Absensi" },
+  { key: "website_guide", label: "Panduan Website" },
+  { key: "notifications", label: "Notifikasi" },
 ] as const;
 
 const departmentVisibilityFeatureKeys = new Set<string>(
@@ -280,25 +395,14 @@ const allDepartmentVisibilityFeatures = departmentVisibilityFeatures.map(
 );
 
 const defaultLoggedInFeatureVisibility = [
+  "dashboard",
   "daily_reports",
   "todo_list",
   "monitoring_reports",
   "project_schedule",
-  "po_received_date",
-  "target_delivery",
-  "actual_delivery",
-  "notes",
-];
-
-const poInputFeatures = [
-  "po_input",
-  "project_progress",
-  "customer_progress_timeline",
-];
-
-const projectProgressFeatures = [
-  "project_progress",
-  "customer_progress_timeline",
+  "attendance",
+  "website_guide",
+  "notifications",
 ];
 
 const defaultSubjectVisibility: Record<string, string[]> = {
@@ -306,38 +410,33 @@ const defaultSubjectVisibility: Record<string, string[]> = {
   "role:direktur": [
     ...defaultLoggedInFeatureVisibility,
     "project_comments",
-    ...poInputFeatures,
+    "customer_notes",
   ],
   "role:monitoring_dummy": [
     ...defaultLoggedInFeatureVisibility,
     "overall_monitoring",
     "project_comments",
-    ...poInputFeatures,
+    "customer_notes",
   ],
   "DEPT:MKT": [
     ...defaultLoggedInFeatureVisibility,
-    ...poInputFeatures,
   ],
   "DEPT:ENG": [
     ...defaultLoggedInFeatureVisibility,
     "project_comments",
-    ...projectProgressFeatures,
+    "customer_notes",
   ],
   "DEPT:AAF": [
     ...defaultLoggedInFeatureVisibility,
-    ...poInputFeatures,
   ],
   "DEPT:FIN": [
     ...defaultLoggedInFeatureVisibility,
-    ...poInputFeatures,
   ],
   "DEPT:PUR": [
     ...defaultLoggedInFeatureVisibility,
-    ...projectProgressFeatures,
   ],
   "DEPT:GA": [
     ...defaultLoggedInFeatureVisibility,
-    ...poInputFeatures,
   ],
 };
 

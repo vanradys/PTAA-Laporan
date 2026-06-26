@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { Router } from "express";
 import { getUserFromToken } from "./auth";
+import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
 
@@ -58,11 +59,6 @@ const GENERIC_LEGACY_STATUS_KEYS = new Set([
 ]);
 
 type TrackingTimelineItem = { date: string; description: string };
-
-function isAdminOrDirector(user?: { role?: string | null }) {
-  const role = String(user?.role ?? "").toLowerCase();
-  return ["admin", "direktur", "director", "dir"].includes(role);
-}
 
 function getInternalCommentDisplayName(user: {
   name?: string | null;
@@ -400,6 +396,10 @@ router.get("/customer-tracking/internal/comments", async (req, res) => {
     res.status(401).json({ error: "Sesi tidak valid" });
     return;
   }
+  if (!(await canEditByPermission(user, "project_comment_add"))) {
+    res.status(403).json({ error: "Tidak diizinkan menambah komentar project" });
+    return;
+  }
 
   const comments = await db
     .select({
@@ -538,7 +538,7 @@ router.delete("/po/:poId/internal-comments/:commentId", async (req, res) => {
     return;
   }
 
-  if (!isAdminOrDirector(user)) {
+  if (!(await canEditByPermission(user, "project_comment_delete"))) {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }
@@ -562,7 +562,7 @@ router.patch("/po/:poId/internal-comments/:commentId", async (req, res) => {
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
-  if (String(user.role).toLowerCase() !== "admin") {
+  if (!(await canEditByPermission(user, "project_comment_edit"))) {
     res.status(403).json({ error: "Hanya Admin yang dapat mengedit komentar internal" });
     return;
   }
@@ -672,7 +672,7 @@ router.delete("/customer-tracking/:poId/comments/:commentId", async (req, res) =
     return;
   }
 
-  if (!isAdminOrDirector(user)) {
+  if (!(await canEditByPermission(user, "project_comment_delete"))) {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }
@@ -696,7 +696,7 @@ router.patch("/customer-tracking/:poId/comments/:commentId", async (req, res) =>
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
-  if (String(user.role).toLowerCase() !== "admin") {
+  if (!(await canEditByPermission(user, "project_comment_edit"))) {
     res.status(403).json({ error: "Hanya Admin yang dapat mengedit customer notes" });
     return;
   }

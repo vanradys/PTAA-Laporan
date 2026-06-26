@@ -14,6 +14,7 @@ import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
+import { useEditPermissions } from "@/hooks/use-edit-permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -195,16 +196,22 @@ export default function Attendance() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canEdit } = useEditPermissions();
   const role = String(user?.role ?? "").toLowerCase();
   const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
   const departmentName = String(user?.departmentName ?? "").toLowerCase();
   const email = String(user?.email ?? "").toLowerCase();
-  const canManageAttendance = role === "admin"
+  const legacyCanManageAttendance = role === "admin"
     || role === "finance"
     || ["AAF", "FIN"].includes(departmentCode)
     || departmentName.includes("finance")
     || email === "finance@adiyasa.com";
-  const canViewAll = canManageAttendance || [
+  const canImportAttendance = canEdit("attendance_import", legacyCanManageAttendance);
+  const canManageAttendanceMappings = canEdit("attendance_manage_mappings", legacyCanManageAttendance);
+  const canManageAttendanceHolidays = canEdit("attendance_manage_holidays", legacyCanManageAttendance);
+  const canManualCorrectAttendance = canEdit("attendance_manual_corrections", legacyCanManageAttendance);
+  const canExportAttendance = canEdit("attendance_export", legacyCanManageAttendance);
+  const canViewAll = legacyCanManageAttendance || [
     "direktur",
     "director",
     "dir",
@@ -241,17 +248,17 @@ export default function Attendance() {
   const holidaysQuery = useQuery({
     queryKey: ["attendance-holidays", start, end],
     queryFn: () => apiRequest<Holiday[]>(`/api/attendance/holidays?start=${start}&end=${end}`),
-    enabled: canViewAll,
+    enabled: canViewAll || canManageAttendanceHolidays,
   });
   const mappingsQuery = useQuery({
     queryKey: ["attendance-mappings"],
     queryFn: () => apiRequest<MappingResponse>("/api/attendance/mappings"),
-    enabled: canViewAll,
+    enabled: canViewAll || canImportAttendance || canManageAttendanceMappings,
   });
   const settingsQuery = useQuery({
     queryKey: ["attendance-settings"],
     queryFn: () => apiRequest<SettingsData>("/api/attendance/settings"),
-    enabled: canManageAttendance,
+    enabled: canManageAttendanceHolidays || canManageAttendanceMappings,
   });
   const selfEmployee = canViewAll ? null : summaryQuery.data?.employees[0] ?? null;
   const effectiveDetailId = canViewAll ? detailId : selfEmployee?.mappingId ?? null;
@@ -263,7 +270,7 @@ export default function Attendance() {
   const importsQuery = useQuery({
     queryKey: ["attendance-imports"],
     queryFn: () => apiRequest<ImportBatch[]>("/api/attendance/imports"),
-    enabled: canManageAttendance,
+    enabled: canImportAttendance,
   });
   const pendingBatch = importsQuery.data?.find((item) => item.status === "preview") ?? null;
 
@@ -309,6 +316,7 @@ export default function Attendance() {
   };
 
   const handleFile = async (file: File) => {
+    if (!canImportAttendance) return;
     setUploading(true);
     try {
       const formData = new FormData();
@@ -324,7 +332,7 @@ export default function Attendance() {
   };
 
   const processImport = async () => {
-    if (!preview) return;
+    if (!preview || !canImportAttendance) return;
     setProcessing(true);
     try {
       const result = await apiRequest<{ periodStart: string; periodEnd: string }>(`/api/attendance/import/${preview.batchId}/process`, { method: "POST" });
@@ -343,7 +351,7 @@ export default function Attendance() {
   };
 
   const cancelPreview = async () => {
-    if (!preview) return;
+    if (!preview || !canImportAttendance) return;
     const batchId = preview.batchId;
     setPreview(null);
     try {
@@ -356,7 +364,7 @@ export default function Attendance() {
   };
 
   const resumePreview = async () => {
-    if (!pendingBatch) return;
+    if (!pendingBatch || !canImportAttendance) return;
     try {
       setPreview(await apiRequest<ImportPreview>(`/api/attendance/import/${pendingBatch.id}/preview`));
     } catch (error) {
@@ -377,6 +385,7 @@ export default function Attendance() {
   };
 
   const exportExcel = async () => {
+    if (!canExportAttendance) return;
     try {
       const blob = await apiRequest<Blob>(`/api/attendance/export?start=${start}&end=${end}`, { responseType: "blob" });
       const url = URL.createObjectURL(blob);
@@ -418,23 +427,27 @@ export default function Attendance() {
             <p className="mt-1 text-sm text-slate-500">Import dan analisis data absensi Fingerspot</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {canManageAttendance && (
+            {canImportAttendance && (
               <Button onClick={() => setUploadOpen(true)}>
                 <Upload className="mr-2 h-4 w-4" />
                 Upload Data Absensi dari Mesin
               </Button>
             )}
-            {canViewAll && <Button variant="outline" onClick={exportExcel}>
+            {canExportAttendance && <Button variant="outline" onClick={exportExcel}>
               <Download className="mr-2 h-4 w-4" /> Export Excel
             </Button>}
-            {canManageAttendance && (
+            {(canManageAttendanceHolidays || canManageAttendanceMappings) && (
               <>
+                {canManageAttendanceHolidays && (
                 <Button variant="outline" onClick={() => setHolidayOpen(true)}>
                   <CalendarDays className="mr-2 h-4 w-4" /> Kelola Libur
                 </Button>
+                )}
+                {canManageAttendanceMappings && (
                 <Button variant="outline" onClick={() => setMappingOpen(true)}>
                   <Settings className="mr-2 h-4 w-4" /> Pengaturan Mapping
                 </Button>
+                )}
               </>
             )}
           </div>
@@ -522,7 +535,7 @@ export default function Attendance() {
             <CardHeader><CardTitle className="text-base text-amber-900">Nama Belum Mapping</CardTitle></CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               {mappingsQuery.data?.pendingNames.map((name) => <Badge key={name} variant="outline" className="bg-white">{name}</Badge>)}
-              {canManageAttendance && <Button size="sm" variant="outline" onClick={() => setMappingOpen(true)}>Mapping sekarang</Button>}
+              {canManageAttendanceMappings && <Button size="sm" variant="outline" onClick={() => setMappingOpen(true)}>Mapping sekarang</Button>}
             </CardContent>
           </Card>
         )}
@@ -602,12 +615,13 @@ export default function Attendance() {
         onFile={handleFile}
         onProcess={processImport}
         onMapping={() => { setMappingOpen(true); }}
+        canManageMappings={canManageAttendanceMappings}
         pendingBatch={pendingBatch}
         onResume={resumePreview}
       />
-      <MappingDialog open={mappingOpen} onOpenChange={setMappingOpen} data={mappingsQuery.data} settings={settingsQuery.data} onSaved={refreshAfterMapping} />
+      <MappingDialog open={mappingOpen} onOpenChange={setMappingOpen} data={mappingsQuery.data} settings={settingsQuery.data} canManageSettings={canManageAttendanceHolidays} onSaved={refreshAfterMapping} />
       <HolidayDialog open={holidayOpen} onOpenChange={setHolidayOpen} holidays={holidaysQuery.data ?? []} settings={settingsQuery.data} onSaved={refreshAttendance} />
-      {canViewAll && <DetailDialog open={detailId !== null} onOpenChange={(open) => { if (!open) setDetailId(null); }} data={detailQuery.data} loading={detailQuery.isLoading} canEdit={canManageAttendance} onSaved={refreshAttendance} />}
+      {canViewAll && <DetailDialog open={detailId !== null} onOpenChange={(open) => { if (!open) setDetailId(null); }} data={detailQuery.data} loading={detailQuery.isLoading} canEdit={canManualCorrectAttendance} onSaved={refreshAttendance} />}
     </Layout>
   );
 }
@@ -628,7 +642,7 @@ function ErrorState({ text }: { text: string }) {
   return <div className="px-4 py-12 text-center text-sm text-red-600">{text}</div>;
 }
 
-function UploadDialog({ open, onOpenChange, preview, uploading, processing, onFile, onProcess, onMapping, pendingBatch, onResume }: {
+function UploadDialog({ open, onOpenChange, preview, uploading, processing, onFile, onProcess, onMapping, canManageMappings, pendingBatch, onResume }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   preview: ImportPreview | null;
@@ -637,6 +651,7 @@ function UploadDialog({ open, onOpenChange, preview, uploading, processing, onFi
   onFile: (file: File) => void;
   onProcess: () => void;
   onMapping: () => void;
+  canManageMappings: boolean;
   pendingBatch: ImportBatch | null;
   onResume: () => void;
 }) {
@@ -661,7 +676,7 @@ function UploadDialog({ open, onOpenChange, preview, uploading, processing, onFi
           <SummaryCard label="Jumlah baris" value={preview.totalRows} /><SummaryCard label="Baris valid" value={preview.validRows} /><SummaryCard label="Baris invalid" value={preview.invalidRows} /><SummaryCard label="Sudah mapping" value={preview.mappedNames.length} /><SummaryCard label="Belum mapping" value={preview.unmappedNames.length} /><SummaryCard label="Sheet" value={preview.sheetName} />
         </div>
         <p className="text-sm"><span className="font-semibold">File:</span> {preview.fileName} · <span className="font-semibold">Periode:</span> {preview.periodStart ?? "-"} sampai {preview.periodEnd ?? "-"}</p>
-        {preview.unmappedNames.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm font-semibold text-amber-900">Nama belum mapping</p><div className="mt-2 flex flex-wrap gap-2">{preview.unmappedNames.map((name) => <Badge key={name} variant="outline" className="bg-white">{name}</Badge>)}</div><Button className="mt-3" size="sm" variant="outline" onClick={onMapping}>Mapping sekarang</Button></div>}
+        {preview.unmappedNames.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm font-semibold text-amber-900">Nama belum mapping</p><div className="mt-2 flex flex-wrap gap-2">{preview.unmappedNames.map((name) => <Badge key={name} variant="outline" className="bg-white">{name}</Badge>)}</div>{canManageMappings && <Button className="mt-3" size="sm" variant="outline" onClick={onMapping}>Mapping sekarang</Button>}</div>}
         {preview.invalidDetails.length > 0 && <div className="rounded-lg border border-red-200 bg-red-50 p-3"><p className="text-sm font-semibold text-red-900">Baris invalid disimpan sebagai audit dan tidak diproses</p><div className="mt-2 max-h-32 overflow-y-auto text-xs text-red-800">{preview.invalidDetails.map((item) => <p key={item.rowNumber}>Baris {item.rowNumber}: {item.errors.join(", ")}</p>)}</div></div>}
         <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[700px] text-xs"><thead><tr className="bg-slate-100"><th className="p-2 text-left">Baris</th><th className="p-2 text-left">Nama</th><th className="p-2 text-left">Tanggal</th><th className="p-2 text-left">Jam</th><th className="p-2 text-left">Departemen</th><th className="p-2 text-left">Validasi</th></tr></thead><tbody>{preview.preview.map((row) => <tr key={row.rowNumber} className="border-t"><td className="p-2">{row.rowNumber}</td><td className="p-2">{row.machineName || "-"}</td><td className="p-2">{row.scanDate || "-"}</td><td className="p-2">{row.scanTime || "-"}</td><td className="p-2">{row.department || "-"}</td><td className="p-2">{row.isValid ? "Valid" : "Invalid"}</td></tr>)}</tbody></table></div>
         <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Batal</Button><Button disabled={processing || preview.validRows === 0} onClick={onProcess}>{processing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Proses Import</Button></div>
@@ -670,11 +685,12 @@ function UploadDialog({ open, onOpenChange, preview, uploading, processing, onFi
   </DialogContent></Dialog>;
 }
 
-function MappingDialog({ open, onOpenChange, data, settings, onSaved }: {
+function MappingDialog({ open, onOpenChange, data, settings, canManageSettings, onSaved }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   data?: MappingResponse;
   settings?: SettingsData;
+  canManageSettings: boolean;
   onSaved: () => Promise<void>;
 }) {
   const { toast } = useToast();
@@ -743,7 +759,7 @@ function MappingDialog({ open, onOpenChange, data, settings, onSaved }: {
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto"><DialogHeader><DialogTitle>Pengaturan Mapping Absensi</DialogTitle></DialogHeader>
     <div className="grid gap-3 sm:grid-cols-2"><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nama..." /><Select value={filter} onValueChange={setFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Semua mapping</SelectItem><SelectItem value="mapped">Sudah mapping</SelectItem><SelectItem value="unmapped">Belum mapping</SelectItem></SelectContent></Select></div>
     <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[900px] text-sm"><thead><tr className="bg-slate-100"><th className="p-3 text-left">Nama di mesin</th><th className="p-3 text-left">Nama tampilan</th><th className="p-3 text-left">User website (opsional)</th><th className="p-3 text-left">Tipe</th><th className="p-3 text-left">Status</th><th className="p-3 text-left">Aksi</th></tr></thead><tbody>{rows.map((row) => { const draft = draftFor(row); return <tr key={row.machineName.trim().toLowerCase()} className="border-t"><td className="p-3 font-semibold">{row.machineName}</td><td className="p-3"><Input value={draft.displayName} onChange={(event) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, displayName: event.target.value } }))} /></td><td className="p-3"><Select value={draft.userId} onValueChange={(value) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, userId: value } }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Tanpa akun website</SelectItem>{usersQuery.data?.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</SelectContent></Select></td><td className="p-3"><Select value={draft.employeeType} onValueChange={(value) => setDrafts((current) => ({ ...current, [row.machineName]: { ...draft, employeeType: value } }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Office">Office</SelectItem><SelectItem value="Produksi">Produksi</SelectItem></SelectContent></Select></td><td className="p-3"><Badge variant="outline" className={row.pending ? "border-amber-300 bg-amber-50" : row.isActive ? "border-green-300 bg-green-50" : "bg-slate-100"}>{row.pending ? "Belum mapping" : row.isActive ? "Aktif" : "Nonaktif"}</Badge></td><td className="p-3"><div className="flex gap-2"><Button size="sm" onClick={() => save(row)} disabled={saving !== null}>{saving === row.machineName && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Simpan</Button>{row.id && <Button size="sm" variant="outline" onClick={async () => { try { await apiRequest(`/api/attendance/mappings/${row.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !row.isActive }) }); await onSaved(); } catch (error) { toast({ title: "Status mapping gagal diubah", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" }); } }}>{row.isActive ? "Nonaktifkan" : "Aktifkan"}</Button>}</div></td></tr>; })}</tbody></table></div>
-    <Card><CardHeader><CardTitle className="text-base">Threshold Status Global</CardTitle></CardHeader><CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end"><FilterField label="Safe maksimal telat"><Input type="number" min={0} value={safeMax ?? settings?.safeMax ?? 2} onChange={(event) => setSafeMax(Number(event.target.value))} /></FilterField><FilterField label="Warning maksimal telat"><Input type="number" min={1} value={warningMax ?? settings?.warningMax ?? 4} onChange={(event) => setWarningMax(Number(event.target.value))} /></FilterField><Button onClick={saveSettings}>Simpan Threshold</Button></CardContent></Card>
+    {canManageSettings && <Card><CardHeader><CardTitle className="text-base">Threshold Status Global</CardTitle></CardHeader><CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end"><FilterField label="Safe maksimal telat"><Input type="number" min={0} value={safeMax ?? settings?.safeMax ?? 2} onChange={(event) => setSafeMax(Number(event.target.value))} /></FilterField><FilterField label="Warning maksimal telat"><Input type="number" min={1} value={warningMax ?? settings?.warningMax ?? 4} onChange={(event) => setWarningMax(Number(event.target.value))} /></FilterField><Button onClick={saveSettings}>Simpan Threshold</Button></CardContent></Card>}
   </DialogContent></Dialog>;
 }
 

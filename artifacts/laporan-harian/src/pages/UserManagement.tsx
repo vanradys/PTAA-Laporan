@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { getGetCurrentUserQueryKey } from "@workspace/api-client-react";
 import { currentFeatureVisibilityQueryKey } from "@/hooks/use-feature-visibility";
+import { currentEditPermissionsQueryKey } from "@/hooks/use-edit-permissions";
 
 type UserRow = {
   id: number;
@@ -71,6 +72,24 @@ type DepartmentVisibilityResponse = {
   permissions: DepartmentVisibilityPermission[];
 };
 
+type DepartmentEditPermissionFeature = {
+  key: string;
+  label: string;
+};
+
+type DepartmentEditPermission = {
+  departmentCode: string;
+  subjectKey?: string;
+  permissionKey: string;
+  canEdit: boolean;
+};
+
+type DepartmentEditPermissionsResponse = {
+  features: DepartmentEditPermissionFeature[];
+  departments: Department[];
+  permissions: DepartmentEditPermission[];
+};
+
 type CreateAccountForm = {
   name: string;
   email: string;
@@ -100,6 +119,7 @@ export default function UserManagement() {
   const [newPassword, setNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [updatingVisibilityKey, setUpdatingVisibilityKey] = useState<string | null>(null);
+  const [updatingEditPermissionKey, setUpdatingEditPermissionKey] = useState<string | null>(null);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createForm, setCreateForm] = useState<CreateAccountForm>({
     name: "",
@@ -129,11 +149,26 @@ export default function UserManagement() {
     queryFn: () => apiRequest<DepartmentVisibilityResponse>("/api/user-management/department-visibility"),
     enabled: user?.role === "admin",
   });
+  const {
+    data: editPermissionsMatrix,
+    isLoading: editPermissionsLoading,
+    error: editPermissionsError,
+  } = useQuery({
+    queryKey: ["department-edit-permissions"],
+    queryFn: () => apiRequest<DepartmentEditPermissionsResponse>("/api/user-management/edit-permissions"),
+    enabled: user?.role === "admin",
+  });
 
   const visibilityByKey = new Map(
     (visibilityMatrix?.permissions ?? []).map((permission) => [
       `${permission.departmentCode}:${permission.featureKey}`,
       permission.canView,
+    ]),
+  );
+  const editPermissionByKey = new Map(
+    (editPermissionsMatrix?.permissions ?? []).map((permission) => [
+      `${permission.departmentCode}:${permission.permissionKey}`,
+      permission.canEdit,
     ]),
   );
 
@@ -362,6 +397,38 @@ export default function UserManagement() {
     }
   };
 
+  const updateDepartmentEditPermission = async (
+    departmentCode: string,
+    permissionKey: string,
+    canEdit: boolean,
+  ) => {
+    const updateKey = `${departmentCode}:${permissionKey}`;
+    if (updatingEditPermissionKey !== null) return;
+    setUpdatingEditPermissionKey(updateKey);
+    try {
+      await apiRequest("/api/user-management/edit-permissions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subjectKey: departmentCode, permissionKey, canEdit }),
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["department-edit-permissions"] }),
+        queryClient.invalidateQueries({ queryKey: currentEditPermissionsQueryKey }),
+      ]);
+      toast({ title: "Edit permission diperbarui" });
+    } catch (error) {
+      toast({
+        title: "Gagal mengubah edit permission",
+        description:
+          error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan edit permission.",
+        variant: "destructive",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["department-edit-permissions"] });
+    } finally {
+      setUpdatingEditPermissionKey(null);
+    }
+  };
+
   if (user?.role !== "admin") {
     return <Layout><div className="page-shell text-sm text-red-600">Halaman ini hanya dapat diakses Admin.</div></Layout>;
   }
@@ -376,7 +443,8 @@ export default function UserManagement() {
         <Tabs defaultValue="accounts" className="space-y-5">
           <TabsList>
             <TabsTrigger value="accounts">Accounts</TabsTrigger>
-            <TabsTrigger value="visibility">Visibility Department</TabsTrigger>
+            <TabsTrigger value="visibility">Page Visibility</TabsTrigger>
+            <TabsTrigger value="edit-perms">Edit Perms</TabsTrigger>
           </TabsList>
           <TabsContent value="accounts" className="space-y-5">
         <Card>
@@ -663,7 +731,7 @@ export default function UserManagement() {
           <TabsContent value="visibility" className="space-y-5">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Visibility Department</CardTitle>
+                <CardTitle className="text-base">Page Visibility</CardTitle>
               </CardHeader>
               <CardContent>
                 {visibilityLoading ? (
@@ -723,6 +791,83 @@ export default function UserManagement() {
                                       )
                                     }
                                     aria-label={`${feature.label} ${department.name}`}
+                                    className="mx-auto"
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="edit-perms" className="space-y-5">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Edit Perms</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {editPermissionsLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : editPermissionsError ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                    Gagal memuat pengaturan edit permissions.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full min-w-[980px] text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/40">
+                          <th className="sticky left-0 z-10 bg-muted px-4 py-3 text-left font-semibold">
+                            Permissions
+                          </th>
+                          {(editPermissionsMatrix?.departments ?? []).map((department) => (
+                            <th
+                              key={department.code}
+                              className="min-w-36 px-4 py-3 text-center font-semibold"
+                            >
+                              <div>{department.name}</div>
+                              <div className="text-xs font-normal text-muted-foreground">
+                                {department.displayCode ?? department.code}
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(editPermissionsMatrix?.features ?? []).map((permission) => (
+                          <tr key={permission.key} className="border-b last:border-0">
+                            <td className="sticky left-0 z-10 bg-white px-4 py-3 font-semibold">
+                              {permission.label}
+                            </td>
+                            {(editPermissionsMatrix?.departments ?? []).map((department) => {
+                              const permissionKey = `${department.code}:${permission.key}`;
+                              const isLockedProfile =
+                                department.locked === true ||
+                                department.code === "role:admin" ||
+                                department.displayCode === "ADMIN";
+                              const checked = isLockedProfile
+                                ? true
+                                : editPermissionByKey.get(permissionKey) ?? false;
+                              return (
+                                <td key={permissionKey} className="px-4 py-3 text-center">
+                                  <Checkbox
+                                    checked={checked}
+                                    disabled={updatingEditPermissionKey !== null || isLockedProfile}
+                                    onCheckedChange={(value) =>
+                                      void updateDepartmentEditPermission(
+                                        department.code,
+                                        permission.key,
+                                        value === true,
+                                      )
+                                    }
+                                    aria-label={`${permission.label} ${department.name}`}
                                     className="mx-auto"
                                   />
                                 </td>

@@ -25,6 +25,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
+import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
 const upload = multer({
@@ -295,12 +296,24 @@ function hasFullAttendanceAccess(user: AuthUser) {
   return isAttendanceManager(user) || FULL_ACCESS_ROLES.has(String(user.role).toLowerCase());
 }
 
-function requireAttendanceManager(user: AuthUser, res: any) {
-  if (!isAttendanceManager(user)) {
-    res.status(403).json({ error: "Aksi ini hanya dapat dilakukan Admin atau Finance" });
+async function requireAttendancePermission(user: AuthUser, res: any, permissionKey: string) {
+  if (!(await canEditByPermission(user, permissionKey))) {
+    res.status(403).json({ error: "Tidak punya izin untuk mengelola absensi" });
     return false;
   }
   return true;
+}
+
+async function canReadAttendanceImports(user: AuthUser) {
+  return hasFullAttendanceAccess(user) || await canEditByPermission(user, "attendance_import");
+}
+
+async function canReadAttendanceMappings(user: AuthUser) {
+  return (
+    hasFullAttendanceAccess(user) ||
+    await canEditByPermission(user, "attendance_manage_mappings") ||
+    await canEditByPermission(user, "attendance_import")
+  );
 }
 
 function attendanceUpload(req: any, res: any, next: (error?: unknown) => void) {
@@ -835,7 +848,7 @@ async function processBatch(batchId: number) {
 router.post("/attendance/import/preview", attendanceUpload, async (req: any, res) => {
   try {
     const user = await authenticate(req, res);
-    if (!user || !requireAttendanceManager(user, res)) return;
+    if (!user || !(await requireAttendancePermission(user, res, "attendance_import"))) return;
     if (!req.file) {
       res.status(400).json({ error: "Pilih file Excel atau CSV" });
       return;
@@ -918,7 +931,7 @@ router.post("/attendance/import/preview", attendanceUpload, async (req: any, res
 
 router.post("/attendance/import/:batchId/cancel", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_import"))) return;
   await db.update(attendanceImportBatchesTable).set({ status: "cancelled" }).where(and(
     eq(attendanceImportBatchesTable.id, Number(req.params.batchId)),
     eq(attendanceImportBatchesTable.status, "preview"),
@@ -929,7 +942,7 @@ router.post("/attendance/import/:batchId/cancel", async (req: any, res) => {
 router.post("/attendance/import/:batchId/process", async (req: any, res) => {
   try {
     const user = await authenticate(req, res);
-    if (!user || !requireAttendanceManager(user, res)) return;
+    if (!user || !(await requireAttendancePermission(user, res, "attendance_import"))) return;
     res.json(await processBatch(Number(req.params.batchId)));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Gagal memproses import" });
@@ -939,7 +952,7 @@ router.post("/attendance/import/:batchId/process", async (req: any, res) => {
 router.get("/attendance/imports", async (req: any, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!hasFullAttendanceAccess(user)) {
+  if (!(await canReadAttendanceImports(user))) {
     res.status(403).json({ error: "Akses ditolak" });
     return;
   }
@@ -948,7 +961,7 @@ router.get("/attendance/imports", async (req: any, res) => {
 
 router.get("/attendance/import/:batchId/preview", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_import"))) return;
   const batchId = Number(req.params.batchId);
   if (!Number.isInteger(batchId)) {
     res.status(400).json({ error: "ID batch tidak valid" });
@@ -993,7 +1006,7 @@ router.get("/attendance/import/:batchId/preview", async (req: any, res) => {
 router.get("/attendance/mappings", async (req: any, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!hasFullAttendanceAccess(user)) {
+  if (!(await canReadAttendanceMappings(user))) {
     res.status(403).json({ error: "Akses ditolak" });
     return;
   }
@@ -1011,14 +1024,14 @@ router.get("/attendance/mappings", async (req: any, res) => {
 
 router.get("/attendance/users", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_mappings"))) return;
   res.json(await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.isActive, true)).orderBy(asc(usersTable.name)));
 });
 
 router.post("/attendance/mappings", async (req: any, res) => {
   try {
     const user = await authenticate(req, res);
-    if (!user || !requireAttendanceManager(user, res)) return;
+    if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_mappings"))) return;
     const machineName = normalize(req.body.machineName);
     const displayName = normalize(req.body.displayName) || machineName;
     const employeeType = req.body.employeeType === "Office" ? "Office" : "Produksi";
@@ -1058,7 +1071,7 @@ router.post("/attendance/mappings", async (req: any, res) => {
 router.patch("/attendance/mappings/:id", async (req: any, res) => {
   try {
     const user = await authenticate(req, res);
-    if (!user || !requireAttendanceManager(user, res)) return;
+    if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_mappings"))) return;
     const changes: Record<string, unknown> = { updatedAt: new Date() };
     if (req.body.displayName !== undefined) changes.displayName = normalize(req.body.displayName);
     if (req.body.employeeType !== undefined) changes.employeeType = req.body.employeeType === "Office" ? "Office" : "Produksi";
@@ -1084,7 +1097,7 @@ router.patch("/attendance/mappings/:id", async (req: any, res) => {
 
 router.delete("/attendance/mappings/:id", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_mappings"))) return;
   await db.update(attendanceMappingsTable).set({ isActive: false, updatedAt: new Date() }).where(eq(attendanceMappingsTable.id, Number(req.params.id)));
   res.json({ success: true });
 });
@@ -1121,7 +1134,7 @@ router.get("/attendance/holidays", async (req: any, res) => {
 
 router.post("/attendance/holidays", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_holidays"))) return;
   const date = normalize(req.body.date);
   const name = normalize(req.body.name);
   if (!isIsoDate(date) || !name) {
@@ -1148,7 +1161,7 @@ router.post("/attendance/holidays", async (req: any, res) => {
 
 router.patch("/attendance/holidays/:id", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_holidays"))) return;
   const previous = (await db.select().from(attendanceHolidaysTable).where(eq(attendanceHolidaysTable.id, Number(req.params.id))).limit(1))[0];
   if (!previous) {
     res.status(404).json({ error: "Tanggal libur tidak ditemukan" });
@@ -1174,7 +1187,7 @@ router.patch("/attendance/holidays/:id", async (req: any, res) => {
 
 router.delete("/attendance/holidays/:id", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_holidays"))) return;
   const previous = (await db.select().from(attendanceHolidaysTable).where(eq(attendanceHolidaysTable.id, Number(req.params.id))).limit(1))[0];
   await db.delete(attendanceHolidaysTable).where(eq(attendanceHolidaysTable.id, Number(req.params.id)));
   if (previous?.date) await recalculateAttendanceDate(previous.date);
@@ -1189,7 +1202,7 @@ router.get("/attendance/settings", async (req: any, res) => {
 
 router.patch("/attendance/settings", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_holidays"))) return;
   const previousSettings = await getSettings();
   const requestedSafeMax = Number(req.body.safeMax ?? 2);
   const requestedWarningMax = Number(req.body.warningMax ?? 4);
@@ -1231,7 +1244,7 @@ router.patch("/attendance/settings", async (req: any, res) => {
 
 router.post("/attendance/holidays/sync-indonesia", async (req: any, res) => {
   const user = await authenticate(req, res);
-  if (!user || !requireAttendanceManager(user, res)) return;
+  if (!user || !(await requireAttendancePermission(user, res, "attendance_manage_holidays"))) return;
   const years: number[] = Array.isArray(req.body.years)
     ? [...new Set<number>(req.body.years.map((value: unknown) => Number(value)))]
     : [new Date().getFullYear()];
@@ -1445,7 +1458,7 @@ router.get("/attendance/detail/:mappingId", async (req: any, res) => {
 router.post("/attendance/corrections", async (req: any, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!requireAttendanceManager(user, res)) return;
+  if (!(await requireAttendancePermission(user, res, "attendance_manual_corrections"))) return;
   const mappingId = Number(req.body?.mappingId);
   const workDate = normalize(req.body?.workDate);
   const dailyStatus = normalize(req.body?.dailyStatus);
@@ -1508,7 +1521,7 @@ router.post("/attendance/corrections", async (req: any, res) => {
 router.delete("/attendance/corrections", async (req: any, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!requireAttendanceManager(user, res)) return;
+  if (!(await requireAttendancePermission(user, res, "attendance_manual_corrections"))) return;
   const mappingId = Number(req.query.mappingId);
   const workDate = normalize(req.query.workDate);
   if (!Number.isInteger(mappingId) || !isIsoDate(workDate)) {
@@ -1525,6 +1538,10 @@ router.delete("/attendance/corrections", async (req: any, res) => {
 router.get("/attendance/export", async (req: any, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
+  if (!(await canEditByPermission(user, "attendance_export"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk export absensi" });
+    return;
+  }
   const period = requestedPeriod(req, res);
   if (!period) return;
   const { start, end } = period;

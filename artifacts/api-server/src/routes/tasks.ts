@@ -14,6 +14,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
+import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
 
@@ -345,6 +346,10 @@ router.post("/assigned-tasks", async (req, res) => {
 
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_assign_tasks"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk memberi tugas harian" });
+    return;
+  }
 
   const assigneeUserId = Number(req.body?.assigneeUserId);
   const title = String(req.body?.title ?? "").trim();
@@ -443,6 +448,10 @@ router.post("/assigned-tasks/:assignmentId/respond", async (req, res) => {
     res.status(400).json({ error: "Notifikasi tugas ini sudah dijawab" });
     return;
   }
+  if (accepted && !(await canEditByPermission(user, "daily_report_edit_own"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk menambahkan tugas ke laporan harian" });
+    return;
+  }
 
   if (!accepted) {
     const [rejected] = await db
@@ -522,6 +531,10 @@ router.post("/reports/:id/tasks", async (req, res) => {
 
   if (!report[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   if (report[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk menambah tugas laporan harian" });
+    return;
+  }
 
   const addTaskError = getAddTaskError(report[0]);
   if (addTaskError) {
@@ -561,6 +574,10 @@ router.patch("/tasks/:taskId", async (req, res) => {
 
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, task[0].reportId)).limit(1);
   if (!report[0] || (report[0].userId !== user.id && user.role !== "admin")) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk mengedit tugas laporan harian" });
+    return;
+  }
 
   const modifyTaskError = getModifyTaskError(report[0], task[0], user);
   if (modifyTaskError) {
@@ -643,6 +660,10 @@ router.post("/tasks/:taskId/start-correction", async (req, res) => {
     res.status(403).json({ error: "Tidak diizinkan" });
     return;
   }
+  if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk membuat revisi laporan harian" });
+    return;
+  }
   if (task.reviewStatus !== "revisi" || task.revisionWorkTaskId) {
     res.status(400).json({ error: "Anda hanya dapat melakukan revisi 1 kali." });
     return;
@@ -694,8 +715,8 @@ router.post("/tasks/:taskId/review", async (req, res) => {
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
-  if (!["admin", "direktur", "director", "dir"].includes(String(user.role).toLowerCase())) {
-    res.status(403).json({ error: "Hanya Admin/Direktur yang dapat mereview tugas" });
+  if (!(await canEditByPermission(user, "daily_report_review"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk review tugas laporan harian" });
     return;
   }
 
@@ -789,6 +810,10 @@ router.delete("/tasks/:taskId", async (req, res) => {
 
   const report = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, task[0].reportId)).limit(1);
   if (!report[0] || (report[0].userId !== user.id && user.role !== "admin")) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk menghapus tugas laporan harian" });
+    return;
+  }
 
   const modifyTaskError = getModifyTaskError(report[0], task[0], user);
   if (modifyTaskError) {

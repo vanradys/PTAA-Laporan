@@ -17,6 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFeatureVisibility } from "@/hooks/use-feature-visibility";
+import { useEditPermissions } from "@/hooks/use-edit-permissions";
 import {
   Plus,
   Pencil,
@@ -638,6 +639,7 @@ export default function JadwalProject() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { canViewFeature } = useFeatureVisibility();
+  const { canEdit } = useEditPermissions();
 
   const role = user?.role?.toLowerCase() ?? "";
   const email = user?.email?.toLowerCase() ?? "";
@@ -651,12 +653,17 @@ export default function JadwalProject() {
     departmentName.includes("marketing") ||
     departmentName.includes("general affairs");
   const baseCanEditPoData = baseCanManage || role === "monitoring_dummy";
-  const canManage = baseCanManage && canViewProjectSchedule;
+  const canCreatePo =
+    baseCanManage && canViewProjectSchedule && canEdit("po_create", true);
   const canEditPoData =
-    baseCanEditPoData && canViewProjectSchedule && canViewFeature("po_input", true);
-  const canClosePo = baseCanEditPoData && canViewProjectSchedule;
+    baseCanEditPoData && canViewProjectSchedule && canEdit("po_edit_data", true);
+  const canDeletePo =
+    baseCanManage && canViewProjectSchedule && canEdit("po_delete", true);
+  const canClosePo =
+    baseCanEditPoData && canViewProjectSchedule && canEdit("po_mark_complete", true);
   const canExportPo =
     canViewProjectSchedule &&
+    canEdit("po_export", true) &&
     (["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||
       email === "marketing@adiyasa.com" ||
       email === "finance@adiyasa.com" ||
@@ -670,10 +677,17 @@ export default function JadwalProject() {
   const canUpdateProjectProgress =
     baseCanUpdateProjectProgress &&
     canViewProjectSchedule &&
-    canViewFeature("project_progress", true);
+    canEdit("po_update_progress", true);
   const canManageCustomerTimeline =
-    canUpdateProjectProgress && canViewFeature("customer_progress_timeline", true);
-  const canViewPoNotes = canViewProjectSchedule && canViewFeature("notes", true);
+    baseCanUpdateProjectProgress &&
+    canViewProjectSchedule &&
+    canEdit("po_edit_customer_timeline", true);
+  const canOpenPoEdit = canEditPoData || canUpdateProjectProgress || canManageCustomerTimeline;
+  const canAddPoNotes =
+    baseCanEditPoData && canViewProjectSchedule && canEdit("po_add_notes", true);
+  const canManagePoNotes =
+    canViewProjectSchedule && canEdit("po_manage_notes", role === "admin");
+  const canViewPoNotes = canViewProjectSchedule;
   const hasFullPoAccess = ["admin", "direktur", "director", "dir"].includes(
     role,
   );
@@ -698,10 +712,11 @@ export default function JadwalProject() {
       departmentCode === "GA" ||
       departmentName.includes("general affairs"));
   const canViewPoDetail = Boolean(user) && canViewProjectSchedule;
-  const canDeleteComments = ["admin", "direktur", "director", "dir"].includes(
-    role,
-  );
-  const canEditComments = role === "admin";
+  const canDeleteComments =
+    canViewProjectSchedule &&
+    canEdit("project_comment_delete", ["admin", "direktur", "director", "dir"].includes(role));
+  const canEditComments =
+    canViewProjectSchedule && canEdit("project_comment_edit", role === "admin");
 
   const [filterMonth, setFilterMonth] = useState<string>(
     String(today.getMonth() + 1),
@@ -1254,41 +1269,43 @@ export default function JadwalProject() {
     }
     setFormLoading(true);
     try {
-      const payload = canEditPoData ? {
-        noPo: form.noPo,
-        namaProject: form.namaProject,
-        customer: normalizeCustomerName(form.customer),
-        qty: form.qty,
-        ...(canViewPoAmount
-          ? { poAmount: form.poAmount ? Number(form.poAmount) : null }
-          : {}),
-        tanggalPoMasuk: form.tanggalPoMasuk,
-        targetPengiriman: normalizedDeadline,
-        aktualPengiriman: form.targetPenyelesaian,
-        deadline: normalizedDeadline,
-        picUserId: form.picUserId ? parseInt(form.picUserId) : null,
-        picProject: form.picProject,
-        status: form.status,
-        hasPainting: form.hasPainting,
-        trackingStages: form.trackingStages,
-        trackingTimeline: form.trackingTimeline
-          .map((item) => ({
-            date: item.date.trim(),
-            description: item.description.trim(),
-          }))
-          .filter((item) => item.date || item.description),
-        ...(!editingId && form.catatan.trim() ? { catatan: form.catatan.trim() } : {}),
-      } : {
-        status: form.status,
-        hasPainting: form.hasPainting,
-        trackingStages: form.trackingStages,
-        trackingTimeline: form.trackingTimeline
-          .map((item) => ({
-            date: item.date.trim(),
-            description: item.description.trim(),
-          }))
-          .filter((item) => item.date || item.description),
-      };
+      const timelinePayload = form.trackingTimeline
+        .map((item) => ({
+          date: item.date.trim(),
+          description: item.description.trim(),
+        }))
+        .filter((item) => item.date || item.description);
+      const payload: Record<string, unknown> = {};
+      if (!editingId || canEditPoData) {
+        Object.assign(payload, {
+          noPo: form.noPo,
+          namaProject: form.namaProject,
+          customer: normalizeCustomerName(form.customer),
+          qty: form.qty,
+          ...(canViewPoAmount
+            ? { poAmount: form.poAmount ? Number(form.poAmount) : null }
+            : {}),
+          tanggalPoMasuk: form.tanggalPoMasuk,
+          targetPengiriman: normalizedDeadline,
+          aktualPengiriman: form.targetPenyelesaian,
+          deadline: normalizedDeadline,
+          picUserId: form.picUserId ? parseInt(form.picUserId) : null,
+          picProject: form.picProject,
+        });
+      }
+      if (!editingId || canUpdateProjectProgress) {
+        Object.assign(payload, {
+          status: form.status,
+          hasPainting: form.hasPainting,
+          trackingStages: form.trackingStages,
+        });
+      }
+      if (!editingId || canManageCustomerTimeline) {
+        payload.trackingTimeline = timelinePayload;
+      }
+      if (!editingId && form.catatan.trim()) {
+        payload.catatan = form.catatan.trim();
+      }
       if (editingId) {
         await updatePo.mutateAsync({ id: editingId, data: payload as any });
         toast({ title: "Berhasil", description: "PO berhasil diperbarui" });
@@ -1402,7 +1419,7 @@ export default function JadwalProject() {
   };
 
   const handleSendPoNote = async () => {
-    if (!editingId || !form.catatan.trim()) return;
+    if (!editingId || !canAddPoNotes || !form.catatan.trim()) return;
     try {
       await apiRequest(`/api/po/${editingId}/notes`, {
         method: "POST",
@@ -1599,7 +1616,7 @@ export default function JadwalProject() {
         <div className="text-center py-12 text-muted-foreground">
           <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
           <p className="text-sm">{options.emptyText}</p>
-          {options.showCreateButton && canManage && (
+          {options.showCreateButton && canCreatePo && (
             <Button
               variant="outline"
               size="sm"
@@ -1725,7 +1742,7 @@ export default function JadwalProject() {
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
-                      {canUpdateProjectProgress && (
+                      {canOpenPoEdit && (
                         <>
                           <Button
                             variant="ghost"
@@ -1754,7 +1771,7 @@ export default function JadwalProject() {
                               <CheckCircle2 className="h-4 w-4" />
                             </Button>
                           )}
-                          {options.allowDelete && canManage && (
+                          {options.allowDelete && canDeletePo && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1797,7 +1814,7 @@ export default function JadwalProject() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {canManage && (
+            {canCreatePo && (
               <Button onClick={openCreate}>
                 <Plus className="w-4 h-4 mr-2" />
                 Tambah PO
@@ -2235,7 +2252,7 @@ export default function JadwalProject() {
               <div className="text-center py-12 text-muted-foreground">
                 <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
                 <p className="text-sm">Tidak ada data PO untuk filter ini</p>
-                {canManage && (
+                {canCreatePo && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -2412,7 +2429,7 @@ export default function JadwalProject() {
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </Button>
-                                {canUpdateProjectProgress && (
+                                {canOpenPoEdit && (
                                   <>
                                 <Button
                                   variant="ghost"
@@ -2709,7 +2726,7 @@ export default function JadwalProject() {
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </Button>
-                                {canUpdateProjectProgress && (
+                                {canOpenPoEdit && (
                                   <>
                                 <Button
                                   variant="ghost"
@@ -2739,7 +2756,7 @@ export default function JadwalProject() {
                                       <CheckCircle2 className="w-3.5 h-3.5" />
                                     </Button>
                                   )}
-                                {canManage && (
+                                {canDeletePo && (
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -3479,7 +3496,7 @@ export default function JadwalProject() {
                               {note.userName} • {new Date(note.createdAt).toLocaleString("id-ID")}
                             </p>
                           </div>
-                          {role === "admin" && (
+                          {canManagePoNotes && (
                             <div className="flex">
                               <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditPoNote(note)}>
                                 <Pencil className="h-3 w-3" />
@@ -3496,7 +3513,7 @@ export default function JadwalProject() {
                 )}
                 <Textarea
                   value={form.catatan}
-                  disabled={!canEditPoData}
+                  disabled={!canAddPoNotes}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, catatan: e.target.value }))
                   }
@@ -3511,7 +3528,7 @@ export default function JadwalProject() {
                       : "Catatan pertama akan dikirim saat PO dibuat."}
                   </p>
                   {editingId && (
-                    <Button type="button" size="sm" variant="outline" onClick={handleSendPoNote} disabled={!canEditPoData || !form.catatan.trim()}>
+                    <Button type="button" size="sm" variant="outline" onClick={handleSendPoNote} disabled={!canAddPoNotes || !form.catatan.trim()}>
                       Kirim Catatan
                     </Button>
                   )}

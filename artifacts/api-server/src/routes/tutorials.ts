@@ -6,6 +6,7 @@ import {
   websiteTutorialsTable,
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
+import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
 
@@ -25,10 +26,6 @@ async function authenticate(req: any, res: any) {
   const user = token ? await getUserFromToken(token) : null;
   if (!user) res.status(401).json({ error: "Tidak terautentikasi" });
   return user;
-}
-
-function isAdmin(user: { role?: string | null }) {
-  return String(user.role ?? "").toLowerCase() === "admin";
 }
 
 async function seedTutorialsIfEmpty() {
@@ -92,7 +89,10 @@ router.get("/tutorials/:id/screenshot", async (req, res) => {
 router.post("/tutorials", async (req, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!isAdmin(user)) { res.status(403).json({ error: "Hanya Admin yang dapat menambah panduan" }); return; }
+  if (!(await canEditByPermission(user, "tutorial_manage"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk menambah panduan" });
+    return;
+  }
   const title = String(req.body?.title ?? "").trim();
   const content = String(req.body?.content ?? "").trim();
   const sortOrder = Number(req.body?.sortOrder ?? 0);
@@ -111,7 +111,10 @@ router.post("/tutorials", async (req, res) => {
 router.patch("/tutorials/:id", async (req, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!isAdmin(user)) { res.status(403).json({ error: "Hanya Admin yang dapat mengedit panduan" }); return; }
+  if (!(await canEditByPermission(user, "tutorial_manage"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk mengedit panduan" });
+    return;
+  }
   const id = Number(req.params.id);
   const updates: Partial<typeof websiteTutorialsTable.$inferInsert> = {
     updatedByUserId: user.id,
@@ -138,7 +141,10 @@ router.patch("/tutorials/:id", async (req, res) => {
 router.delete("/tutorials/:id", async (req, res) => {
   const user = await authenticate(req, res);
   if (!user) return;
-  if (!isAdmin(user)) { res.status(403).json({ error: "Hanya Admin yang dapat menghapus panduan" }); return; }
+  if (!(await canEditByPermission(user, "tutorial_manage"))) {
+    res.status(403).json({ error: "Tidak punya izin untuk menghapus panduan" });
+    return;
+  }
   const [deleted] = await db.delete(websiteTutorialsTable)
     .where(eq(websiteTutorialsTable.id, Number(req.params.id))).returning();
   if (!deleted) { res.status(404).json({ error: "Panduan tidak ditemukan" }); return; }

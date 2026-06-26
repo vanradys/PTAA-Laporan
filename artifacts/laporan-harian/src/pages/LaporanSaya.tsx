@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
+import { useEditPermissions } from "@/hooks/use-edit-permissions";
 import Layout from "@/components/Layout";
 import { formatIndonesianDate, formatJakartaDateLong, getJakartaDateString, isWeekendDate } from "@/lib/date";
 import { apiRequest } from "@/lib/apiRequest";
@@ -496,6 +497,7 @@ export default function LaporanSaya() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canEdit } = useEditPermissions();
 
   const today = getJakartaDateString();
   const todayFormatted = formatJakartaDateLong();
@@ -561,16 +563,20 @@ const isPastReport = !!report?.date && report.date !== today;
 const isFinanceUser =
   ["AAF", "FIN"].includes(String(user?.departmentCode ?? "").toUpperCase()) ||
   String(user?.departmentName ?? "").toLowerCase().includes("finance");
+const canEditOwnDailyReport = canEdit("daily_report_edit_own", true);
+const canSubmitDailyReport = canEdit("daily_report_submit", true);
+const canAssignDailyTasks = canEdit("daily_report_assign_tasks", true);
 
 const isLocked = isReviewed || isPastReport;
 const showSubmittedReadOnly = isSubmitted && !isEditingSubmitted;
 const displayedExistingTasks = isEditingSubmitted ? editableTasks : existingTasks;
 
 const canEditReportFields =
+  canEditOwnDailyReport &&
   !isWeekendToday && (!report || report.status === "draf" || report.status === "perlu_revisi" || isEditingSubmitted);
 
 const canModifyExistingTasks =
-  !!report && !isReviewed && !isPastReport;
+  canEditOwnDailyReport && !!report && !isReviewed && !isPastReport;
 
 const canAddNewTasks = canEditReportFields;
 const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitted && !isWeekendToday;
@@ -724,6 +730,14 @@ const closeAssignModal = () => {
 };
 
 const handleAssignTask = async () => {
+  if (!canAssignDailyTasks) {
+    toast({
+      title: "Tidak punya izin",
+      description: "Anda tidak punya izin untuk memberi tugas harian.",
+      variant: "destructive",
+    });
+    return;
+  }
   if (!assignForm.assigneeUserId || !assignForm.title.trim()) {
     toast({
       title: "Data belum lengkap",
@@ -837,7 +851,7 @@ useEffect(() => {
   };
 
   const startEditSubmittedReport = () => {
-    if (!report) return;
+    if (!report || !canEditOwnDailyReport) return;
 
     setEditableTasks(existingTasks.map((task) => ({ ...task })));
     setDeletedTaskIds([]);
@@ -886,6 +900,9 @@ useEffect(() => {
 
   // Core save: returns the reportId after saving report + all pending new tasks
   const saveAll = async (data: { obstacles: string; additionalNotes: string; tomorrowPlan: string }): Promise<number> => {
+    if (!canEditOwnDailyReport) {
+      throw new Error("Tidak punya izin untuk mengedit laporan harian");
+    }
     let reportId: number;
     if (!report) {
       const created = await createReport.mutateAsync({
@@ -918,6 +935,14 @@ useEffect(() => {
 
   const handleSaveSubmittedChanges = async (data: { obstacles: string; additionalNotes: string; tomorrowPlan: string }) => {
     if (!report || !validateRequiredReportFields(data)) return;
+    if (!canEditOwnDailyReport) {
+      toast({
+        title: "Tidak punya izin",
+        description: "Anda tidak punya izin untuk mengedit laporan harian.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -1015,6 +1040,14 @@ useEffect(() => {
     const formData = getValues();
 
     if (!validateRequiredReportFields(formData)) return;
+    if (!canSubmitDailyReport) {
+      toast({
+        title: "Tidak punya izin",
+        description: "Anda tidak punya izin untuk submit laporan harian.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -1136,13 +1169,15 @@ useEffect(() => {
             {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
             Simpan Draf
           </Button>
-          <Button
-            onClick={handleSubmitReport}
-            disabled={isSubmitting || isSaving || isReportIncomplete}
-          >
-            {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-            Kirim Laporan
-          </Button>
+          {canSubmitDailyReport && (
+            <Button
+              onClick={handleSubmitReport}
+              disabled={isSubmitting || isSaving || isReportIncomplete}
+            >
+              {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              Kirim Laporan
+            </Button>
+          )}
             </div>
           )}
         </div>
@@ -1195,7 +1230,7 @@ useEffect(() => {
                   <span>Daftar Tugas Hari Ini</span>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-normal text-muted-foreground">{existingTasks.length} tugas</span>
-                    {showSubmittedReadOnly && (
+                    {showSubmittedReadOnly && canEditOwnDailyReport && (
                       <Button type="button" variant="outline" size="sm" onClick={startEditSubmittedReport}>
                         Edit
                       </Button>
@@ -1357,10 +1392,12 @@ useEffect(() => {
                     <CardTitle className="text-base">
                       Daftar Tugas Hari Ini <span className="text-destructive">*</span>
                     </CardTitle>                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignModal(true)}>
-                        <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                        Beri Tugas
-                      </Button>
+                      {canAssignDailyTasks && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => setShowAssignModal(true)}>
+                          <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                          Beri Tugas
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="outline"
@@ -1689,7 +1726,7 @@ useEffect(() => {
                 {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                 {isEditingSubmitted ? "Simpan Perubahan" : "Simpan Draf"}
               </Button>
-              {!isEditingSubmitted && (
+              {!isEditingSubmitted && canSubmitDailyReport && (
                 <Button
                   type="button"
                   onClick={handleSubmitReport}

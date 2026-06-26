@@ -4,6 +4,7 @@ import { MessageSquare, Plus, Search, Send } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFeatureVisibility } from "@/hooks/use-feature-visibility";
+import { useEditPermissions } from "@/hooks/use-edit-permissions";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ function formatDateTime(value: string) {
 export default function KomentarProject() {
   const { user } = useAuth();
   const { canViewFeature } = useFeatureVisibility();
+  const { canEdit } = useEditPermissions();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [poId, setPoId] = useState("");
@@ -74,6 +76,9 @@ export default function KomentarProject() {
       canViewFeature("project_comments", true)
     );
   })();
+  const canViewCustomerNotes =
+    canAccessPage && canViewFeature("customer_notes", true);
+  const canAddProjectComments = canAccessPage && canEdit("project_comment_add", true);
 
   const { data: poData } = useQuery({
     queryKey: ["project-comments-po", "active"],
@@ -87,7 +92,7 @@ export default function KomentarProject() {
   const customerCommentsQuery = useQuery({
     queryKey: ["project-comments", "customer"],
     queryFn: () => apiRequest<ProjectComment[]>("/api/customer-tracking/internal/comments"),
-    enabled: canAccessPage,
+    enabled: canViewCustomerNotes,
     refetchInterval: 15000,
   });
   const internalCommentsQuery = useQuery({
@@ -136,7 +141,7 @@ export default function KomentarProject() {
   };
 
   const sendCustomerComment = async () => {
-    if (!selectedPo || !customerComment.trim()) return;
+    if (!selectedPo || !canViewCustomerNotes || !canAddProjectComments || !customerComment.trim()) return;
     try {
       await apiRequest(`/api/customer-tracking/${selectedPo.id}/comments`, {
         method: "POST",
@@ -165,7 +170,7 @@ export default function KomentarProject() {
   };
 
   const sendInternalComment = async () => {
-    if (!selectedPo || !internalComment.trim()) return;
+    if (!selectedPo || !canAddProjectComments || !internalComment.trim()) return;
     try {
       await apiRequest(`/api/po/${selectedPo.id}/internal-comments`, {
         method: "POST",
@@ -228,16 +233,16 @@ export default function KomentarProject() {
               <div className="space-y-1"><Label>Customer</Label><Select value={customerName} onValueChange={selectCustomer}><SelectTrigger><SelectValue placeholder="Pilih customer aktif" /></SelectTrigger><SelectContent>{customers.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
             </div>
             <Tabs defaultValue="internal">
-              <TabsList><TabsTrigger value="internal">Komentar Internal</TabsTrigger><TabsTrigger value="customer">Customer Notes</TabsTrigger></TabsList>
-              <TabsContent value="internal" className="space-y-2"><Textarea value={internalComment} onChange={(event) => setInternalComment(event.target.value)} rows={3} placeholder="Tulis komentar internal..." /><Button onClick={sendInternalComment} disabled={!selectedPo || !internalComment.trim()}><Send className="mr-2 h-4 w-4" />Kirim Komentar Internal</Button></TabsContent>
-              <TabsContent value="customer" className="space-y-2"><Textarea value={customerComment} onChange={(event) => setCustomerComment(event.target.value)} rows={3} placeholder="Tulis customer notes..." /><Button onClick={sendCustomerComment} disabled={!selectedPo || !customerComment.trim()}><Send className="mr-2 h-4 w-4" />Kirim Customer Notes</Button></TabsContent>
+              <TabsList><TabsTrigger value="internal">Komentar Internal</TabsTrigger>{canViewCustomerNotes && <TabsTrigger value="customer">Customer Notes</TabsTrigger>}</TabsList>
+              <TabsContent value="internal" className="space-y-2"><Textarea value={internalComment} onChange={(event) => setInternalComment(event.target.value)} rows={3} placeholder="Tulis komentar internal..." disabled={!canAddProjectComments} /><Button onClick={sendInternalComment} disabled={!selectedPo || !canAddProjectComments || !internalComment.trim()}><Send className="mr-2 h-4 w-4" />Kirim Komentar Internal</Button></TabsContent>
+              {canViewCustomerNotes && <TabsContent value="customer" className="space-y-2"><Textarea value={customerComment} onChange={(event) => setCustomerComment(event.target.value)} rows={3} placeholder="Tulis customer notes..." disabled={!canAddProjectComments} /><Button onClick={sendCustomerComment} disabled={!selectedPo || !canAddProjectComments || !customerComment.trim()}><Send className="mr-2 h-4 w-4" />Kirim Customer Notes</Button></TabsContent>}
             </Tabs>
           </CardContent>
         </Card>
 
         <div className="grid gap-5 lg:grid-cols-2">
           <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Komentar Internal</CardTitle></CardHeader><CardContent>{renderComments(internalComments, "userName")}</CardContent></Card>
-          <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Customer Notes</CardTitle></CardHeader><CardContent>{renderComments(customerComments, "customerName")}</CardContent></Card>
+          {canViewCustomerNotes && <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Customer Notes</CardTitle></CardHeader><CardContent>{renderComments(customerComments, "customerName")}</CardContent></Card>}
         </div>
           </>
         )}

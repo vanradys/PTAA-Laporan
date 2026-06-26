@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useEditPermissions } from "@/hooks/use-edit-permissions";
 import Layout from "@/components/Layout";
 import { apiRequest } from "@/lib/apiRequest";
 import { getRoleDisplayName } from "@/lib/roleDisplay";
@@ -88,6 +89,7 @@ export default function DetailLaporan() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canEdit } = useEditPermissions();
   const [commentText, setCommentText] = useState("");
   const [taskReviewDrafts, setTaskReviewDrafts] = useState<Record<number, string>>({});
   const [reviewingTaskId, setReviewingTaskId] = useState<number | null>(null);
@@ -114,7 +116,11 @@ export default function DetailLaporan() {
 
   const createComment = useCreateComment();
 
-  const canReview = ["admin", "direktur", "director", "dir"].includes(user?.role ?? "");
+  const canReview = canEdit(
+    "daily_report_review",
+    ["admin", "direktur", "director", "dir"].includes(user?.role ?? ""),
+  );
+  const canEditOwnDailyReport = canEdit("daily_report_edit_own", true);
   const canManageComments = String(user?.role ?? "").toLowerCase() === "admin";
   const activeReport = isPeriodDetail ? periodReport : report;
   const r = activeReport as (typeof report & {
@@ -147,6 +153,7 @@ export default function DetailLaporan() {
   };
 
   const handleTaskReview = async (taskId: number, action: "review" | "revision") => {
+    if (!canReview) return;
     setReviewingTaskId(taskId);
     try {
       await apiRequest(`/api/tasks/${taskId}/review`, {
@@ -166,6 +173,7 @@ export default function DetailLaporan() {
   };
 
   const handleTaskCorrection = async (task: Task) => {
+    if (!canEditOwnDailyReport) return;
     if (!window.confirm("Anda hanya dapat melakukan revisi 1 kali. Lanjutkan dan salin tugas ini ke laporan hari ini?")) return;
     setReviewingTaskId(task.id);
     try {
@@ -447,7 +455,7 @@ export default function DetailLaporan() {
                               </div>
                             </div>
                           )}
-                          {user?.id === r.userId && task.reviewStatus === "revisi" && (
+                          {user?.id === r.userId && canEditOwnDailyReport && task.reviewStatus === "revisi" && (
                             <div className="mt-2 min-w-[220px] space-y-2 rounded-lg border border-orange-200 bg-orange-50 p-2">
                               <p className="whitespace-pre-wrap break-words text-xs text-orange-800">
                                 {task.reviewComment || "Tugas ini perlu diperbaiki sesuai arahan reviewer."}
