@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Edit3, ImagePlus, Plus, Save, Trash2 } from "lucide-react";
+import { Edit3, GripVertical, ImagePlus, Plus, Save, Trash2 } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiRequest } from "@/lib/apiRequest";
@@ -124,6 +124,9 @@ export default function PanduanWebsite() {
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [screenshotChanged, setScreenshotChanged] = useState(false);
   const [existingScreenshotUrl, setExistingScreenshotUrl] = useState<string | null>(null);
+  const [draggedTutorialId, setDraggedTutorialId] = useState<number | null>(null);
+  const [dragOverTutorialId, setDragOverTutorialId] = useState<number | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
 
   const tutorialsQuery = useQuery({
     queryKey: ["tutorials"],
@@ -131,6 +134,45 @@ export default function PanduanWebsite() {
   });
 
   const tutorials = tutorialsQuery.data ?? [];
+
+  const reorderTutorial = async (draggedId: number, targetId: number) => {
+    if (draggedId === targetId || isReordering) return;
+
+    const fromIndex = tutorials.findIndex((item) => item.id === draggedId);
+    const toIndex = tutorials.findIndex((item) => item.id === targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const nextTutorials = [...tutorials];
+    const [movedItem] = nextTutorials.splice(fromIndex, 1);
+    if (!movedItem) return;
+    nextTutorials.splice(toIndex, 0, movedItem);
+
+    setIsReordering(true);
+    try {
+      await Promise.all(
+        nextTutorials.map((item, index) =>
+          apiRequest(`/api/tutorials/${item.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sortOrder: (index + 1) * 10 }),
+          }),
+        ),
+      );
+      await queryClient.invalidateQueries({ queryKey: ["tutorials"] });
+      toast({ title: "Urutan panduan disimpan" });
+    } catch (error) {
+      toast({
+        title: "Gagal mengubah urutan panduan",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan",
+        variant: "destructive",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["tutorials"] });
+    } finally {
+      setIsReordering(false);
+      setDraggedTutorialId(null);
+      setDragOverTutorialId(null);
+    }
+  };
 
   const startEdit = (item: Tutorial) => {
     setEditingId(item.id);
@@ -186,7 +228,7 @@ export default function PanduanWebsite() {
 
   return (
     <Layout>
-      <div className="page-shell max-w-5xl space-y-5">
+      <div className="page-shell max-w-6xl space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold text-slate-950">Panduan Website</h1>
@@ -257,7 +299,7 @@ export default function PanduanWebsite() {
                 <img
                   src={draft.screenshotData ?? existingScreenshotUrl ?? undefined}
                   alt="Preview screenshot"
-                  className="h-40 w-full rounded border object-cover"
+                  className="max-h-[520px] w-full rounded border bg-white object-contain"
                 />
               )}
             </CardContent>
@@ -266,10 +308,55 @@ export default function PanduanWebsite() {
 
         <Accordion type="single" collapsible className="space-y-3">
           {tutorials.map((item) => (
-            <AccordionItem key={item.id} value={String(item.id)} className="rounded-lg border bg-white px-4">
-              <AccordionTrigger className="text-left font-bold">{item.title}</AccordionTrigger>
+            <AccordionItem
+              key={item.id}
+              value={String(item.id)}
+              className={`rounded-lg border bg-white px-4 transition ${
+                dragOverTutorialId === item.id ? "border-[#06258d] bg-blue-50/40" : ""
+              } ${draggedTutorialId === item.id ? "opacity-60" : ""}`}
+              onDragOver={(event) => {
+                if (!isAdmin || draggedTutorialId === null) return;
+                event.preventDefault();
+                setDragOverTutorialId(item.id);
+              }}
+              onDragLeave={() => {
+                if (dragOverTutorialId === item.id) {
+                  setDragOverTutorialId(null);
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const droppedId = Number(event.dataTransfer.getData("text/plain")) || draggedTutorialId;
+                if (isAdmin && droppedId) {
+                  void reorderTutorial(droppedId, item.id);
+                }
+              }}
+            >
+              <div className="flex items-center gap-2">
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing"
+                    title="Drag untuk mengubah urutan panduan"
+                    draggable={!isReordering}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", String(item.id));
+                      setDraggedTutorialId(item.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedTutorialId(null);
+                      setDragOverTutorialId(null);
+                    }}
+                    disabled={isReordering}
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                )}
+                <AccordionTrigger className="flex-1 text-left font-bold">{item.title}</AccordionTrigger>
+              </div>
               <AccordionContent>
-                <div className="grid gap-4 md:grid-cols-[1fr_260px]">
+                <div className="space-y-4">
                   <div className="space-y-2">
                     {stepsFromContent(item.content).map((step, index) => (
                       <div key={`${item.id}-${index}`} className="flex gap-3 rounded-md border bg-slate-50 p-3 text-sm">
@@ -280,9 +367,13 @@ export default function PanduanWebsite() {
                   </div>
                   <div className="rounded-md border border-dashed bg-slate-50 p-3">
                     {item.screenshotUrl || item.screenshotData ? (
-                      <img src={item.screenshotUrl ?? item.screenshotData ?? undefined} alt={item.title} className="h-40 w-full rounded object-cover" />
+                      <img
+                        src={item.screenshotUrl ?? item.screenshotData ?? undefined}
+                        alt={item.title}
+                        className="max-h-[70vh] w-full rounded bg-white object-contain"
+                      />
                     ) : (
-                      <div className="flex h-40 items-center justify-center text-center text-xs font-semibold text-slate-400">Screenshot placeholder</div>
+                      <div className="flex min-h-64 items-center justify-center text-center text-xs font-semibold text-slate-400">Screenshot placeholder</div>
                     )}
                   </div>
                 </div>
