@@ -40,6 +40,29 @@ function getLaterUntilDate(): string {
   return nextDate.toISOString();
 }
 
+function showNativeNotification(title: string, body: string, url = "/notifikasi") {
+  if (!("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+
+  if (document.visibilityState === "visible" && document.hasFocus()) {
+    return;
+  }
+
+  const notification = new Notification(title, {
+    body,
+    icon: "/favicon.svg",
+    badge: "/favicon.svg",
+    data: { url },
+  });
+
+  notification.onclick = () => {
+    window.focus();
+    window.location.href = url;
+    notification.close();
+  };
+}
+
 export default function NotificationPermissionPrompt() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -114,9 +137,11 @@ export default function NotificationPermissionPrompt() {
     listenFirebaseForegroundMessages((payload) => {
       const title = payload.notification?.title ?? payload.data?.title ?? "Notifikasi baru";
       const description = payload.notification?.body ?? payload.data?.message ?? "Ada notifikasi baru di aplikasi.";
+      const url = payload.data?.url ?? "/notifikasi";
 
       toast({ title, description });
-        queryClient.invalidateQueries();
+      showNativeNotification(title, description, url);
+      queryClient.invalidateQueries();
     }).then((handler) => {
       if (!isMounted) {
         handler();

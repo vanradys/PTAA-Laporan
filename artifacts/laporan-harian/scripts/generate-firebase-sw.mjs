@@ -1,7 +1,27 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const outputPath = resolve(process.cwd(), "public/firebase-messaging-sw.js");
+
+function loadEnvFile(filePath) {
+  if (!existsSync(filePath)) {
+    return;
+  }
+
+  const lines = readFileSync(filePath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!match || process.env[match[1]] !== undefined) {
+      continue;
+    }
+
+    const rawValue = match[2].trim();
+    process.env[match[1]] = rawValue.replace(/^(['"])(.*)\1$/, "$2");
+  }
+}
+
+loadEnvFile(resolve(process.cwd(), ".env"));
+loadEnvFile(resolve(process.cwd(), "../api-server/.env"));
 
 const firebaseConfig = {
   apiKey: process.env.VITE_FIREBASE_API_KEY ?? "",

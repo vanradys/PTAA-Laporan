@@ -28,14 +28,14 @@ importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
 
 const firebaseConfig = {
-  "apiKey": "",
-  "authDomain": "",
-  "projectId": "",
-  "storageBucket": "",
-  "messagingSenderId": "",
-  "appId": ""
+  "apiKey": "AIzaSyB6Sgl1wUrNObfqZrum8KpgmkMgAvsYIKQ",
+  "authDomain": "ptaa-laporan.firebaseapp.com",
+  "projectId": "ptaa-laporan",
+  "storageBucket": "ptaa-laporan.firebasestorage.app",
+  "messagingSenderId": "155361629220",
+  "appId": "1:155361629220:web:01f15b36a53edd40e1b4b1"
 };
-const isFirebaseConfigured = false;
+const isFirebaseConfigured = true;
 
 if (isFirebaseConfigured) {
   firebase.initializeApp(firebaseConfig);

@@ -2,7 +2,28 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import { existsSync, readFileSync } from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+function loadEnvFile(filePath: string) {
+  if (!existsSync(filePath)) {
+    return;
+  }
+
+  const lines = readFileSync(filePath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!match || process.env[match[1]] !== undefined) {
+      continue;
+    }
+
+    const rawValue = match[2].trim();
+    process.env[match[1]] = rawValue.replace(/^(['"])(.*)\1$/, "$2");
+  }
+}
+
+loadEnvFile(path.resolve(import.meta.dirname, ".env"));
+loadEnvFile(path.resolve(import.meta.dirname, "../api-server/.env"));
 
 const rawPort = process.env.PORT;
 const port = Number(rawPort) || 5173;
