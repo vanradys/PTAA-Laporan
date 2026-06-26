@@ -5,7 +5,7 @@ export type ApiRequestOptions = RequestInit & {
 function getApiBaseUrl(): string {
   const envValue = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
   if (import.meta.env.DEV) {
-    return envValue || "http://localhost:5000";
+    return envValue;
   }
 
   // Production memakai rewrite /api same-origin ke backend Cloudflare Tunnel
