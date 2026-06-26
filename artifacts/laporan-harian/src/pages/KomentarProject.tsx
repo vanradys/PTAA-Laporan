@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, Plus, Search, Send } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFeatureVisibility } from "@/hooks/use-feature-visibility";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ function formatDateTime(value: string) {
 
 export default function KomentarProject() {
   const { user } = useAuth();
+  const { canViewFeature } = useFeatureVisibility();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [poId, setPoId] = useState("");
@@ -62,12 +64,14 @@ export default function KomentarProject() {
     const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
     const departmentName = String(user?.departmentName ?? "").toLowerCase();
     return (
-      role === "admin" ||
-      role === "direktur" ||
-      role === "director" ||
-      role === "monitoring_dummy" ||
-      departmentCode === "ENG" ||
-      departmentName.includes("engineering")
+      (role === "admin" ||
+        role === "direktur" ||
+        role === "director" ||
+        role === "dir" ||
+        role === "monitoring_dummy" ||
+        departmentCode === "ENG" ||
+        departmentName.includes("engineering")) &&
+      canViewFeature("customer_progress_timeline", true)
     );
   })();
 

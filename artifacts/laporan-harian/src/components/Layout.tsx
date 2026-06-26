@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLogout, useListNotifications } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useFeatureVisibility } from "@/hooks/use-feature-visibility";
 import {
   LayoutDashboard,
   FileText,
@@ -52,6 +53,7 @@ export default function Layout({ children }: LayoutProps) {
   const queryClient = useQueryClient();
   const logout = useLogout();
   const { data: notifications } = useListNotifications();
+  const { canViewFeature } = useFeatureVisibility();
 
   const unreadCount = Array.isArray(notifications)
     ? notifications.filter((n: { isRead: boolean }) => !n.isRead).length
@@ -78,13 +80,19 @@ export default function Layout({ children }: LayoutProps) {
   const userDepartmentCode = String(user?.departmentCode ?? "").toUpperCase();
   const userDepartmentName = String(user?.departmentName ?? "").toLowerCase();
   const canViewProjectComments =
-    ["admin", "direktur", "director", "monitoring_dummy"].includes(userRole) ||
+    ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(userRole) ||
     userDepartmentCode === "ENG" ||
     userDepartmentName.includes("engineering");
+  const canViewProjectCommentsNav =
+    canViewProjectComments && canViewFeature("customer_progress_timeline", true);
   const visibleNavItems = [
-    ...navItems.slice(0, 5),
-    ...(canViewProjectComments ? [navItems[5]] : []),
-    ...(canViewOverallMonitoring
+    navItems[0],
+    ...(canViewFeature("daily_reports", true) ? [navItems[1]] : []),
+    ...(canViewFeature("todo_list", true) ? [navItems[2]] : []),
+    ...(canViewFeature("monitoring_reports", true) ? [navItems[3]] : []),
+    ...(canViewFeature("project_schedule", true) ? [navItems[4]] : []),
+    ...(canViewProjectCommentsNav ? [navItems[5]] : []),
+    ...(canViewOverallMonitoring && canViewFeature("monitoring_reports", true)
       ? [{
           href: "/monitoring-keseluruhan",
           label: "Monitoring Keseluruhan",

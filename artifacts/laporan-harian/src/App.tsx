@@ -1,8 +1,10 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { useFeatureVisibility } from "@/hooks/use-feature-visibility";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import LaporanSaya from "@/pages/LaporanSaya";
@@ -17,6 +19,8 @@ import CustomerTracking from "@/pages/CustomerTracking";
 import MonitoringKeseluruhan from "@/pages/MonitoringKeseluruhan";
 import UserManagement from "@/pages/UserManagement";
 import Attendance from "@/pages/Attendance";
+import Layout from "@/components/Layout";
+import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import NotificationPermissionPrompt from "@/components/NotificationPermissionPrompt";
 
@@ -57,15 +61,51 @@ function AppRoutes() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/dashboard" component={Dashboard} />
-      <Route path="/laporan-saya" component={LaporanSaya} />
-      <Route path="/to-do-list" component={ToDoList} />
-      <Route path="/monitoring" component={Monitoring} />
-      <Route path="/monitoring-keseluruhan" component={MonitoringKeseluruhan} />
+      <Route path="/laporan-saya">
+        {() => (
+          <FeatureGate featureKey="daily_reports">
+            <LaporanSaya />
+          </FeatureGate>
+        )}
+      </Route>
+      <Route path="/to-do-list">
+        {() => (
+          <FeatureGate featureKey="todo_list">
+            <ToDoList />
+          </FeatureGate>
+        )}
+      </Route>
+      <Route path="/monitoring">
+        {() => (
+          <FeatureGate featureKey="monitoring_reports">
+            <Monitoring />
+          </FeatureGate>
+        )}
+      </Route>
+      <Route path="/monitoring-keseluruhan">
+        {() => (
+          <FeatureGate featureKey="monitoring_reports">
+            <MonitoringKeseluruhan />
+          </FeatureGate>
+        )}
+      </Route>
       <Route path="/user-management" component={UserManagement} />
       <Route path="/absensi" component={Attendance} />
       <Route path="/laporan/:id" component={DetailLaporan} />
-      <Route path="/jadwal-project" component={JadwalProject} />
-      <Route path="/komentar-project" component={KomentarProject} />
+      <Route path="/jadwal-project">
+        {() => (
+          <FeatureGate featureKey="project_schedule">
+            <JadwalProject />
+          </FeatureGate>
+        )}
+      </Route>
+      <Route path="/komentar-project">
+        {() => (
+          <FeatureGate featureKey="customer_progress_timeline">
+            <KomentarProject />
+          </FeatureGate>
+        )}
+      </Route>
       <Route path="/panduan-website" component={PanduanWebsite} />
       <Route path="/notifikasi" component={Notifikasi} />
       <Route>
@@ -73,6 +113,32 @@ function AppRoutes() {
       </Route>
     </Switch>
   );
+}
+
+function FeatureGate({
+  featureKey,
+  children,
+}: {
+  featureKey: string;
+  children: ReactNode;
+}) {
+  const { canViewFeature } = useFeatureVisibility();
+
+  if (!canViewFeature(featureKey, true)) {
+    return (
+      <Layout>
+        <div className="page-shell">
+          <Card>
+            <CardContent className="p-8 text-center text-sm text-red-600">
+              Halaman ini belum diaktifkan untuk profile atau departemen akun Anda.
+            </CardContent>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 function App() {

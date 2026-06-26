@@ -16,6 +16,7 @@ import {
   getListNotificationsQueryKey,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFeatureVisibility } from "@/hooks/use-feature-visibility";
 import {
   Plus,
   Pencil,
@@ -636,30 +637,40 @@ export default function JadwalProject() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { canViewFeature } = useFeatureVisibility();
 
   const role = user?.role?.toLowerCase() ?? "";
   const email = user?.email?.toLowerCase() ?? "";
   const departmentName = user?.departmentName?.toLowerCase() ?? "";
   const departmentCode = user?.departmentCode?.toUpperCase() ?? "";
-  const canManage =
+  const canViewProjectSchedule = canViewFeature("project_schedule", true);
+  const baseCanManage =
     ["admin", "hr", "direktur", "director", "dir"].includes(role) ||
     ["AAF", "FIN", "MKT", "GA"].includes(departmentCode) ||
     departmentName.includes("finance") ||
     departmentName.includes("marketing") ||
     departmentName.includes("general affairs");
-  const canEditPoData = canManage || role === "monitoring_dummy";
-  const canClosePo = canManage || role === "monitoring_dummy";
+  const baseCanEditPoData = baseCanManage || role === "monitoring_dummy";
+  const canManage = baseCanManage && canViewProjectSchedule;
+  const canEditPoData =
+    baseCanEditPoData && canViewProjectSchedule && canViewFeature("po_input", true);
+  const canClosePo = baseCanEditPoData && canViewProjectSchedule;
   const canExportPo =
-    ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||
-    email === "marketing@adiyasa.com" ||
-    email === "finance@adiyasa.com" ||
-    ["AAF", "FIN"].includes(departmentCode) ||
-    departmentName.includes("finance");
-  const canUpdateProjectProgress =
-    canEditPoData ||
+    canViewProjectSchedule &&
+    (["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||
+      email === "marketing@adiyasa.com" ||
+      email === "finance@adiyasa.com" ||
+      ["AAF", "FIN"].includes(departmentCode) ||
+      departmentName.includes("finance"));
+  const baseCanUpdateProjectProgress =
+    baseCanEditPoData ||
     ["PUR", "ENG"].includes(departmentCode) ||
     departmentName.includes("purchasing") ||
     departmentName.includes("engineering");
+  const canUpdateProjectProgress =
+    baseCanUpdateProjectProgress &&
+    canViewProjectSchedule &&
+    canViewFeature("project_progress", true);
   const hasFullPoAccess = ["admin", "direktur", "director", "dir"].includes(
     role,
   );
@@ -679,10 +690,11 @@ export default function JadwalProject() {
         departmentName.includes("finance")));
 
   const canViewPoActivity =
-    ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||
-    departmentCode === "GA" ||
-    departmentName.includes("general affairs");
-  const canViewPoDetail = Boolean(user);
+    canViewProjectSchedule &&
+    (["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(role) ||
+      departmentCode === "GA" ||
+      departmentName.includes("general affairs"));
+  const canViewPoDetail = Boolean(user) && canViewProjectSchedule;
   const canDeleteComments = ["admin", "direktur", "director", "dir"].includes(
     role,
   );

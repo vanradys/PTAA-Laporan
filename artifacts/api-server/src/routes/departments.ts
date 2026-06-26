@@ -112,6 +112,7 @@ router.get("/user-management/department-visibility", async (req, res) => {
     })
     .from(departmentsTable)
     .orderBy(departmentsTable.name);
+  const visibilitySubjects = buildVisibilitySubjects(departments);
 
   const savedPermissionsResult = await db.execute(sql`
     select department_code, feature_key, can_view
@@ -127,15 +128,56 @@ router.get("/user-management/department-visibility", async (req, res) => {
 
   res.json({
     features: departmentVisibilityFeatures,
-    departments,
-    permissions: departments.flatMap((department) =>
+    departments: visibilitySubjects.map(serializeVisibilitySubject),
+    permissions: visibilitySubjects.flatMap((subject) =>
       departmentVisibilityFeatures.map((feature) => ({
-        departmentCode: department.code,
+        departmentCode: subject.key,
+        subjectKey: subject.key,
         featureKey: feature.key,
-        canView:
-          savedByKey.get(`${department.code}:${feature.key}`) ??
-          getDefaultDepartmentVisibility(department.code, feature.key),
+        canView: getEffectiveVisibility(subject, feature.key, savedByKey),
       })),
+    ),
+  });
+});
+
+router.get("/department-visibility/me", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  await ensureDepartmentVisibilityTable();
+
+  const departments = await db
+    .select({
+      id: departmentsTable.id,
+      name: departmentsTable.name,
+      code: departmentsTable.code,
+    })
+    .from(departmentsTable)
+    .orderBy(departmentsTable.name);
+  const visibilitySubjects = buildVisibilitySubjects(departments);
+  const subject = getVisibilitySubjectForUser(user, visibilitySubjects);
+
+  const savedPermissionsResult = await db.execute(sql`
+    select department_code, feature_key, can_view
+    from department_feature_permissions
+  `);
+  const savedPermissions =
+    (savedPermissionsResult as unknown as { rows?: Array<{ department_code: string; feature_key: string; can_view: boolean }> }).rows ??
+    (savedPermissionsResult as unknown as Array<{ department_code: string; feature_key: string; can_view: boolean }>);
+  const savedByKey = new Map(
+    savedPermissions.map((item) => [`${item.department_code}:${item.feature_key}`, item.can_view]),
+  );
+
+  res.json({
+    features: departmentVisibilityFeatures,
+    subject: subject ? serializeVisibilitySubject(subject) : null,
+    permissions: Object.fromEntries(
+      departmentVisibilityFeatures.map((feature) => [
+        feature.key,
+        subject ? getEffectiveVisibility(subject, feature.key, savedByKey) : false,
+      ]),
     ),
   });
 });
@@ -150,35 +192,43 @@ router.patch("/user-management/department-visibility", async (req, res) => {
     return;
   }
 
-  const departmentCode = String(req.body?.departmentCode ?? "").trim().toUpperCase();
+  const requestedSubject = String(req.body?.subjectKey ?? req.body?.departmentCode ?? "").trim();
   const featureKey = String(req.body?.featureKey ?? "").trim();
   const canView = Boolean(req.body?.canView);
 
-  if (!departmentCode || !departmentVisibilityFeatureKeys.has(featureKey)) {
+  if (!requestedSubject || !departmentVisibilityFeatureKeys.has(featureKey)) {
     res.status(400).json({ error: "Departemen atau fitur tidak valid" });
     return;
   }
 
-  const [department] = await db
-    .select({ code: departmentsTable.code })
+  const departments = await db
+    .select({
+      id: departmentsTable.id,
+      name: departmentsTable.name,
+      code: departmentsTable.code,
+    })
     .from(departmentsTable)
-    .where(eq(departmentsTable.code, departmentCode))
-    .limit(1);
+    .orderBy(departmentsTable.name);
+  const subject = findVisibilitySubject(buildVisibilitySubjects(departments), requestedSubject);
 
-  if (!department) {
-    res.status(404).json({ error: "Departemen tidak ditemukan" });
+  if (!subject) {
+    res.status(404).json({ error: "Visibility profile tidak ditemukan" });
+    return;
+  }
+  if (subject.locked) {
+    res.status(403).json({ error: "Permission Admin bersifat absolute dan tidak bisa diubah" });
     return;
   }
 
   await ensureDepartmentVisibilityTable();
   await db.execute(sql`
     insert into department_feature_permissions (department_code, feature_key, can_view, updated_at)
-    values (${departmentCode}, ${featureKey}, ${canView}, now())
+    values (${subject.key}, ${featureKey}, ${canView}, now())
     on conflict (department_code, feature_key)
     do update set can_view = excluded.can_view, updated_at = now()
   `);
 
-  res.json({ success: true, departmentCode, featureKey, canView });
+  res.json({ success: true, departmentCode: subject.key, subjectKey: subject.key, featureKey, canView });
 });
 
 const allowedUserManagementRoles = new Set([
@@ -208,14 +258,100 @@ const departmentVisibilityFeatureKeys = new Set<string>(
   departmentVisibilityFeatures.map((feature) => feature.key),
 );
 
+type VisibilitySubject = {
+  id: number;
+  key: string;
+  name: string;
+  displayCode: string;
+  locked?: boolean;
+  legacyDepartmentCode?: string;
+};
+
+type DepartmentLike = {
+  id: number;
+  name: string | null;
+  code: string | null;
+};
+
+const allDepartmentVisibilityFeatures = departmentVisibilityFeatures.map(
+  (feature) => feature.key,
+);
+
+const defaultSubjectVisibility: Record<string, string[]> = {
+  "role:admin": allDepartmentVisibilityFeatures,
+  "role:direktur": allDepartmentVisibilityFeatures,
+  "role:monitoring_dummy": [
+    "monitoring_reports",
+    "project_schedule",
+    "po_input",
+    "project_progress",
+    "po_received_date",
+    "target_delivery",
+    "actual_delivery",
+    "customer_progress_timeline",
+    "notes",
+  ],
+  "DEPT:MKT": [
+    "daily_reports",
+    "todo_list",
+    "project_schedule",
+    "po_input",
+    "project_progress",
+    "po_received_date",
+    "target_delivery",
+    "notes",
+  ],
+  "DEPT:ENG": [
+    "daily_reports",
+    "todo_list",
+    "project_schedule",
+    "project_progress",
+    "customer_progress_timeline",
+    "notes",
+  ],
+  "DEPT:AAF": [
+    "daily_reports",
+    "todo_list",
+    "project_schedule",
+    "po_input",
+    "project_progress",
+    "actual_delivery",
+    "notes",
+  ],
+  "DEPT:FIN": [
+    "daily_reports",
+    "todo_list",
+    "project_schedule",
+    "po_input",
+    "project_progress",
+    "actual_delivery",
+    "notes",
+  ],
+  "DEPT:PUR": [
+    "daily_reports",
+    "todo_list",
+    "project_schedule",
+    "project_progress",
+    "notes",
+  ],
+  "DEPT:GA": [
+    "daily_reports",
+    "todo_list",
+    "project_schedule",
+    "po_input",
+    "project_progress",
+    "notes",
+  ],
+};
+
 const defaultDepartmentVisibility: Record<string, string[]> = {
-  DIR: ["todo_list", "monitoring_reports", "po_input", "project_progress", "notes"],
-  MKT: ["daily_reports", "todo_list", "project_schedule", "po_input", "project_progress", "po_received_date", "target_delivery", "notes"],
-  ENG: ["daily_reports", "todo_list", "project_progress", "customer_progress_timeline", "notes"],
-  AAF: ["daily_reports", "todo_list", "project_progress", "actual_delivery", "notes"],
-  FIN: ["daily_reports", "todo_list", "project_progress", "actual_delivery", "notes"],
-  PUR: ["daily_reports", "todo_list", "project_progress", "notes"],
-  GA: ["daily_reports", "todo_list", "notes"],
+  DIR: defaultSubjectVisibility["role:direktur"],
+  MKT: defaultSubjectVisibility["DEPT:MKT"],
+  ENG: defaultSubjectVisibility["DEPT:ENG"],
+  AAF: defaultSubjectVisibility["DEPT:AAF"],
+  FIN: defaultSubjectVisibility["DEPT:FIN"],
+  PUR: defaultSubjectVisibility["DEPT:PUR"],
+  GA: defaultSubjectVisibility["DEPT:GA"],
   ADM: departmentVisibilityFeatures.map((feature) => feature.key),
 };
 
@@ -233,6 +369,131 @@ async function ensureDepartmentVisibilityTable() {
 
 function getDefaultDepartmentVisibility(departmentCode: string, featureKey: string) {
   return Boolean(defaultDepartmentVisibility[departmentCode]?.includes(featureKey));
+}
+
+function buildVisibilitySubjects(departments: DepartmentLike[]): VisibilitySubject[] {
+  const departmentSubjects = departments
+    .map((department) => ({
+      ...department,
+      code: String(department.code ?? "").trim().toUpperCase(),
+      name: String(department.name ?? department.code ?? "").trim(),
+    }))
+    .filter((department) => department.code && !["ADM", "DIR"].includes(department.code))
+    .map((department) => ({
+      id: department.id,
+      key: `DEPT:${department.code}`,
+      name: department.name || department.code,
+      displayCode: department.code,
+      legacyDepartmentCode: department.code,
+    }));
+
+  return [
+    {
+      id: -1,
+      key: "role:admin",
+      name: "Admin",
+      displayCode: "ADMIN",
+      locked: true,
+      legacyDepartmentCode: "ADM",
+    },
+    {
+      id: -2,
+      key: "role:direktur",
+      name: "Direktur",
+      displayCode: "DIR",
+      legacyDepartmentCode: "DIR",
+    },
+    {
+      id: -3,
+      key: "role:monitoring_dummy",
+      name: "Monitoring Laporan",
+      displayCode: "MON",
+    },
+    ...departmentSubjects,
+  ];
+}
+
+function serializeVisibilitySubject(subject: VisibilitySubject) {
+  return {
+    id: subject.id,
+    name: subject.name,
+    code: subject.key,
+    displayCode: subject.displayCode,
+    locked: subject.locked === true,
+  };
+}
+
+function findVisibilitySubject(subjects: VisibilitySubject[], requestedSubject: string) {
+  const requested = requestedSubject.trim().toLowerCase();
+  return subjects.find((subject) =>
+    [
+      subject.key,
+      subject.displayCode,
+      subject.legacyDepartmentCode,
+    ].some((value) => String(value ?? "").toLowerCase() === requested),
+  );
+}
+
+function getVisibilitySubjectForUser(
+  user: { role?: unknown; departmentCode?: string | null; departmentName?: string | null },
+  subjects: VisibilitySubject[],
+): VisibilitySubject | null {
+  const role = String(user.role ?? "").trim().toLowerCase();
+  const roleSubjectKey =
+    role === "admin"
+      ? "role:admin"
+      : ["direktur", "director", "dir"].includes(role)
+        ? "role:direktur"
+        : ["monitoring_dummy", "monitoring", "monitor"].includes(role)
+          ? "role:monitoring_dummy"
+          : "";
+
+  if (roleSubjectKey) {
+    const roleSubject = subjects.find((subject) => subject.key === roleSubjectKey);
+    if (roleSubject) return roleSubject;
+  }
+
+  const departmentCode = String(user.departmentCode ?? "").trim().toUpperCase();
+  if (!departmentCode) return null;
+
+  return subjects.find((subject) => subject.key === `DEPT:${departmentCode}`) ?? {
+    id: 0,
+    key: `DEPT:${departmentCode}`,
+    name: String(user.departmentName ?? departmentCode),
+    displayCode: departmentCode,
+    legacyDepartmentCode: departmentCode,
+  };
+}
+
+function getEffectiveVisibility(
+  subject: VisibilitySubject,
+  featureKey: string,
+  savedByKey: Map<string, boolean>,
+) {
+  if (subject.locked) return true;
+
+  const directSaved = savedByKey.get(`${subject.key}:${featureKey}`);
+  if (directSaved !== undefined) return directSaved;
+
+  if (subject.legacyDepartmentCode) {
+    const legacySaved = savedByKey.get(`${subject.legacyDepartmentCode}:${featureKey}`);
+    if (legacySaved !== undefined) return legacySaved;
+  }
+
+  return getDefaultSubjectVisibility(subject, featureKey);
+}
+
+function getDefaultSubjectVisibility(subject: VisibilitySubject, featureKey: string) {
+  if (subject.locked) return true;
+
+  const subjectDefaults = defaultSubjectVisibility[subject.key];
+  if (subjectDefaults) return subjectDefaults.includes(featureKey);
+
+  if (subject.legacyDepartmentCode) {
+    return getDefaultDepartmentVisibility(subject.legacyDepartmentCode, featureKey);
+  }
+
+  return false;
 }
 
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
@@ -515,6 +776,20 @@ router.patch("/users/:id", async (req, res) => {
   }
 
   const { name, role, departmentId, isActive } = req.body ?? {};
+  const existingRole = String(existingUser.role ?? "").toLowerCase();
+  const requestedRole = role !== undefined ? String(role).toLowerCase() : undefined;
+  if (existingRole === "admin" && requestedRole !== undefined && requestedRole !== "admin") {
+    res.status(400).json({ error: "Permission Admin bersifat absolute dan tidak bisa dihapus" });
+    return;
+  }
+  if (existingRole === "admin" && isActive === false) {
+    res.status(400).json({ error: "Akun Admin tidak bisa di-hide atau dinonaktifkan" });
+    return;
+  }
+  if (existingRole === "admin" && departmentId !== undefined) {
+    res.status(400).json({ error: "Departemen akun Admin tidak bisa diubah" });
+    return;
+  }
   if (id === user.id && isActive === false) {
     res.status(400).json({ error: "Admin tidak dapat menonaktifkan akunnya sendiri" });
     return;
@@ -587,12 +862,17 @@ router.delete("/users/:id", async (req, res) => {
       id: usersTable.id,
       name: usersTable.name,
       email: usersTable.email,
+      role: usersTable.role,
     })
     .from(usersTable)
     .where(eq(usersTable.id, id))
     .limit(1);
   if (!existingUser) {
     res.status(404).json({ error: "User tidak ditemukan" });
+    return;
+  }
+  if (String(existingUser.role).toLowerCase() === "admin") {
+    res.status(400).json({ error: "Akun Admin bersifat absolute dan tidak bisa dihapus" });
     return;
   }
 

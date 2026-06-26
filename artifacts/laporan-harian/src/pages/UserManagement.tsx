@@ -14,6 +14,7 @@ import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { currentFeatureVisibilityQueryKey } from "@/hooks/use-feature-visibility";
 
 type UserRow = {
   id: number;
@@ -26,7 +27,13 @@ type UserRow = {
   isActive: boolean;
 };
 
-type Department = { id: number; name: string; code: string };
+type Department = {
+  id: number;
+  name: string;
+  code: string;
+  displayCode?: string;
+  locked?: boolean;
+};
 type NameChangeRequest = {
   id: number;
   userId: number;
@@ -53,6 +60,7 @@ type DepartmentVisibilityFeature = {
 
 type DepartmentVisibilityPermission = {
   departmentCode: string;
+  subjectKey?: string;
   featureKey: string;
   canView: boolean;
 };
@@ -334,9 +342,12 @@ export default function UserManagement() {
       await apiRequest("/api/user-management/department-visibility", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ departmentCode, featureKey, canView }),
+        body: JSON.stringify({ subjectKey: departmentCode, featureKey, canView }),
       });
-      await queryClient.invalidateQueries({ queryKey: ["department-visibility"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["department-visibility"] }),
+        queryClient.invalidateQueries({ queryKey: currentFeatureVisibilityQueryKey }),
+      ]);
       toast({ title: "Visibility departemen diperbarui" });
     } catch (error) {
       toast({
@@ -365,7 +376,7 @@ export default function UserManagement() {
         <Tabs defaultValue="accounts" className="space-y-5">
           <TabsList>
             <TabsTrigger value="accounts">Accounts</TabsTrigger>
-            <TabsTrigger value="visibility">Department Visibility</TabsTrigger>
+            <TabsTrigger value="visibility">Visibility Department</TabsTrigger>
           </TabsList>
           <TabsContent value="accounts" className="space-y-5">
         <Card>
@@ -539,7 +550,9 @@ export default function UserManagement() {
                     <th className="px-4 py-3 text-left">Aksi</th>
                   </tr></thead>
                   <tbody>
-                    {(users ?? []).map((item) => (
+                    {(users ?? []).map((item) => {
+                      const isAdminAccount = String(item.role).toLowerCase() === "admin";
+                      return (
                       <tr key={item.id} className="border-b last:border-0">
                         <td className="px-4 py-3">
                           <Input
@@ -558,7 +571,7 @@ export default function UserManagement() {
                         <td className="px-4 py-3">
                           <Select
                             value={item.role}
-                            disabled={updatingUserId !== null || item.id === user.id}
+                            disabled={updatingUserId !== null || item.id === user.id || isAdminAccount}
                             onValueChange={(role) => void updateUser(item.id, { role })}
                           >
                             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -572,7 +585,7 @@ export default function UserManagement() {
                         <td className="px-4 py-3">
                           <Select
                             value={String(item.departmentId ?? "none")}
-                            disabled={updatingUserId !== null}
+                            disabled={updatingUserId !== null || isAdminAccount}
                             onValueChange={(value) => void updateUser(item.id, { departmentId: value === "none" ? null : Number(value) })}
                           >
                             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -586,14 +599,14 @@ export default function UserManagement() {
                           <Button
                             variant={item.isActive ? "outline" : "destructive"}
                             size="sm"
-                            disabled={updatingUserId !== null || item.id === user.id}
+                            disabled={updatingUserId !== null || item.id === user.id || isAdminAccount}
                             onClick={() => {
                               const action = item.isActive ? "hide" : "show";
                               if (window.confirm(`Yakin ingin ${action} account ${item.name}?`)) {
                                 void updateUser(item.id, { isActive: !item.isActive });
                               }
                             }}
-                            title={item.id === user.id ? "Akun Admin yang sedang digunakan tidak dapat disembunyikan" : undefined}
+                            title={isAdminAccount ? "Akun Admin punya absolute access dan tidak dapat di-hide" : item.id === user.id ? "Akun Admin yang sedang digunakan tidak dapat disembunyikan" : undefined}
                           >
                             {updatingUserId === item.id && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                             {item.isActive ? "Hide Account" : "Show Account"}
@@ -618,10 +631,12 @@ export default function UserManagement() {
                               variant="outline"
                               size="sm"
                               className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                              disabled={updatingUserId !== null || item.id === user.id}
+                              disabled={updatingUserId !== null || item.id === user.id || isAdminAccount}
                               onClick={() => void deleteUser(item)}
                               title={
-                                item.id === user.id
+                                isAdminAccount
+                                  ? "Akun Admin punya absolute access dan tidak dapat dihapus"
+                                  : item.id === user.id
                                   ? "Akun Admin yang sedang digunakan tidak dapat dihapus"
                                   : "Hapus akun permanen dari database"
                               }
@@ -636,7 +651,8 @@ export default function UserManagement() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -647,7 +663,7 @@ export default function UserManagement() {
           <TabsContent value="visibility" className="space-y-5">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Department Visibility</CardTitle>
+                <CardTitle className="text-base">Visibility Department</CardTitle>
               </CardHeader>
               <CardContent>
                 {visibilityLoading ? (
@@ -673,7 +689,7 @@ export default function UserManagement() {
                             >
                               <div>{department.name}</div>
                               <div className="text-xs font-normal text-muted-foreground">
-                                {department.code}
+                                {department.displayCode ?? department.code}
                               </div>
                             </th>
                           ))}
@@ -687,12 +703,18 @@ export default function UserManagement() {
                             </td>
                             {(visibilityMatrix?.departments ?? []).map((department) => {
                               const permissionKey = `${department.code}:${feature.key}`;
-                              const checked = visibilityByKey.get(permissionKey) ?? false;
+                              const isLockedProfile =
+                                department.locked === true ||
+                                department.code === "role:admin" ||
+                                department.displayCode === "ADMIN";
+                              const checked = isLockedProfile
+                                ? true
+                                : visibilityByKey.get(permissionKey) ?? false;
                               return (
                                 <td key={permissionKey} className="px-4 py-3 text-center">
                                   <Checkbox
                                     checked={checked}
-                                    disabled={updatingVisibilityKey !== null}
+                                    disabled={updatingVisibilityKey !== null || isLockedProfile}
                                     onCheckedChange={(value) =>
                                       void updateDepartmentVisibility(
                                         department.code,
