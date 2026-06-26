@@ -51,7 +51,7 @@ export const activeDepartmentCodes = defaultDepartments.map(
 
 const hiddenDepartments = [{ code: "ADM", name: "Admin" }];
 
-const ptaaUsers = [
+export const ptaaUsers = [
   {
     name: "Admin PTAA",
     email: "admin@adiyasa.com",
@@ -360,13 +360,6 @@ router.post("/login", async (req, res) => {
   if (!user || !isPasswordValid || user.isActive === false) {
     res.status(401).json({ error: "Email atau password salah atau akun sudah tidak aktif" });
     return;
-  }
-
-  if (user.password === password) {
-    await db
-      .update(usersTable)
-      .set({ password: hashPassword(password) })
-      .where(eq(usersTable.id, user.id));
   }
 
   const token = generateToken();

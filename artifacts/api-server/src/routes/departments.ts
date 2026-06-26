@@ -1,5 +1,5 @@
 import { db, departmentsTable, usersTable, eq, ilike, inArray, sql } from "@workspace/db";
-import { getUserFromToken, hashPassword } from "./auth";
+import { getUserFromToken, hashPassword, ptaaUsers } from "./auth";
 import { activeDepartmentCodes } from "./auth";
 import { Router } from "express";
 import { activeUserCondition } from "../services/dailyReportReminder";
@@ -100,6 +100,23 @@ const allowedUserManagementRoles = new Set([
   "marketing_specialist",
   "monitoring_dummy",
 ]);
+
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
+
+function getKnownPlainPassword(email: string, storedPassword: string): string | null {
+  const normalizedEmail = email.trim().toLowerCase();
+  const knownUser = ptaaUsers.find((item) => item.email.toLowerCase() === normalizedEmail);
+
+  if (!knownUser) {
+    return null;
+  }
+
+  if (storedPassword === knownUser.password || storedPassword === hashPassword(knownUser.password)) {
+    return knownUser.password;
+  }
+
+  return null;
+}
 
 async function resolveUserManagementDepartmentId(
   role: string,
@@ -202,7 +219,7 @@ router.post("/users", async (req, res) => {
       .values({
         name,
         email,
-        password: hashPassword(password),
+        password,
         role,
         departmentId,
         isActive: req.body?.isActive !== false,
@@ -223,6 +240,75 @@ router.post("/users", async (req, res) => {
       error: typedError.message || "Gagal membuat akun",
     });
   }
+});
+
+router.get("/users/:id/password", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (String(user.role).toLowerCase() !== "admin") {
+    res.status(403).json({ error: "Hanya Admin yang dapat melihat password akun" });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "ID user tidak valid" });
+    return;
+  }
+
+  const [targetUser] = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      password: usersTable.password,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, id))
+    .limit(1);
+
+  if (!targetUser) {
+    res.status(404).json({ error: "User tidak ditemukan" });
+    return;
+  }
+
+  const knownPlainPassword = getKnownPlainPassword(targetUser.email, targetUser.password);
+  if (knownPlainPassword) {
+    res.json({
+      userId: targetUser.id,
+      name: targetUser.name,
+      email: targetUser.email,
+      canView: true,
+      password: knownPlainPassword,
+      source: "default_seed",
+    });
+    return;
+  }
+
+  if (!SHA256_HEX_PATTERN.test(targetUser.password)) {
+    res.json({
+      userId: targetUser.id,
+      name: targetUser.name,
+      email: targetUser.email,
+      canView: true,
+      password: targetUser.password,
+      source: "stored_plaintext",
+    });
+    return;
+  }
+
+  res.json({
+    userId: targetUser.id,
+    name: targetUser.name,
+    email: targetUser.email,
+    canView: false,
+    password: null,
+    source: "hashed",
+    message:
+      "Password akun ini sudah tersimpan sebagai hash, jadi password asli tidak bisa dilihat. Buat password baru jika user lupa password.",
+  });
 });
 
 router.patch("/users/:id", async (req, res) => {

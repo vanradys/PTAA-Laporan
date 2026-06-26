@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Trash2, Users } from "lucide-react";
+import { Eye, Loader2, Plus, Trash2, Users } from "lucide-react";
 import { useState } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,6 +33,16 @@ type NameChangeRequest = {
   createdAt: string;
 };
 
+type PasswordLookup = {
+  userId: number;
+  name: string;
+  email: string;
+  canView: boolean;
+  password: string | null;
+  source: "default_seed" | "stored_plaintext" | "hashed";
+  message?: string;
+};
+
 type CreateAccountForm = {
   name: string;
   email: string;
@@ -55,6 +66,9 @@ export default function UserManagement() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
+  const [viewingPasswordUserId, setViewingPasswordUserId] = useState<number | null>(null);
+  const [passwordLookup, setPasswordLookup] = useState<PasswordLookup | null>(null);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [createForm, setCreateForm] = useState<CreateAccountForm>({
     name: "",
@@ -120,6 +134,27 @@ export default function UserManagement() {
       return false;
     } finally {
       setUpdatingUserId(null);
+    }
+  };
+
+  const viewPassword = async (item: UserRow) => {
+    if (viewingPasswordUserId !== null) return;
+    setViewingPasswordUserId(item.id);
+    try {
+      const result = await apiRequest<PasswordLookup>(`/api/users/${item.id}/password`);
+      setPasswordLookup(result);
+      setPasswordDialogOpen(true);
+    } catch (error) {
+      toast({
+        title: "Gagal melihat password",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Terjadi kesalahan saat mengambil password akun.",
+        variant: "destructive",
+      });
+    } finally {
+      setViewingPasswordUserId(null);
     }
   };
 
@@ -388,7 +423,7 @@ export default function UserManagement() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1040px] text-sm">
+                <table className="w-full min-w-[1180px] text-sm">
                   <thead><tr className="border-b bg-muted/40">
                     <th className="px-4 py-3 text-left">Nama</th>
                     <th className="px-4 py-3 text-left">Email</th>
@@ -447,37 +482,52 @@ export default function UserManagement() {
                             size="sm"
                             disabled={updatingUserId !== null || item.id === user.id}
                             onClick={() => {
-                              const action = item.isActive ? "menonaktifkan" : "mengaktifkan";
-                              if (window.confirm(`Yakin ingin ${action} akun ${item.name}?`)) {
+                              const action = item.isActive ? "hide" : "show";
+                              if (window.confirm(`Yakin ingin ${action} account ${item.name}?`)) {
                                 void updateUser(item.id, { isActive: !item.isActive });
                               }
                             }}
-                            title={item.id === user.id ? "Akun Admin yang sedang digunakan tidak dapat dinonaktifkan" : undefined}
+                            title={item.id === user.id ? "Akun Admin yang sedang digunakan tidak dapat disembunyikan" : undefined}
                           >
                             {updatingUserId === item.id && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                            {item.isActive ? "Nonaktifkan" : "Aktifkan"}
+                            {item.isActive ? "Hide Account" : "Show Account"}
                           </Button>
                         </td>
                         <td className="px-4 py-3">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                            disabled={updatingUserId !== null || item.id === user.id}
-                            onClick={() => void deleteUser(item)}
-                            title={
-                              item.id === user.id
-                                ? "Akun Admin yang sedang digunakan tidak dapat dihapus"
-                                : "Hapus akun permanen dari database"
-                            }
-                          >
-                            {updatingUserId === item.id ? (
-                              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                            )}
-                            Hapus
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={viewingPasswordUserId !== null}
+                              onClick={() => void viewPassword(item)}
+                            >
+                              {viewingPasswordUserId === item.id ? (
+                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Eye className="mr-1.5 h-3.5 w-3.5" />
+                              )}
+                              View Password
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                              disabled={updatingUserId !== null || item.id === user.id}
+                              onClick={() => void deleteUser(item)}
+                              title={
+                                item.id === user.id
+                                  ? "Akun Admin yang sedang digunakan tidak dapat dihapus"
+                                  : "Hapus akun permanen dari database"
+                              }
+                            >
+                              {updatingUserId === item.id ? (
+                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                              )}
+                              Hapus
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -488,6 +538,43 @@ export default function UserManagement() {
           </CardContent>
         </Card>
       </div>
+      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>View Password</DialogTitle>
+          </DialogHeader>
+          {passwordLookup && (
+            <div className="space-y-4 text-sm">
+              <div>
+                <p className="font-semibold text-slate-900">{passwordLookup.name}</p>
+                <p className="text-muted-foreground">{passwordLookup.email}</p>
+              </div>
+              {passwordLookup.canView ? (
+                <div className="rounded-lg border bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">
+                    Password
+                  </p>
+                  <p className="mt-1 break-all font-mono text-base text-slate-950">
+                    {passwordLookup.password}
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                  {passwordLookup.message ??
+                    "Password akun ini tidak bisa dilihat karena sudah tersimpan sebagai hash."}
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPasswordDialogOpen(false)}
+              >
+                Tutup
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
