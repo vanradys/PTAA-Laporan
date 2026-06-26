@@ -71,7 +71,7 @@ export default function KomentarProject() {
         role === "monitoring_dummy" ||
         departmentCode === "ENG" ||
         departmentName.includes("engineering")) &&
-      canViewFeature("customer_progress_timeline", true)
+      canViewFeature("project_comments", true)
     );
   })();
 

@@ -671,6 +671,9 @@ export default function JadwalProject() {
     baseCanUpdateProjectProgress &&
     canViewProjectSchedule &&
     canViewFeature("project_progress", true);
+  const canManageCustomerTimeline =
+    canUpdateProjectProgress && canViewFeature("customer_progress_timeline", true);
+  const canViewPoNotes = canViewProjectSchedule && canViewFeature("notes", true);
   const hasFullPoAccess = ["admin", "direktur", "director", "dir"].includes(
     role,
   );
@@ -843,7 +846,7 @@ export default function JadwalProject() {
   const { data: formPoNotes, refetch: refetchFormPoNotes } = useQuery({
     queryKey: ["po-notes", editingId],
     queryFn: () => apiRequest<PoNote[]>(`/api/po/${editingId}/notes`),
-    enabled: Boolean(editingId && showForm),
+    enabled: Boolean(editingId && showForm && canViewPoNotes),
   });
   const createPo = useCreatePo();
   const updatePo = useUpdatePo();
@@ -3386,6 +3389,7 @@ export default function JadwalProject() {
                 />
                 <span className="font-medium">Painting / Pengecatan</span>
               </label>
+              {canManageCustomerTimeline && (
               <div className="space-y-3 rounded-lg border border-border bg-slate-50 p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -3401,7 +3405,7 @@ export default function JadwalProject() {
                     variant="outline"
                     size="sm"
                     onClick={addTrackingTimelineItem}
-                    disabled={!canUpdateProjectProgress}
+                    disabled={!canManageCustomerTimeline}
                   >
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
                     Tambah Timeline
@@ -3429,7 +3433,7 @@ export default function JadwalProject() {
                             )
                           }
                           className="h-8 text-sm"
-                          disabled={!canUpdateProjectProgress}
+                          disabled={!canManageCustomerTimeline}
                         />
                         <Input
                           value={item.description}
@@ -3442,7 +3446,7 @@ export default function JadwalProject() {
                           }
                           placeholder="Contoh: Engineering 1 - Proses instalasi"
                           className="h-8 text-sm"
-                          disabled={!canUpdateProjectProgress}
+                          disabled={!canManageCustomerTimeline}
                         />
                         <Button
                           type="button"
@@ -3450,7 +3454,7 @@ export default function JadwalProject() {
                           size="icon"
                           className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700"
                           onClick={() => removeTrackingTimelineItem(index)}
-                          disabled={!canUpdateProjectProgress}
+                          disabled={!canManageCustomerTimeline}
                           title="Hapus timeline"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -3460,6 +3464,8 @@ export default function JadwalProject() {
                   </div>
                 )}
               </div>
+              )}
+              {canViewPoNotes && (
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Catatan</Label>
                 {editingId && Array.isArray(formPoNotes) && formPoNotes.length > 0 && (
@@ -3505,12 +3511,13 @@ export default function JadwalProject() {
                       : "Catatan pertama akan dikirim saat PO dibuat."}
                   </p>
                   {editingId && (
-                    <Button type="button" size="sm" variant="outline" onClick={handleSendPoNote} disabled={!form.catatan.trim()}>
+                    <Button type="button" size="sm" variant="outline" onClick={handleSendPoNote} disabled={!canEditPoData || !form.catatan.trim()}>
                       Kirim Catatan
                     </Button>
                   )}
                 </div>
               </div>
+              )}
             </div>
             <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 rounded-b-xl border-t border-border bg-background px-4 py-4 sm:px-6">
               <Button

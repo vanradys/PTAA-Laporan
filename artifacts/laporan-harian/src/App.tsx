@@ -84,7 +84,7 @@ function AppRoutes() {
       </Route>
       <Route path="/monitoring-keseluruhan">
         {() => (
-          <FeatureGate featureKey="monitoring_reports">
+          <FeatureGate featureKey="overall_monitoring">
             <MonitoringKeseluruhan />
           </FeatureGate>
         )}
@@ -101,7 +101,7 @@ function AppRoutes() {
       </Route>
       <Route path="/komentar-project">
         {() => (
-          <FeatureGate featureKey="customer_progress_timeline">
+          <FeatureGate featureKey="project_comments">
             <KomentarProject />
           </FeatureGate>
         )}

@@ -84,7 +84,7 @@ export default function Layout({ children }: LayoutProps) {
     userDepartmentCode === "ENG" ||
     userDepartmentName.includes("engineering");
   const canViewProjectCommentsNav =
-    canViewProjectComments && canViewFeature("customer_progress_timeline", true);
+    canViewProjectComments && canViewFeature("project_comments", true);
   const visibleNavItems = [
     navItems[0],
     ...(canViewFeature("daily_reports", true) ? [navItems[1]] : []),
@@ -92,7 +92,9 @@ export default function Layout({ children }: LayoutProps) {
     ...(canViewFeature("monitoring_reports", true) ? [navItems[3]] : []),
     ...(canViewFeature("project_schedule", true) ? [navItems[4]] : []),
     ...(canViewProjectCommentsNav ? [navItems[5]] : []),
-    ...(canViewOverallMonitoring && canViewFeature("monitoring_reports", true)
+    ...(canViewOverallMonitoring &&
+    canViewFeature("monitoring_reports", true) &&
+    canViewFeature("overall_monitoring", true)
       ? [{
           href: "/monitoring-keseluruhan",
           label: "Monitoring Keseluruhan",

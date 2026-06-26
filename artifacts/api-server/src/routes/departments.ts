@@ -244,7 +244,9 @@ const departmentVisibilityFeatures = [
   { key: "daily_reports", label: "LAPORAN HARIAN" },
   { key: "todo_list", label: "To Do List" },
   { key: "monitoring_reports", label: "Monitoring Laporan" },
+  { key: "overall_monitoring", label: "Monitoring Keseluruhan" },
   { key: "project_schedule", label: "Jadwal Project" },
+  { key: "project_comments", label: "Komentar Project" },
   { key: "po_input", label: "Penginputan Data PO" },
   { key: "project_progress", label: "Project Progress" },
   { key: "po_received_date", label: "Tanggal Masuk PO" },
@@ -277,70 +279,65 @@ const allDepartmentVisibilityFeatures = departmentVisibilityFeatures.map(
   (feature) => feature.key,
 );
 
+const defaultLoggedInFeatureVisibility = [
+  "daily_reports",
+  "todo_list",
+  "monitoring_reports",
+  "project_schedule",
+  "po_received_date",
+  "target_delivery",
+  "actual_delivery",
+  "notes",
+];
+
+const poInputFeatures = [
+  "po_input",
+  "project_progress",
+  "customer_progress_timeline",
+];
+
+const projectProgressFeatures = [
+  "project_progress",
+  "customer_progress_timeline",
+];
+
 const defaultSubjectVisibility: Record<string, string[]> = {
   "role:admin": allDepartmentVisibilityFeatures,
-  "role:direktur": allDepartmentVisibilityFeatures,
+  "role:direktur": [
+    ...defaultLoggedInFeatureVisibility,
+    "project_comments",
+    ...poInputFeatures,
+  ],
   "role:monitoring_dummy": [
-    "monitoring_reports",
-    "project_schedule",
-    "po_input",
-    "project_progress",
-    "po_received_date",
-    "target_delivery",
-    "actual_delivery",
-    "customer_progress_timeline",
-    "notes",
+    ...defaultLoggedInFeatureVisibility,
+    "overall_monitoring",
+    "project_comments",
+    ...poInputFeatures,
   ],
   "DEPT:MKT": [
-    "daily_reports",
-    "todo_list",
-    "project_schedule",
-    "po_input",
-    "project_progress",
-    "po_received_date",
-    "target_delivery",
-    "notes",
+    ...defaultLoggedInFeatureVisibility,
+    ...poInputFeatures,
   ],
   "DEPT:ENG": [
-    "daily_reports",
-    "todo_list",
-    "project_schedule",
-    "project_progress",
-    "customer_progress_timeline",
-    "notes",
+    ...defaultLoggedInFeatureVisibility,
+    "project_comments",
+    ...projectProgressFeatures,
   ],
   "DEPT:AAF": [
-    "daily_reports",
-    "todo_list",
-    "project_schedule",
-    "po_input",
-    "project_progress",
-    "actual_delivery",
-    "notes",
+    ...defaultLoggedInFeatureVisibility,
+    ...poInputFeatures,
   ],
   "DEPT:FIN": [
-    "daily_reports",
-    "todo_list",
-    "project_schedule",
-    "po_input",
-    "project_progress",
-    "actual_delivery",
-    "notes",
+    ...defaultLoggedInFeatureVisibility,
+    ...poInputFeatures,
   ],
   "DEPT:PUR": [
-    "daily_reports",
-    "todo_list",
-    "project_schedule",
-    "project_progress",
-    "notes",
+    ...defaultLoggedInFeatureVisibility,
+    ...projectProgressFeatures,
   ],
   "DEPT:GA": [
-    "daily_reports",
-    "todo_list",
-    "project_schedule",
-    "po_input",
-    "project_progress",
-    "notes",
+    ...defaultLoggedInFeatureVisibility,
+    ...poInputFeatures,
   ],
 };
 
@@ -488,6 +485,10 @@ function getDefaultSubjectVisibility(subject: VisibilitySubject, featureKey: str
 
   const subjectDefaults = defaultSubjectVisibility[subject.key];
   if (subjectDefaults) return subjectDefaults.includes(featureKey);
+
+  if (subject.key.startsWith("DEPT:")) {
+    return defaultLoggedInFeatureVisibility.includes(featureKey);
+  }
 
   if (subject.legacyDepartmentCode) {
     return getDefaultDepartmentVisibility(subject.legacyDepartmentCode, featureKey);
