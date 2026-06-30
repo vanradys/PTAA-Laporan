@@ -37,10 +37,25 @@ let dailyReportsSchemaReady: Promise<void> | null = null;
 
 function ensureDailyReportsSchema() {
   dailyReportsSchemaReady ??= (async () => {
-    await db.execute(sql`
-      alter table daily_reports
-      add column if not exists submitted_at timestamp with time zone
+    const submittedAtColumn = await db.execute(sql`
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'daily_reports'
+        and column_name = 'submitted_at'
+      limit 1
     `);
+    const columnRows =
+      (submittedAtColumn as unknown as { rows?: unknown[] }).rows ??
+      (submittedAtColumn as unknown as unknown[]);
+
+    if (columnRows.length === 0) {
+      await db.execute(sql`
+        alter table daily_reports
+        add column submitted_at timestamp with time zone
+      `);
+    }
+
     await db.execute(sql`
       update daily_reports
       set submitted_at = updated_at
@@ -49,7 +64,10 @@ function ensureDailyReportsSchema() {
     `);
   })();
 
-  return dailyReportsSchemaReady;
+  return dailyReportsSchemaReady.catch((error) => {
+    dailyReportsSchemaReady = null;
+    throw error;
+  });
 }
 
 router.use(async (_req, res, next) => {
@@ -177,6 +195,57 @@ function getLatestTasksByProjectTitle<T extends {
   return Array.from(latestByKey.values());
 }
 
+async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: number, reportDate: string) {
+  const [sourceReport] = await db
+    .select({ id: dailyReportsTable.id, date: dailyReportsTable.date })
+    .from(dailyReportsTable)
+    .where(and(eq(dailyReportsTable.userId, userId), sql`${dailyReportsTable.date} < ${reportDate}`))
+    .orderBy(desc(dailyReportsTable.date), desc(dailyReportsTable.createdAt))
+    .limit(1);
+
+  if (!sourceReport) return 0;
+
+  const sourceTasks = await db
+    .select()
+    .from(dailyTasksTable)
+    .where(and(
+      eq(dailyTasksTable.reportId, sourceReport.id),
+      sql`lower(${dailyTasksTable.status}) not in ('selesai', 'delivered')`,
+    ));
+
+  if (sourceTasks.length === 0) return 0;
+
+  const targetTasks = await db
+    .select({ title: dailyTasksTable.title, project: dailyTasksTable.project })
+    .from(dailyTasksTable)
+    .where(eq(dailyTasksTable.reportId, reportId));
+  const existingKeys = new Set(targetTasks.map(getTaskIdentityKey));
+  const tasksToCopy = sourceTasks.filter((task) => {
+    if (!task.title.trim()) return false;
+    const key = getTaskIdentityKey(task);
+    if (existingKeys.has(key)) return false;
+    existingKeys.add(key);
+    return true;
+  });
+
+  if (tasksToCopy.length === 0) return 0;
+
+  await db.insert(dailyTasksTable).values(tasksToCopy.map((task) => ({
+    reportId,
+    title: task.title,
+    project: task.project ?? null,
+    deadline: task.deadline ?? null,
+    completionInputType: task.completionInputType ?? null,
+    completionValue: task.completionValue ?? null,
+    progress: task.progress,
+    status: task.status,
+    notes: task.notes ?? null,
+    carryForwardSourceTaskId: task.id,
+  })));
+
+  return tasksToCopy.length;
+}
+
 async function buildReportDetail(reportId: number) {
   const reports = await db
     .select({
@@ -204,24 +273,11 @@ async function buildReportDetail(reportId: number) {
   if (!reports[0]) return null;
   const r = reports[0];
 
-  const userReports = await db
-    .select({ id: dailyReportsTable.id, date: dailyReportsTable.date })
-    .from(dailyReportsTable)
-    .where(eq(dailyReportsTable.userId, r.userId));
-  const userReportIds = userReports.map((report) => report.id);
-  const reportDateById = new Map(userReports.map((report) => [report.id, report.date]));
-
-  const allTasks = userReportIds.length
-    ? await db.select().from(dailyTasksTable)
-        .where(inArray(dailyTasksTable.reportId, userReportIds))
-        .orderBy(dailyTasksTable.createdAt)
-    : [];
-  const tasks = getLatestTasksByProjectTitle(
-    allTasks.map((task) => ({
-      ...task,
-      reportDate: reportDateById.get(task.reportId) ?? r.date,
-    })),
-  );
+  const tasks = await db
+    .select()
+    .from(dailyTasksTable)
+    .where(eq(dailyTasksTable.reportId, reportId))
+    .orderBy(dailyTasksTable.createdAt);
 
   const comments = await db
     .select({
@@ -288,7 +344,7 @@ async function buildReportDetail(reportId: number) {
         revisionSourceTaskId: t.revisionSourceTaskId ?? null,
         revisionWorkTaskId: t.revisionWorkTaskId ?? null,
         carryForwardSourceTaskId: t.carryForwardSourceTaskId ?? null,
-        reportDate: t.reportDate ?? null,
+        reportDate: r.date,
         editCount,
         remainingActions: getRemainingActions(editCount),
         isLocked: isTaskLockedByCount(editCount),
@@ -1161,12 +1217,21 @@ router.post("/reports/:id/submit", async (req, res) => {
     return;
   }
 
-  const tasks = await db
+  let tasks = await db
     .select()
     .from(dailyTasksTable)
     .where(eq(dailyTasksTable.reportId, id));
 
-  const hasTask = tasks.some((task) => task.title.trim().length > 0);
+  let hasTask = tasks.some((task) => task.title.trim().length > 0);
+
+  if (!hasTask && existing[0].date === getTodayString()) {
+    await copyUnfinishedPreviousTasksToReport(existing[0].userId, id, existing[0].date);
+    tasks = await db
+      .select()
+      .from(dailyTasksTable)
+      .where(eq(dailyTasksTable.reportId, id));
+    hasTask = tasks.some((task) => task.title.trim().length > 0);
+  }
 
   if (!hasTask) {
     res.status(400).json({ error: "Daftar Tugas Hari Ini wajib diisi minimal 1 tugas sebelum laporan dikirim" });

@@ -592,9 +592,14 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
 
   const watchedTomorrowPlan = watch("tomorrowPlan") ?? "";
 
+  const hasUnfinishedYesterdayTask = yesterdayTasks.some((task) =>
+    !["selesai", "delivered"].includes(String(task.status).toLowerCase()) &&
+    task.title.trim().length > 0
+  );
   const hasRequiredTask =
     displayedExistingTasks.some((task) => task.title.trim().length > 0) ||
-    newTasks.some((task) => task.title.trim().length > 0);
+    newTasks.some((task) => task.title.trim().length > 0) ||
+    hasUnfinishedYesterdayTask;
 
   const hasRequiredTomorrowPlan = watchedTomorrowPlan.trim().length > 0;
 
@@ -663,7 +668,7 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
 
     return yesterdayTasks.filter((task) => {
       if (
-        ["selesai", "delivered"].includes(task.status) ||
+        ["selesai", "delivered"].includes(String(task.status).toLowerCase()) ||
         task.title.trim().length === 0
       ) {
         return false;
@@ -678,22 +683,25 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
     });
   };
 
+  const buildYesterdayTaskCopies = () =>
+    getUncopiedYesterdayTasks()
+      .map((t) => ({
+        id: Date.now().toString() + Math.random(),
+        title: t.title,
+        project: t.project ?? "",
+        deadline: t.deadline ?? "",
+        completionInputType: normalizeCompletionInputType(t.completionInputType),
+        completionValue: t.completionValue ?? "",
+        progress: t.progress,
+        status: t.status,
+        notes: t.notes ?? "",
+        carryForwardSourceTaskId: t.id,
+      }));
+
   const copyYesterdayTasksToToday = (showToast = true) => {
   if (!Array.isArray(yesterdayTasks)) return;
 
-  const copies = getUncopiedYesterdayTasks()
-    .map((t) => ({
-      id: Date.now().toString() + Math.random(),
-      title: t.title,
-      project: t.project ?? "",
-      deadline: t.deadline ?? "",
-      completionInputType: normalizeCompletionInputType(t.completionInputType),
-      completionValue: t.completionValue ?? "",
-      progress: t.progress,
-      status: t.status,
-      notes: t.notes ?? "",
-      carryForwardSourceTaskId: t.id,
-    }));
+  const copies = buildYesterdayTaskCopies();
 
   if (copies.length === 0) {
     if (showToast) {
@@ -830,7 +838,8 @@ useEffect(() => {
   }) => {
     const hasExistingTask = displayedExistingTasks.some((task) => task.title.trim().length > 0);
     const hasNewTask = newTasks.some((task) => task.title.trim().length > 0);
-    const hasTask = hasExistingTask || hasNewTask;
+    const hasCarryForwardTask = getUncopiedYesterdayTasks().length > 0;
+    const hasTask = hasExistingTask || hasNewTask || hasCarryForwardTask;
 
     if (!hasTask) {
       toast({
@@ -916,7 +925,15 @@ useEffect(() => {
       await updateReport.mutateAsync({ id: report.id, data });
       reportId = report.id;
     }
-    for (const task of newTasks) {
+    const tasksToCreate = [...newTasks];
+    if (
+      !existingTasks.some((task) => task.title.trim().length > 0) &&
+      !tasksToCreate.some((task) => task.title.trim().length > 0)
+    ) {
+      tasksToCreate.push(...buildYesterdayTaskCopies());
+    }
+
+    for (const task of tasksToCreate) {
       if (!task.title.trim()) continue;
       await createTask.mutateAsync({
         id: reportId,
