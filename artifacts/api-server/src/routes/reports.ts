@@ -33,6 +33,36 @@ const reportOwnerUsersTable = alias(usersTable, "report_owner");
 const reportCommenterUsersTable = alias(usersTable, "report_commenter");
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+let dailyReportsSchemaReady: Promise<void> | null = null;
+
+function ensureDailyReportsSchema() {
+  dailyReportsSchemaReady ??= (async () => {
+    await db.execute(sql`
+      alter table daily_reports
+      add column if not exists submitted_at timestamp with time zone
+    `);
+    await db.execute(sql`
+      update daily_reports
+      set submitted_at = updated_at
+      where submitted_at is null
+        and status in ('dikirim', 'direview', 'perlu_revisi')
+    `);
+  })();
+
+  return dailyReportsSchemaReady;
+}
+
+router.use(async (_req, res, next) => {
+  try {
+    await ensureDailyReportsSchema();
+    next();
+  } catch (error) {
+    res.status(500).json({
+      error: "Gagal memastikan struktur tabel laporan harian",
+      detail: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
 
 function getJakartaDateString(date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-CA", {

@@ -1064,8 +1064,12 @@ useEffect(() => {
       queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
       refreshDashboardAndMonitoring();
       toast({ title: "Laporan Terkirim!", description: "Laporan harian Anda berhasil dikirim untuk review" });
-    } catch {
-      toast({ title: "Gagal", description: "Gagal mengirim laporan", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Gagal",
+        description: error instanceof Error ? error.message : "Gagal mengirim laporan",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
