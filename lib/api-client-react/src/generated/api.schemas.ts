@@ -85,6 +85,7 @@ export interface TaskInput {
   progress: number;
   status: string;
   notes?: string;
+  carryForwardSourceTaskId?: number | null;
 }
 
 export interface TaskUpdate {
@@ -96,6 +97,7 @@ export interface TaskUpdate {
   progress?: number;
   status?: string;
   notes?: string;
+  carryForwardSourceTaskId?: number | null;
 }
 
 export interface ReportComment {
@@ -511,4 +513,3 @@ export const GetDepartmentProductivityPeriod = {
   monthly: 'monthly',
   yearly: 'yearly',
 } as const;
-

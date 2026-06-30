@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Plus, Search, Send } from "lucide-react";
+import { Link } from "wouter";
+import { CalendarDays, MessageSquare, Plus, Search, Send, UserRound } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFeatureVisibility } from "@/hooks/use-feature-visibility";
@@ -34,6 +35,19 @@ type ProjectComment = {
   comment: string;
   createdAt: string;
 };
+type ReportComment = {
+  id: number;
+  reportId: number;
+  reportOwnerUserId: number;
+  reportDate: string;
+  reportUserName: string | null;
+  departmentName: string | null;
+  commenterUserId: number;
+  commenterName: string;
+  commenterRole: string;
+  comment: string;
+  createdAt: string;
+};
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("id-ID", {
@@ -61,7 +75,7 @@ export default function KomentarProject() {
   const [filterProject, setFilterProject] = useState("all");
   const [search, setSearch] = useState("");
 
-  const canAccessPage = (() => {
+  const canAccessProjectComments = (() => {
     const role = String(user?.role ?? "").toLowerCase();
     const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
     const departmentName = String(user?.departmentName ?? "").toLowerCase();
@@ -77,13 +91,13 @@ export default function KomentarProject() {
     );
   })();
   const canViewCustomerNotes =
-    canAccessPage && canViewFeature("customer_notes", true);
-  const canAddProjectComments = canAccessPage && canEdit("project_comment_add", true);
+    canAccessProjectComments && canViewFeature("customer_notes", true);
+  const canAddProjectComments = canAccessProjectComments && canEdit("project_comment_add", true);
 
   const { data: poData } = useQuery({
     queryKey: ["project-comments-po", "active"],
     queryFn: () => apiRequest<PoItem[]>("/api/po?openOnly=true"),
-    enabled: canAccessPage,
+    enabled: canAccessProjectComments,
   });
   const pos = (Array.isArray(poData) ? poData : []) as PoItem[];
   const poById = new Map(pos.map((item) => [item.id, item]));
@@ -98,7 +112,12 @@ export default function KomentarProject() {
   const internalCommentsQuery = useQuery({
     queryKey: ["project-comments", "internal"],
     queryFn: () => apiRequest<ProjectComment[]>("/api/po/internal-comments"),
-    enabled: canAccessPage,
+    enabled: canAccessProjectComments,
+    refetchInterval: 15000,
+  });
+  const reportCommentsQuery = useQuery({
+    queryKey: ["report-comments"],
+    queryFn: () => apiRequest<ReportComment[]>("/api/report-comments"),
     refetchInterval: 15000,
   });
 
@@ -131,12 +150,26 @@ export default function KomentarProject() {
 
   const customerComments = useMemo(() => filterComments(customerCommentsQuery.data ?? []), [customerCommentsQuery.data, filterNoPo, filterCustomer, filterProject, search, pos]);
   const internalComments = useMemo(() => filterComments(internalCommentsQuery.data ?? []), [internalCommentsQuery.data, filterNoPo, filterCustomer, filterProject, search, pos]);
+  const reportComments = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return (reportCommentsQuery.data ?? []).filter((item) => {
+      if (!term) return true;
+      return [
+        item.reportUserName,
+        item.departmentName,
+        item.commenterName,
+        item.comment,
+        item.reportDate,
+      ].some((value) => String(value ?? "").toLowerCase().includes(term));
+    });
+  }, [reportCommentsQuery.data, search]);
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["project-comments", "customer"] }),
-      queryClient.invalidateQueries({ queryKey: ["project-comments", "internal"] }),
-      queryClient.invalidateQueries({ queryKey: ["project-comments-po", "active"] }),
+        queryClient.invalidateQueries({ queryKey: ["project-comments", "customer"] }),
+        queryClient.invalidateQueries({ queryKey: ["project-comments", "internal"] }),
+        queryClient.invalidateQueries({ queryKey: ["project-comments-po", "active"] }),
+        queryClient.invalidateQueries({ queryKey: ["report-comments"] }),
     ]);
   };
 
@@ -203,19 +236,26 @@ export default function KomentarProject() {
   return (
     <Layout>
       <div className="page-shell max-w-6xl space-y-5">
-        {!canAccessPage ? (
-          <Card>
-            <CardContent className="p-8 text-center text-sm text-red-600">
-              Halaman Komentar Project hanya dapat diakses Admin, Direktur, Monitoring Laporan, dan Engineering.
-            </CardContent>
-          </Card>
-        ) : (
-          <>
         <div>
-          <h1 className="text-xl font-bold text-slate-950">Komentar Project</h1>
-          <p className="text-sm text-slate-500">Komentar Internal dan Customer Notes dari data project yang sama.</p>
+          <h1 className="text-xl font-bold text-slate-950">Komentar</h1>
+          <p className="text-sm text-slate-500">Komentar project dan komentar laporan harian yang perlu ditindaklanjuti.</p>
         </div>
 
+        <Tabs defaultValue="project" className="space-y-5">
+          <TabsList>
+            <TabsTrigger value="project">Komentar Project</TabsTrigger>
+            <TabsTrigger value="daily">Komentar Laporan Harian</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="project" className="space-y-5">
+            {!canAccessProjectComments ? (
+              <Card>
+                <CardContent className="p-8 text-center text-sm text-red-600">
+                  Komentar Project hanya dapat diakses Admin, Direktur, Monitoring Laporan, dan Engineering.
+                </CardContent>
+              </Card>
+            ) : (
+              <>
         <Card>
           <CardContent className="grid gap-3 p-4 md:grid-cols-5">
             <div className="space-y-1"><Label>Filter No PO</Label><Select value={filterNoPo} onValueChange={setFilterNoPo}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Semua</SelectItem>{pos.map((item) => <SelectItem key={item.id} value={item.noPo}>{item.noPo}</SelectItem>)}</SelectContent></Select></div>
@@ -244,8 +284,55 @@ export default function KomentarProject() {
           <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Komentar Internal</CardTitle></CardHeader><CardContent>{renderComments(internalComments, "userName")}</CardContent></Card>
           {canViewCustomerNotes && <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Customer Notes</CardTitle></CardHeader><CardContent>{renderComments(customerComments, "customerName")}</CardContent></Card>}
         </div>
-          </>
-        )}
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="daily" className="space-y-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    className="pl-8"
+                    placeholder="Cari karyawan, departemen, tanggal, atau komentar..."
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            <div className="space-y-3">
+              {reportCommentsQuery.isLoading ? (
+                <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-400">Memuat komentar laporan...</p>
+              ) : reportComments.length ? reportComments.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/laporan/${item.reportId}?commentId=${item.id}&returnTo=/komentar-project`}
+                  className="block rounded-lg border bg-white p-4 transition hover:border-blue-300 hover:shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="flex items-center gap-2 text-sm font-black text-slate-900">
+                        <UserRound className="h-4 w-4 text-slate-500" />
+                        {item.reportUserName ?? "User"} - {item.departmentName ?? "Tanpa Departemen"}
+                      </p>
+                      <p className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                        <CalendarDays className="h-3.5 w-3.5" />
+                        Laporan {new Date(item.reportDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" })}
+                      </p>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-400">{formatDateTime(item.createdAt)}</span>
+                  </div>
+                  <p className="mt-3 text-xs font-bold text-slate-500">Komentar dari {item.commenterName || "User"}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{item.comment}</p>
+                </Link>
+              )) : (
+                <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-400">Tidak ada komentar laporan harian.</p>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );

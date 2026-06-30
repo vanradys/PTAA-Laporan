@@ -19,6 +19,7 @@ import {
 } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 import { Router } from "express";
+import { alias } from "drizzle-orm/pg-core";
 import {
   getPreviousRequiredReportDate,
   isSubmittedReportStatus,
@@ -28,6 +29,8 @@ import {
 import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
+const reportOwnerUsersTable = alias(usersTable, "report_owner");
+const reportCommenterUsersTable = alias(usersTable, "report_commenter");
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -60,6 +63,12 @@ function getDayName(date: string): string {
 
 function isSubmittedStatus(status: string): boolean {
   return isSubmittedReportStatus(status);
+}
+
+function isReportCommentManager(user: { role?: string | null }) {
+  return ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(
+    String(user.role ?? "").toLowerCase(),
+  );
 }
 
 function isReportLocked(status: string): boolean {
@@ -101,6 +110,41 @@ function getMonitoringReviewStatus(
   if (correctedCount > 0) return "Selesai";
   if (reviewedCount > 0) return "Direview";
   return storedStatus;
+}
+
+function getTaskIdentityKey(task: { title: string; project?: string | null }) {
+  return `${String(task.project ?? "")}|${task.title}`;
+}
+
+function getLatestTasksByProjectTitle<T extends {
+  title: string;
+  project?: string | null;
+  reportDate?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}>(tasks: T[]) {
+  const latestByKey = new Map<string, T>();
+
+  for (const task of tasks) {
+    const key = getTaskIdentityKey(task);
+    const current = latestByKey.get(key);
+    if (!current) {
+      latestByKey.set(key, task);
+      continue;
+    }
+
+    const taskDate = task.reportDate ?? "";
+    const currentDate = current.reportDate ?? "";
+    if (
+      taskDate > currentDate ||
+      (taskDate === currentDate && task.updatedAt.getTime() > current.updatedAt.getTime()) ||
+      (taskDate === currentDate && task.updatedAt.getTime() === current.updatedAt.getTime() && task.createdAt.getTime() > current.createdAt.getTime())
+    ) {
+      latestByKey.set(key, task);
+    }
+  }
+
+  return Array.from(latestByKey.values());
 }
 
 async function buildReportDetail(reportId: number) {
@@ -297,8 +341,9 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
   const revisionCount = tasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length;
   const correctedCount = tasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length;
   const reviewedCount = tasks.filter((task) => task.reviewStatus === "direview").length;
-  const avgProgress = tasks.length > 0
-    ? Math.round(tasks.reduce((sum, task) => sum + task.progress, 0) / tasks.length)
+  const latestTasks = getLatestTasksByProjectTitle(tasks);
+  const avgProgress = latestTasks.length > 0
+    ? Math.round(latestTasks.reduce((sum, task) => sum + task.progress, 0) / latestTasks.length)
     : 0;
   const latestReport = reports[reports.length - 1];
 
@@ -321,7 +366,7 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
     storedStatus: latestReport.status,
     revisionCount,
     submittedAt: latestReport.submittedAt ? latestReport.submittedAt.toISOString() : null,
-    tasks: tasks.map((task) => {
+    tasks: latestTasks.map((task) => {
       const editCount = task.editCount ?? 0;
 
       return {
@@ -361,7 +406,7 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
       comment: comment.comment,
       createdAt: comment.createdAt.toISOString(),
     })),
-    taskCount: tasks.length,
+    taskCount: latestTasks.length,
     avgProgress,
     createdAt: reports[0].createdAt.toISOString(),
     updatedAt: latestReport.updatedAt.toISOString(),
@@ -556,6 +601,32 @@ router.get("/reports", async (req, res) => {
   }
 
   if (dateFrom && dateTo && dateFrom !== dateTo) {
+    const periodTaskRows = reportIds.length
+      ? await db
+          .select({
+            id: dailyTasksTable.id,
+            reportId: dailyTasksTable.reportId,
+            userId: dailyReportsTable.userId,
+            title: dailyTasksTable.title,
+            project: dailyTasksTable.project,
+            progress: dailyTasksTable.progress,
+            reviewStatus: dailyTasksTable.reviewStatus,
+            reportDate: dailyReportsTable.date,
+            createdAt: dailyTasksTable.createdAt,
+            updatedAt: dailyTasksTable.updatedAt,
+          })
+          .from(dailyTasksTable)
+          .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+          .where(inArray(dailyTasksTable.reportId, reportIds))
+      : [];
+    const latestTasksByUser = new Map<number, typeof periodTaskRows>();
+    for (const report of reports) {
+      if (latestTasksByUser.has(report.userId)) continue;
+      latestTasksByUser.set(
+        report.userId,
+        getLatestTasksByProjectTitle(periodTaskRows.filter((task) => task.userId === report.userId)),
+      );
+    }
     const grouped = new Map<number, {
       id: number;
       reportId: number;
@@ -566,17 +637,11 @@ router.get("/reports", async (req, res) => {
       departmentName: string | null;
       latestDate: string;
       submittedAt: string | null;
-      taskCount: number;
-      progressTotal: number;
-      revisions: number;
-      corrected: number;
-      reviewed: number;
       latestStatus: string;
       createdAt: string;
     }>();
 
     for (const report of reports) {
-      const stats = tasksByReport[report.id] ?? { count: 0, avg: 0, revisions: 0, corrected: 0, reviewed: 0 };
       const current = grouped.get(report.userId) ?? {
         id: report.id,
         reportId: report.id,
@@ -587,21 +652,11 @@ router.get("/reports", async (req, res) => {
         departmentName: report.departmentName ?? null,
         latestDate: report.date,
         submittedAt: report.submittedAt?.toISOString() ?? null,
-        taskCount: 0,
-        progressTotal: 0,
-        revisions: 0,
-        corrected: 0,
-        reviewed: 0,
         latestStatus: report.status,
         createdAt: report.createdAt.toISOString(),
       };
 
       current.reportIds.push(report.id);
-      current.taskCount += stats.count;
-      current.progressTotal += stats.avg * stats.count;
-      current.revisions += stats.revisions;
-      current.corrected += stats.corrected;
-      current.reviewed += stats.reviewed;
       if (report.date >= current.latestDate) {
         current.id = report.id;
         current.reportId = report.id;
@@ -612,28 +667,34 @@ router.get("/reports", async (req, res) => {
       grouped.set(report.userId, current);
     }
 
-    res.json(Array.from(grouped.values()).map((item) => ({
-      id: item.id,
-      reportId: item.reportId,
-      reportIds: item.reportIds,
-      hasReport: true,
-      userId: item.userId,
-      userName: item.userName,
-      departmentId: item.departmentId,
-      departmentName: item.departmentName,
-      date: item.latestDate,
-      dayName: "Periode",
-      periodStartDate: dateFrom,
-      periodEndDate: dateTo,
-      taskCount: item.taskCount,
-      avgProgress: item.taskCount ? Math.round(item.progressTotal / item.taskCount) : 0,
-      status: getMonitoringReviewStatus(item.latestStatus, item.revisions, item.corrected, item.reviewed),
-      storedStatus: item.latestStatus,
-      revisionCount: item.revisions,
-      isSubmitted: true,
-      submittedAt: item.submittedAt,
-      createdAt: item.createdAt,
-    })));
+    res.json(Array.from(grouped.values()).map((item) => {
+      const latestTasks = latestTasksByUser.get(item.userId) ?? [];
+      const revisions = latestTasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length;
+      const corrected = latestTasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length;
+      const reviewed = latestTasks.filter((task) => task.reviewStatus === "direview").length;
+      return {
+        id: item.id,
+        reportId: item.reportId,
+        reportIds: item.reportIds,
+        hasReport: true,
+        userId: item.userId,
+        userName: item.userName,
+        departmentId: item.departmentId,
+        departmentName: item.departmentName,
+        date: item.latestDate,
+        dayName: "Periode",
+        periodStartDate: dateFrom,
+        periodEndDate: dateTo,
+        taskCount: latestTasks.length,
+        avgProgress: latestTasks.length ? Math.round(latestTasks.reduce((sum, task) => sum + task.progress, 0) / latestTasks.length) : 0,
+        status: getMonitoringReviewStatus(item.latestStatus, revisions, corrected, reviewed),
+        storedStatus: item.latestStatus,
+        revisionCount: revisions,
+        isSubmitted: true,
+        submittedAt: item.submittedAt,
+        createdAt: item.createdAt,
+      };
+    }));
     return;
   }
 
@@ -821,6 +882,130 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
     missingYesterdayDate: !isWeekendReportDate(today) && reports[0].date !== requiredPreviousDate ? requiredPreviousDate : null,
     yesterdayReportMissing: reports[0].date !== requiredPreviousDate,
   });
+});
+
+router.get("/report-comments", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  const conditions: SQL[] = [];
+  if (!isReportCommentManager(user)) {
+    conditions.push(eq(dailyReportsTable.userId, user.id));
+  }
+
+  const comments = await db
+    .select({
+      id: reportCommentsTable.id,
+      reportId: reportCommentsTable.reportId,
+      reportOwnerUserId: dailyReportsTable.userId,
+      reportDate: dailyReportsTable.date,
+      reportUserName: reportOwnerUsersTable.name,
+      departmentName: departmentsTable.name,
+      commenterUserId: reportCommentsTable.userId,
+      commenterName: reportCommenterUsersTable.name,
+      commenterRole: reportCommenterUsersTable.role,
+      comment: reportCommentsTable.comment,
+      createdAt: reportCommentsTable.createdAt,
+    })
+    .from(reportCommentsTable)
+    .innerJoin(dailyReportsTable, eq(reportCommentsTable.reportId, dailyReportsTable.id))
+    .leftJoin(reportOwnerUsersTable, eq(dailyReportsTable.userId, reportOwnerUsersTable.id))
+    .leftJoin(departmentsTable, eq(dailyReportsTable.departmentId, departmentsTable.id))
+    .leftJoin(reportCommenterUsersTable, eq(reportCommentsTable.userId, reportCommenterUsersTable.id))
+    .where(conditions.length ? and(...conditions) : sql`true`)
+    .orderBy(desc(reportCommentsTable.createdAt));
+
+  res.json(comments.map((comment) => ({
+    ...comment,
+    commenterName: comment.commenterName ?? "",
+    commenterRole: comment.commenterRole ?? "",
+    departmentName: comment.departmentName ?? null,
+    createdAt: comment.createdAt.toISOString(),
+  })));
+});
+
+router.post("/reports/:id/comments", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+
+  const reportId = Number(req.params.id);
+  const comment = String(req.body?.comment ?? "").trim();
+  if (!Number.isInteger(reportId) || reportId <= 0) { res.status(400).json({ error: "ID laporan tidak valid" }); return; }
+  if (!comment) { res.status(400).json({ error: "Komentar wajib diisi" }); return; }
+
+  const [report] = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, reportId)).limit(1);
+  if (!report) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
+
+  const [created] = await db.insert(reportCommentsTable).values({
+    reportId,
+    userId: user.id,
+    comment,
+  }).returning();
+
+  if (report.userId !== user.id) {
+    await db.insert(notificationsTable).values({
+      userId: report.userId,
+      title: "Komentar Laporan Harian",
+      message: `${user.name} menambahkan komentar pada laporan tanggal ${report.date}.`,
+      type: "report_comment",
+      relatedReportId: report.id,
+    });
+  }
+
+  res.status(201).json({
+    ...created,
+    userName: user.name,
+    userRole: user.role,
+    createdAt: created.createdAt.toISOString(),
+  });
+});
+
+router.patch("/reports/:id/comments/:commentId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (!isReportCommentManager(user)) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+
+  const reportId = Number(req.params.id);
+  const commentId = Number(req.params.commentId);
+  const comment = String(req.body?.comment ?? "").trim();
+  if (!Number.isInteger(reportId) || !Number.isInteger(commentId) || !comment) {
+    res.status(400).json({ error: "Data komentar tidak valid" });
+    return;
+  }
+
+  const [updated] = await db.update(reportCommentsTable)
+    .set({ comment })
+    .where(and(eq(reportCommentsTable.id, commentId), eq(reportCommentsTable.reportId, reportId)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Komentar tidak ditemukan" }); return; }
+  res.json({ ...updated, createdAt: updated.createdAt.toISOString() });
+});
+
+router.delete("/reports/:id/comments/:commentId", async (req, res) => {
+  const token = req.cookies?.session_token;
+  if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
+  const user = await getUserFromToken(token);
+  if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  if (!isReportCommentManager(user)) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+
+  const reportId = Number(req.params.id);
+  const commentId = Number(req.params.commentId);
+  if (!Number.isInteger(reportId) || !Number.isInteger(commentId)) {
+    res.status(400).json({ error: "ID komentar tidak valid" });
+    return;
+  }
+
+  const [deleted] = await db.delete(reportCommentsTable)
+    .where(and(eq(reportCommentsTable.id, commentId), eq(reportCommentsTable.reportId, reportId)))
+    .returning();
+  if (!deleted) { res.status(404).json({ error: "Komentar tidak ditemukan" }); return; }
+  res.json({ success: true });
 });
 
 router.get("/reports/:id", async (req, res) => {

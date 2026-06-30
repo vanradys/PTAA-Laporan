@@ -201,6 +201,7 @@ interface TaskForm {
 
 interface NewTask extends TaskForm {
   id: string;
+  carryForwardSourceTaskId?: number | null;
 }
 
 interface ExistingTask {
@@ -218,6 +219,7 @@ interface ExistingTask {
   remainingActions: number;
   isLocked: boolean;
   isDelay: boolean;
+  carryForwardSourceTaskId?: number | null;
   createdAt: string;
 }
 
@@ -650,7 +652,7 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
     title: string;
     project?: string | null;
   }) =>
-    `${task.title.trim().toLowerCase()}|${String(task.project ?? "").trim().toLowerCase()}`;
+    `${String(task.project ?? "").trim()}|${task.title.trim()}`;
 
   const getUncopiedYesterdayTasks = () => {
     const existingCounts = new Map<string, number>();
@@ -690,6 +692,7 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
       progress: t.progress,
       status: t.status,
       notes: t.notes ?? "",
+      carryForwardSourceTaskId: t.id,
     }));
 
   if (copies.length === 0) {
@@ -926,6 +929,7 @@ useEffect(() => {
       progress: task.progress,
         status: task.status,
         notes: task.notes,
+        carryForwardSourceTaskId: task.carryForwardSourceTaskId ?? undefined,
       }
       });
     }
@@ -958,8 +962,10 @@ useEffect(() => {
 
         const original = originalTasks.get(task.id);
         const dataToSave = {
-          title: task.title,
-          project: task.project ?? "",
+          ...(task.carryForwardSourceTaskId ? {} : {
+            title: task.title,
+            project: task.project ?? "",
+          }),
           deadline: task.deadline || undefined,
           completionInputType: task.completionInputType || undefined,
           completionValue: task.completionValue || undefined,
@@ -996,6 +1002,7 @@ useEffect(() => {
             progress: task.progress,
             status: task.status,
             notes: task.notes,
+            carryForwardSourceTaskId: task.carryForwardSourceTaskId ?? undefined,
           },
         });
       }
@@ -1403,7 +1410,7 @@ useEffect(() => {
                         variant="outline"
                         size="sm"
                         onClick={handleCopyYesterday}
-                        disabled={yesterdayTasks.length === 0 || !canAddNewTasks}
+                        disabled={getUncopiedYesterdayTasks().length === 0 || !canAddNewTasks}
                       >
                           <Copy className="w-3.5 h-3.5 mr-1.5" />
                           {sourceReportDate && sourceReportDate !== previousTasksData?.requestedYesterdayDate
@@ -1434,6 +1441,8 @@ useEffect(() => {
                     const taskLocked =
                       !canModifyExistingTasks ||
                       (!isFinanceUser && (task.isLocked || task.remainingActions <= 0));
+                    const isCarryForwardTask = Boolean(task.carryForwardSourceTaskId);
+                    const identityLocked = taskLocked || isCarryForwardTask;
                     return (
                           <div key={task.id} className="border border-border rounded-lg overflow-hidden bg-white">                        
                           <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => toggleExpand(task.id)}>
@@ -1492,7 +1501,7 @@ useEffect(() => {
                                   <Label className="text-xs">Nama Tugas</Label>
                                   <Input
                                     defaultValue={task.title}
-                                    disabled={taskLocked}
+                                    disabled={identityLocked}
                                     onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "title", e.target.value) : handleUpdateExistingTask(task.id, "title", e.target.value)}
                                     className="h-8 text-sm"
                                   />
@@ -1501,7 +1510,7 @@ useEffect(() => {
                                   <Label className="text-xs">Project</Label>
                                   <Input
                                     defaultValue={task.project ?? ""}
-                                    disabled={taskLocked}
+                                    disabled={identityLocked}
                                     onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "project", e.target.value) : handleUpdateExistingTask(task.id, "project", e.target.value)}
                                     className="h-8 text-sm"
                                   />
@@ -1540,7 +1549,9 @@ useEffect(() => {
                               </div>
 
                               <div className={`rounded-md border p-2 text-xs ${taskLocked ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
-                                {taskLocked
+                                {isCarryForwardTask
+                                  ? "Tugas lanjutan dari laporan sebelumnya. Nama tugas dan project dikunci; lanjutkan dengan mengubah status atau tanggal."
+                                  : taskLocked
                                   ? "Tugas terkunci. Batas edit/hapus sudah habis atau tanggal laporan sudah berganti."
                                   : isFinanceUser
                                     ? "Tugas Finance tidak dibatasi jumlah edit/hapus."
@@ -1573,7 +1584,7 @@ useEffect(() => {
                               <Label className="text-xs">Job yang dikerjakan</Label>
                                 <Input
                                   defaultValue={task.notes ?? ""}
-                                  disabled={taskLocked}
+                                  disabled={taskLocked || isCarryForwardTask}
                                   onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "notes", e.target.value) : handleUpdateExistingTask(task.id, "notes", e.target.value)}
                                   className="h-8 text-sm"
                                   placeholder="Catatan opsional..."
@@ -1584,7 +1595,7 @@ useEffect(() => {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                disabled={taskLocked}
+                                disabled={taskLocked || isCarryForwardTask}
                                 className="text-destructive hover:text-destructive hover:bg-destructive/10 disabled:opacity-50"
                                 onClick={() => isEditingSubmitted ? deleteEditableTask(task.id) : handleDeleteExistingTask(task.id)}
                               >
@@ -1599,7 +1610,9 @@ useEffect(() => {
                   })}
 
                   {/* New Tasks */}
-                  {newTasks.map(task => (
+                  {newTasks.map(task => {
+                    const isCarryForwardTask = Boolean(task.carryForwardSourceTaskId);
+                    return (
                         <div key={task.id} className="border border-border rounded-lg bg-white p-4 space-y-3">
                         <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-medium text-primary">Tugas Baru</span>
@@ -1615,6 +1628,7 @@ useEffect(() => {
                           value={task.title}
                           onChange={e => updateNewTask(task.id, "title", e.target.value)}
                           placeholder="Nama tugas..."
+                          disabled={isCarryForwardTask}
                           className="h-8 text-sm"
                         />
                       </div>
@@ -1625,6 +1639,7 @@ useEffect(() => {
                           value={task.project}
                           onChange={e => updateNewTask(task.id, "project", e.target.value)}
                           placeholder="Nama project..."
+                          disabled={isCarryForwardTask}
                           className="h-8 text-sm"
                         />
                       </div>
@@ -1667,10 +1682,11 @@ useEffect(() => {
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Job yang dikerjakan</Label>
-                        <Input value={task.notes} onChange={e => updateNewTask(task.id, "notes", e.target.value)} placeholder="Catatan opsional..." className="h-8 text-sm" />
+                        <Input value={task.notes} onChange={e => updateNewTask(task.id, "notes", e.target.value)} placeholder="Catatan opsional..." disabled={isCarryForwardTask} className="h-8 text-sm" />
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </CardContent>
               </Card>
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useLocation, useSearch } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -102,6 +102,7 @@ export default function DetailLaporan() {
   const periodUserId = searchParams.get("periodUserId");
   const periodDateFrom = searchParams.get("dateFrom");
   const periodDateTo = searchParams.get("dateTo");
+  const focusedCommentId = searchParams.get("commentId");
   const isPeriodDetail = Boolean(periodUserId && periodDateFrom && periodDateTo);
   const { data: report, isLoading } = useGetReport(
     reportId,
@@ -121,7 +122,9 @@ export default function DetailLaporan() {
     ["admin", "direktur", "director", "dir"].includes(user?.role ?? ""),
   );
   const canEditOwnDailyReport = canEdit("daily_report_edit_own", true);
-  const canManageComments = String(user?.role ?? "").toLowerCase() === "admin";
+  const canManageComments = ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(
+    String(user?.role ?? "").toLowerCase(),
+  );
   const activeReport = isPeriodDetail ? periodReport : report;
   const r = activeReport as (typeof report & {
     tasks?: Task[];
@@ -139,6 +142,14 @@ export default function DetailLaporan() {
     periodStartDate?: string;
     periodEndDate?: string;
   }) | null;
+  const focusedCommentCount = Array.isArray(r?.comments) ? r.comments.length : 0;
+
+  useEffect(() => {
+    if (!focusedCommentId || focusedCommentCount === 0) return;
+    document
+      .getElementById(`report-comment-${focusedCommentId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedCommentId, focusedCommentCount]);
 
   const handleAddComment = async () => {
     if (!commentText.trim()) return;
@@ -512,7 +523,13 @@ export default function DetailLaporan() {
               <p className="text-sm text-muted-foreground text-center py-4">Belum ada komentar</p>
             ) : (
               comments.map((c) => (
-                <div key={c.id} className="flex gap-3">
+                <div
+                  key={c.id}
+                  id={`report-comment-${c.id}`}
+                  className={`flex gap-3 rounded-lg p-2 transition ${
+                    String(c.id) === focusedCommentId ? "bg-blue-50 ring-2 ring-blue-300" : ""
+                  }`}
+                >
                   <Avatar className="w-8 h-8 shrink-0">
                     <AvatarFallback className="bg-muted text-muted-foreground text-xs">
                       {c.userName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)}

@@ -16,7 +16,6 @@ import {
   FileCheck2,
   CalendarDays,
   Filter,
-  Copy,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -239,78 +238,10 @@ export default function Dashboard() {
       });
     }
   };
-  const revisionNotifications = Array.isArray(notifications)
-    ? (notifications as Array<{
-        id: number;
-        type: string;
-        title: string;
-        message: string;
-        relatedReportId?: number | null;
-      }>).filter((item) => item.type === "revision").slice(0, 3)
-    : [];
-
   const todayFormatted = formatJakartaDateLong();
   const periodRangeText = summary
     ? `${summary.periodStartDate} s/d ${summary.periodEndDate}`
     : today;
-  const missingEmployees = summary?.missingEmployees ?? [];
-  const isDirector = ["direktur", "director", "dir"].includes(String(user?.role ?? "").toLowerCase());
-
-  const copyMissingReportTemplate = async () => {
-    const referenceDate = selectedDate;
-    const formattedDate = new Intl.DateTimeFormat("id-ID", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      timeZone: "Asia/Jakarta",
-    }).format(new Date(`${referenceDate}T12:00:00+07:00`));
-    const formattedDay = new Intl.DateTimeFormat("id-ID", {
-      weekday: "long",
-      timeZone: "Asia/Jakarta",
-    }).format(new Date(`${referenceDate}T12:00:00+07:00`));
-    const numberedNames = missingEmployees
-      .map((employee, index) => `${index + 1}. ${employee.name}`)
-      .join("\n");
-    const template = `📌 REMINDER LAPORAN HARIAN
-${formattedDay}, ${formattedDate}
-
-Karyawan yang belum mengirim laporan:
-❌ Belum Submit (${missingEmployees.length}) karyawan
-${numberedNames}
-
-Mohon segera mengisi laporan harian melalui Website Pelaporan PTAA:
-https://www.adiyasawork.com/
-atau
-https://ptaa-laporan.vercel.app/
-
-Terima kasih.`;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(template);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = template;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        const copied = document.execCommand("copy");
-        textarea.remove();
-        if (!copied) throw new Error("Clipboard tidak tersedia");
-      }
-      toast({
-        title: "Template berhasil disalin",
-        description: "Teks reminder siap ditempel ke WhatsApp.",
-      });
-    } catch {
-      toast({
-        title: "Gagal menyalin template",
-        description: "Browser tidak memberikan izin clipboard.",
-        variant: "destructive",
-      });
-    }
-  };
-
   const dailyDepartmentData = selectedWeekDates.map((date, index) => ({
     date,
     rows: Array.isArray(dailyDepartmentQueries[index]?.data)
@@ -324,14 +255,18 @@ Terima kasih.`;
         }>)
       : [],
   }));
-  const dateRateByDate = new Map(
+  const dateSummaryByDate = new Map(
     dailyDepartmentData.map(({ date, rows }) => {
       const submitted = rows.reduce((sum, item) => sum + Number(item.submittedCount ?? 0), 0);
       const expected = rows.reduce(
         (sum, item) => sum + Number(item.expectedSubmissions ?? item.employeeCount ?? 0),
         0,
       );
-      return [date, expected > 0 ? Math.round((submitted / expected) * 100) : null];
+      return [date, expected > 0 ? {
+        submitted,
+        expected,
+        rate: Math.round((submitted / expected) * 100),
+      } : null];
     }),
   );
   const weeklyDepartmentRows = Array.from(
@@ -386,6 +321,25 @@ Terima kasih.`;
         isRead: boolean;
         relatedTodoId?: number | null;
       }>).filter((item) => item.type === "todo" && !item.isRead).slice(0, 3)
+    : [];
+  const dashboardNotifications = Array.isArray(notifications)
+    ? (notifications as Array<{
+        id: number;
+        type: string;
+        title?: string | null;
+        message: string;
+        isRead: boolean;
+        createdAt?: string | null;
+        relatedReportId?: number | null;
+        relatedTodoId?: number | null;
+      }>).map((item) => ({
+        ...item,
+        href: item.relatedTodoId
+          ? `/to-do-list?task=${item.relatedTodoId}`
+          : item.relatedReportId
+            ? `/laporan/${item.relatedReportId}${item.type === "report_comment" ? "?returnTo=/dashboard" : ""}`
+            : "/notifikasi",
+      }))
     : [];
 
   return (
@@ -573,7 +527,7 @@ Terima kasih.`;
                           {monthGridDates.map((day) => {
                             const isSelected = day.date === selectedDate;
                             const isInSelectedWeek = selectedWeekSet.has(day.date);
-                            const dayRate = dateRateByDate.get(day.date);
+                            const daySummary = dateSummaryByDate.get(day.date);
 
                             return (
                               <button
@@ -588,16 +542,16 @@ Terima kasih.`;
                                 )}
                               >
                                 <span className="block text-xs font-bold">{day.day}</span>
-                                {day.isCurrentMonth && dayRate !== undefined && dayRate !== null && (
+                                {day.isCurrentMonth && daySummary && (
                                   <span className={cn(
                                     "mt-1 inline-flex rounded px-1 text-[10px] font-black",
-                                    dayRate >= 90
+                                    daySummary.rate >= 90
                                       ? "bg-emerald-100 text-emerald-700"
-                                      : dayRate > 0
+                                      : daySummary.rate > 0
                                         ? "bg-amber-100 text-amber-700"
                                         : "bg-red-100 text-red-700",
                                   )}>
-                                    {dayRate}%
+                                    {daySummary.submitted}/{daySummary.expected}
                                   </span>
                                 )}
                               </button>
@@ -710,124 +664,65 @@ Terima kasih.`;
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base font-bold text-slate-800">
-                    Ringkasan {periodSummaryLabel}
+                    Ringkasan Minggu Ini
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">
-                          Laporan periode yang belum disubmit {periodSummaryLabel.toLowerCase()}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Jumlah kewajiban laporan yang belum terpenuhi
-                        </p>
-                      </div>
-                      <Badge className="border-amber-300 bg-white text-amber-700">
-                        {summary.notSubmittedToday}
-                      </Badge>
-                    </div>
-                    {isDirector && missingEmployees.length > 0 && (
-                      <div className="mt-3 border-t border-amber-200 pt-3">
-                        <div className="mb-2 flex items-start justify-between gap-3">
-                          <p className="text-xs font-semibold text-amber-900">
-                            Belum submit hari ini:{" "}
-                            {missingEmployees.map((employee) => employee.name).join(", ")}
-                          </p>
-                          <Badge className="shrink-0 border-amber-300 bg-white text-amber-700">
-                            {summary.notSubmittedSelectedDate}
-                          </Badge>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
-                          onClick={copyMissingReportTemplate}
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Salin Teks Template
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">
-                          Submit Rate
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Persentase pengumpulan laporan
-                        </p>
-                      </div>
-                      <Badge className="border-blue-300 bg-white text-blue-700">
-                        {summary.submitRate}%
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">
-                          Completion Rate
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Tingkat penyelesaian tugas
-                        </p>
-                      </div>
-                      <Badge className="border-emerald-300 bg-white text-emerald-700">
-                        {summary.completionRate}%
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {summary.pendingAssignedTasksCount > 0 && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-3">
+                <CardContent>
+                  <div className="sticky-scroll-area max-h-[520px] space-y-2 overflow-auto pr-1">
+                    {summary.pendingAssignedTasksByAssigner.map((item) => (
+                      <Link
+                        key={`assigned-${item.assignedByName}`}
+                        href="/laporan-saya"
+                        className="block rounded-lg border border-red-200 bg-red-50 px-4 py-3 transition hover:border-red-300 hover:bg-red-100"
+                      >
+                        <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-sm font-bold text-slate-800">
-                              Tugas Baru
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              Masuk di halaman Laporan Harian
+                            <p className="text-sm font-bold text-red-900">Dapat kiriman tugas</p>
+                            <p className="mt-1 text-xs font-semibold text-red-700">
+                              {item.assignedByName} mengirim {item.count} tugas harian.
                             </p>
                           </div>
-                          <Badge className="border-red-300 bg-white text-red-700">
-                            {summary.pendingAssignedTasksCount}
-                          </Badge>
+                          <Badge className="border-red-300 bg-white text-red-700">{item.count}</Badge>
                         </div>
-                        <div className="space-y-1">
-                          {summary.pendingAssignedTasksByAssigner.map((item) => (
-                            <Link
-                              key={item.assignedByName}
-                              href="/laporan-saya"
-                              className="block rounded-md text-xs font-semibold text-red-700 underline-offset-2 hover:underline"
-                            >
-                              {item.assignedByName} telah memberimu{" "}
-                              {item.count} tugas baru pada Halaman
-                              Laporan Harian.
-                            </Link>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {revisionNotifications.map((notification) => (
-                    <div key={notification.id} className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
-                      <p className="text-sm font-bold text-orange-900">{notification.title}</p>
-                      <p className="mt-1 text-xs text-orange-800">{notification.message}</p>
-                      <Link
-                        href={notification.relatedReportId ? `/laporan/${notification.relatedReportId}` : "/laporan-saya"}
-                        className="mt-2 inline-flex rounded-md bg-orange-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-orange-700"
-                      >
-                        Revisi
                       </Link>
-                    </div>
-                  ))}
+                    ))}
+                    {dashboardNotifications.map((notification) => (
+                      <Link
+                        key={notification.id}
+                        href={notification.href}
+                        className={cn(
+                          "block rounded-lg border px-4 py-3 transition hover:border-blue-300 hover:bg-blue-50",
+                          notification.isRead
+                            ? "border-slate-200 bg-white"
+                            : "border-blue-200 bg-blue-50",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-bold text-slate-900">
+                              {notification.title || "Notifikasi"}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-slate-600">
+                              {notification.message}
+                            </p>
+                            {notification.createdAt && (
+                              <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                                {new Date(notification.createdAt).toLocaleString("id-ID")}
+                              </p>
+                            )}
+                          </div>
+                          {!notification.isRead && (
+                            <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600" />
+                          )}
+                        </div>
+                      </Link>
+                    ))}
+                    {dashboardNotifications.length === 0 && summary.pendingAssignedTasksByAssigner.length === 0 && (
+                      <p className="rounded-lg border border-dashed p-8 text-center text-sm font-semibold text-slate-400">
+                        Belum ada notifikasi.
+                      </p>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </section>

@@ -212,6 +212,7 @@ function buildTaskResponse(task: typeof dailyTasksTable.$inferSelect) {
     correctedAt: task.correctedAt?.toISOString() ?? null,
     revisionSourceTaskId: task.revisionSourceTaskId ?? null,
     revisionWorkTaskId: task.revisionWorkTaskId ?? null,
+    carryForwardSourceTaskId: task.carryForwardSourceTaskId ?? null,
     editCount,
     remainingActions: getRemainingActions(editCount),
     isLocked: isTaskLockedByCount(editCount),
@@ -543,6 +544,7 @@ router.post("/reports/:id/tasks", async (req, res) => {
   }
 
   const { title, project, deadline, completionInputType, completionValue, status, notes } = req.body;
+  const carryForwardSourceTaskId = Number(req.body?.carryForwardSourceTaskId);
   if (!title || !title.trim()) { res.status(400).json({ error: "Nama tugas diperlukan" }); return; }
 
   const [task] = await db.insert(dailyTasksTable).values({
@@ -555,6 +557,9 @@ router.post("/reports/:id/tasks", async (req, res) => {
     progress: getTaskProgress(status),
     status: normalizeTaskStatus(status),
     notes: notes ?? null,
+    carryForwardSourceTaskId: Number.isInteger(carryForwardSourceTaskId) && carryForwardSourceTaskId > 0
+      ? carryForwardSourceTaskId
+      : null,
   }).returning();
 
   res.status(201).json(buildTaskResponse(task));
@@ -586,6 +591,11 @@ router.patch("/tasks/:taskId", async (req, res) => {
   }
 
   const { title, project, deadline, completionInputType, completionValue, status, notes } = req.body;
+
+  if (task[0].carryForwardSourceTaskId && (title !== undefined || project !== undefined)) {
+    res.status(400).json({ error: "Nama tugas dan project carry-forward tidak bisa diubah" });
+    return;
+  }
 
   if (title !== undefined && !String(title).trim()) {
     res.status(400).json({ error: "Nama tugas tidak boleh kosong" });
@@ -685,7 +695,8 @@ router.post("/tasks/:taskId/start-correction", async (req, res) => {
     reviewedByUserId: task.reviewedByUserId,
     reviewedByName: task.reviewedByName,
     reviewedAt: task.reviewedAt,
-    revisionSourceTaskId: task.id,
+      revisionSourceTaskId: task.id,
+      carryForwardSourceTaskId: null,
   }).returning();
 
   const [updated] = await db.update(dailyTasksTable).set({

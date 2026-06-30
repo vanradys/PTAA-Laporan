@@ -71,7 +71,7 @@ BEGIN
       AND conname = 'todo_tasks_type_check'
   ) THEN
     ALTER TABLE todo_tasks
-      ADD CONSTRAINT todo_tasks_type_check CHECK (type IN ('personal', 'team'));
+      ADD CONSTRAINT todo_tasks_type_check CHECK (type IN ('personal', 'personal_permanent', 'team'));
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint

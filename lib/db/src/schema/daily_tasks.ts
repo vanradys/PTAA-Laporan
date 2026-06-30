@@ -23,6 +23,7 @@ export const dailyTasksTable = pgTable("daily_tasks", {
   correctedAt: timestamp("corrected_at", { withTimezone: true }),
   revisionSourceTaskId: integer("revision_source_task_id"),
   revisionWorkTaskId: integer("revision_work_task_id"),
+  carryForwardSourceTaskId: integer("carry_forward_source_task_id"),
   editCount: integer("edit_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

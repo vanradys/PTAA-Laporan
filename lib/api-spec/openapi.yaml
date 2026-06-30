@@ -946,6 +946,7 @@ components:
         progress: { type: integer }
         status: { type: string }
         notes: { type: string }
+        carryForwardSourceTaskId: { type: integer, nullable: true }
       required: [title, progress, status]
 
     TaskUpdate:
@@ -959,6 +960,7 @@ components:
         progress: { type: integer }
         status: { type: string }
         notes: { type: string }
+        carryForwardSourceTaskId: { type: integer, nullable: true }
 
     ReportComment:
       type: object

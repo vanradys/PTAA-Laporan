@@ -31,8 +31,10 @@ type TodoActor = {
   role?: string | null;
 };
 
-function isAdmin(user: TodoActor) {
-  return String(user.role ?? "").toLowerCase() === "admin";
+function isTodoManager(user: TodoActor) {
+  return ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(
+    String(user.role ?? "").toLowerCase(),
+  );
 }
 
 function parseId(value: unknown) {
@@ -44,7 +46,7 @@ async function canAccessTask(taskId: number, user: TodoActor) {
   const [task] = await db.select().from(todoTasksTable)
     .where(eq(todoTasksTable.id, taskId)).limit(1);
   if (!task) return { task: null, allowed: false };
-  if (isAdmin(user) || task.createdByUserId === user.id) return { task, allowed: true };
+  if (isTodoManager(user) || task.createdByUserId === user.id) return { task, allowed: true };
   const [assignee] = await db.select({ id: todoTaskAssigneesTable.id })
     .from(todoTaskAssigneesTable)
     .where(and(
@@ -52,6 +54,10 @@ async function canAccessTask(taskId: number, user: TodoActor) {
       eq(todoTaskAssigneesTable.userId, user.id),
     )).limit(1);
   return { task, allowed: Boolean(assignee) };
+}
+
+function canManageTask(task: typeof todoTasksTable.$inferSelect, user: TodoActor) {
+  return isTodoManager(user) || task.createdByUserId === user.id;
 }
 
 async function recordChecklistHistory({
@@ -144,7 +150,7 @@ router.get("/todo-tasks", async (req, res) => {
   if (!user) return;
 
   let tasks: Array<typeof todoTasksTable.$inferSelect>;
-  if (isAdmin(user)) {
+  if (isTodoManager(user)) {
     tasks = await db.select().from(todoTasksTable).orderBy(desc(todoTasksTable.updatedAt));
   } else {
     const assignedRows = await db.select({ taskId: todoTaskAssigneesTable.taskId })
@@ -183,7 +189,11 @@ router.post("/todo-tasks", async (req, res) => {
 
   const title = String(req.body?.title ?? "").trim();
   const description = String(req.body?.description ?? "").trim();
-  const type = req.body?.type === "team" ? "team" : "personal";
+  const type = req.body?.type === "team"
+    ? "team"
+    : req.body?.type === "personal_permanent"
+      ? "personal_permanent"
+      : "personal";
   const startDate = String(req.body?.startDate ?? "");
   const dueDate = String(req.body?.dueDate ?? startDate);
   const priority = ["Rendah", "Sedang", "Urgent"].includes(req.body?.priority)
@@ -259,13 +269,100 @@ router.patch("/todo-tasks/:id", async (req, res) => {
   const access = await canAccessTask(id, user);
   if (!access.task) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
   if (!access.allowed) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  const manager = canManageTask(access.task, user);
   const status = req.body?.status;
-  if (!["Belum Mulai", "In Progress", "Selesai"].includes(status)) {
-    res.status(400).json({ error: "Status tugas tidak valid" }); return;
+  const updateData: Partial<typeof todoTasksTable.$inferInsert> = {};
+
+  if (status !== undefined) {
+    if (!["Belum Mulai", "In Progress", "Selesai"].includes(status)) {
+      res.status(400).json({ error: "Status tugas tidak valid" }); return;
+    }
+    updateData.status = status;
   }
+
+  if (!manager) {
+    const extraKeys = Object.keys(req.body ?? {}).filter((key) => key !== "status");
+    if (extraKeys.length > 0) {
+      res.status(403).json({ error: "Anda hanya dapat mengubah status tugas ini" });
+      return;
+    }
+  } else {
+    if (req.body?.title !== undefined) {
+      const title = String(req.body.title ?? "").trim();
+      if (!title) { res.status(400).json({ error: "Nama tugas wajib diisi" }); return; }
+      updateData.title = title;
+    }
+    if (req.body?.description !== undefined) {
+      const description = String(req.body.description ?? "").trim();
+      updateData.description = description || null;
+    }
+    if (req.body?.type !== undefined) {
+      updateData.type = req.body.type === "team"
+        ? "team"
+        : req.body.type === "personal_permanent"
+          ? "personal_permanent"
+          : "personal";
+    }
+    if (req.body?.startDate !== undefined) {
+      const startDate = String(req.body.startDate ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) { res.status(400).json({ error: "Tanggal mulai tidak valid" }); return; }
+      updateData.startDate = startDate;
+    }
+    if (req.body?.dueDate !== undefined) {
+      const dueDate = String(req.body.dueDate ?? "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { res.status(400).json({ error: "Tanggal selesai tidak valid" }); return; }
+      updateData.dueDate = dueDate;
+    }
+    if (req.body?.priority !== undefined) {
+      updateData.priority = ["Rendah", "Sedang", "Urgent"].includes(req.body.priority)
+        ? req.body.priority
+        : access.task.priority;
+    }
+  }
+
+  if (Object.keys(updateData).length === 0 && req.body?.assigneeIds === undefined) {
+    res.status(400).json({ error: "Tidak ada data tugas yang diubah" });
+    return;
+  }
+
+  let assigneesForUpdate: Array<{ id: number; name: string }> | null = null;
+
+  if (manager && req.body?.assigneeIds !== undefined) {
+    const nextType = updateData.type ?? access.task.type;
+    const assigneeIds: number[] = nextType === "team"
+      ? [...new Set<number>((Array.isArray(req.body?.assigneeIds) ? req.body.assigneeIds : [])
+          .map(Number)
+          .filter((value: number) => Number.isInteger(value)))]
+      : [];
+    const assignees = assigneeIds.length
+      ? await db.select({
+          id: usersTable.id, name: usersTable.name,
+        }).from(usersTable).where(and(
+          inArray(usersTable.id, assigneeIds),
+          eq(usersTable.isActive, true),
+          sql`lower(${usersTable.role}) not in ('admin', 'direktur', 'director', 'dir', 'hr', 'monitoring_dummy')`,
+        ))
+      : [];
+    if (assignees.length !== assigneeIds.length) {
+      res.status(400).json({ error: "Salah satu karyawan yang dipilih tidak valid atau tidak aktif" });
+      return;
+    }
+    assigneesForUpdate = assignees;
+  }
+
   const [updated] = await db.update(todoTasksTable)
-    .set({ status, updatedAt: new Date() })
+    .set({ ...updateData, updatedAt: new Date() })
     .where(eq(todoTasksTable.id, id)).returning();
+
+  if (manager && assigneesForUpdate) {
+    await db.delete(todoTaskAssigneesTable).where(eq(todoTaskAssigneesTable.taskId, id));
+    if (assigneesForUpdate.length) {
+      await db.insert(todoTaskAssigneesTable).values(assigneesForUpdate.map((assignee) => ({
+        taskId: id, userId: assignee.id, userName: assignee.name,
+      })));
+    }
+  }
+
   res.json(await buildTask(updated));
 });
 
@@ -276,7 +373,7 @@ router.patch("/todo-tasks/:taskId/checklist/:itemId", async (req, res) => {
   const itemId = parseId(req.params.itemId);
   if (!taskId || !itemId) { res.status(400).json({ error: "ID checklist tidak valid" }); return; }
   const access = await canAccessTask(taskId, user);
-  if (!access.allowed) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!access.task || !canManageTask(access.task, user)) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
   const [existing] = await db.select().from(todoTaskChecklistTable)
     .where(and(
       eq(todoTaskChecklistTable.id, itemId),
@@ -325,7 +422,7 @@ router.post("/todo-tasks/:taskId/checklist", async (req, res) => {
   if (!taskId) { res.status(400).json({ error: "ID tugas tidak valid" }); return; }
   const access = await canAccessTask(taskId, user);
   if (!access.task) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
-  if (!access.allowed) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!canManageTask(access.task, user)) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
   const text = String(req.body?.text ?? "").trim();
   if (!text) { res.status(400).json({ error: "Isi checklist wajib diisi" }); return; }
   const [created] = await db.insert(todoTaskChecklistTable).values({ taskId, text }).returning();
@@ -348,7 +445,7 @@ router.delete("/todo-tasks/:taskId/checklist/:itemId", async (req, res) => {
   const itemId = parseId(req.params.itemId);
   if (!taskId || !itemId) { res.status(400).json({ error: "ID checklist tidak valid" }); return; }
   const access = await canAccessTask(taskId, user);
-  if (!access.allowed) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!access.task || !canManageTask(access.task, user)) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
   const [deleted] = await db.delete(todoTaskChecklistTable)
     .where(and(
       eq(todoTaskChecklistTable.id, itemId),
@@ -370,7 +467,7 @@ router.delete("/todo-tasks/:taskId/checklist/:itemId", async (req, res) => {
 router.get("/todo-tasks/:taskId/checklist-history", async (req, res) => {
   const user = await getUser(req, res);
   if (!user) return;
-  if (!isAdmin(user)) { res.status(403).json({ error: "Hanya Admin yang dapat melihat riwayat checklist" }); return; }
+  if (!isTodoManager(user)) { res.status(403).json({ error: "Hanya pengelola yang dapat melihat riwayat checklist" }); return; }
   const taskId = parseId(req.params.taskId);
   if (!taskId) { res.status(400).json({ error: "ID tugas tidak valid" }); return; }
   const history = await db.select().from(todoChecklistHistoryTable)
@@ -390,13 +487,29 @@ router.post("/todo-tasks/:id/comments", async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) { res.status(400).json({ error: "ID tugas tidak valid" }); return; }
   const access = await canAccessTask(id, user);
-  if (!access.allowed) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  if (!access.task || !canManageTask(access.task, user)) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
   const comment = String(req.body?.comment ?? "").trim();
   if (!comment) { res.status(400).json({ error: "Komentar wajib diisi" }); return; }
   const [createdComment] = await db.insert(todoTaskCommentsTable).values({
     taskId: id, userId: user.id, userName: user.name, comment,
   }).returning();
   res.status(201).json({ ...createdComment, createdAt: createdComment.createdAt.toISOString() });
+});
+
+router.delete("/todo-tasks/:taskId/comments/:commentId", async (req, res) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+  const taskId = parseId(req.params.taskId);
+  const commentId = parseId(req.params.commentId);
+  if (!taskId || !commentId) { res.status(400).json({ error: "ID komentar tidak valid" }); return; }
+  const access = await canAccessTask(taskId, user);
+  if (!access.task || !canManageTask(access.task, user)) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
+  const [deleted] = await db.delete(todoTaskCommentsTable)
+    .where(and(eq(todoTaskCommentsTable.id, commentId), eq(todoTaskCommentsTable.taskId, taskId)))
+    .returning();
+  if (!deleted) { res.status(404).json({ error: "Komentar tidak ditemukan" }); return; }
+  await db.update(todoTasksTable).set({ updatedAt: new Date() }).where(eq(todoTasksTable.id, taskId));
+  res.json({ success: true });
 });
 
 export default router;

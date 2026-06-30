@@ -15,4 +15,5 @@ export interface TaskUpdate {
   progress?: number;
   status?: string;
   notes?: string;
+  carryForwardSourceTaskId?: number | null;
 }

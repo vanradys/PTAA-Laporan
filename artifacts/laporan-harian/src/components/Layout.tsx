@@ -37,7 +37,7 @@ const navItems = [
   { href: "/to-do-list", label: "To Do List", icon: ClipboardList },
   { href: "/monitoring", label: "Monitoring Laporan", icon: BarChart2 },
   { href: "/jadwal-project", label: "Jadwal Project", icon: CalendarClock },
-  { href: "/komentar-project", label: "Komentar Project", icon: MessagesSquare },
+  { href: "/komentar-project", label: "Komentar", icon: MessagesSquare },
   { href: "/absensi", label: "Absensi", icon: Fingerprint },
   { href: "/panduan-website", label: "Panduan Website", icon: HelpCircle },
   { href: "/notifikasi", label: "Notifikasi", icon: Bell },
@@ -79,14 +79,7 @@ export default function Layout({ children }: LayoutProps) {
   );
   const userRole = String(user?.role ?? "").toLowerCase();
   const canViewOverallMonitoring = ["admin", "monitoring_dummy"].includes(userRole);
-  const userDepartmentCode = String(user?.departmentCode ?? "").toUpperCase();
-  const userDepartmentName = String(user?.departmentName ?? "").toLowerCase();
-  const canViewProjectComments =
-    ["admin", "direktur", "director", "dir", "monitoring_dummy"].includes(userRole) ||
-    userDepartmentCode === "ENG" ||
-    userDepartmentName.includes("engineering");
-  const canViewProjectCommentsNav =
-    canViewProjectComments && canViewFeature("project_comments", true);
+  const canViewProjectCommentsNav = true;
   const hideDailyReportsNav = ["direktur", "director", "dir", "monitoring_dummy"].includes(userRole);
   const visibleNavItems = [
     ...(canViewFeature("dashboard", true) ? [navItems[0]] : []),
