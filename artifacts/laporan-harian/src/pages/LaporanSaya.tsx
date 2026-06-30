@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useGetTodayReport, useCreateReport, useUpdateReport, useSubmitReport,
-  useCreateTask, useUpdateTask, useDeleteTask, useGetYesterdayTasks,
+  useCreateTask, useUpdateTask, useDeleteTask,
   useListEmployees,
   getGetTodayReportQueryKey,
   getListNotificationsQueryKey,
@@ -332,6 +332,22 @@ function formatAssignmentDateTime(value?: string | null) {
   return `${weekday}, ${day} ${month} ${year}, ${hour}:${minute} WIB`;
 }
 
+function addDaysToDateString(dateString: string, amount: number) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  if (!year || !month || !day) return dateString;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().split("T")[0] ?? dateString;
+}
+
+function getPreviousWorkdayString(dateString: string) {
+  let previousDate = addDaysToDateString(dateString, -1);
+  while (isWeekendDate(previousDate)) {
+    previousDate = addDaysToDateString(previousDate, -1);
+  }
+  return previousDate;
+}
+
 function matchesAssignmentFilter(
   item: AssignmentHistoryItem,
   statusFilter: string,
@@ -509,7 +525,24 @@ export default function LaporanSaya() {
     query: { queryKey: getGetTodayReportQueryKey(), retry: false }
   });
 
-  const { data: previousReportTasks } = useGetYesterdayTasks();
+  const previousReportTasksQuery = useQuery({
+    queryKey: ["daily-report", "yesterday-tasks"],
+    queryFn: async () => {
+      const result = await apiRequest<PreviousReportTasksData | ExistingTask[]>("/api/reports/yesterday-tasks");
+      if (Array.isArray(result)) {
+        return {
+          tasks: result,
+          sourceReportId: null,
+          sourceReportDate: null,
+          requestedYesterdayDate: getPreviousWorkdayString(today),
+          missingYesterdayDate: null,
+          yesterdayReportMissing: false,
+        } satisfies PreviousReportTasksData;
+      }
+      return result;
+    },
+    refetchOnMount: "always",
+  });
   const { data: employees } = useListEmployees();
   const { data: assignedTaskNotifications } = useQuery({
     queryKey: ["assigned-tasks", "pending"],
@@ -549,7 +582,7 @@ export default function LaporanSaya() {
   const hasAutoCopiedYesterdayTasks = useRef(false);
 
   const report = (isError ? null : todayReport) as ReportData | null;
-  const previousTasksData = previousReportTasks as PreviousReportTasksData | undefined;
+  const previousTasksData = previousReportTasksQuery.data;
   const yesterdayTasks = previousTasksData?.tasks ?? [];
   const pendingAssignedTasks = Array.isArray(assignedTaskNotifications)
     ? assignedTaskNotifications
@@ -558,6 +591,9 @@ export default function LaporanSaya() {
   const assignableEmployees = employeeOptions.filter((employee) => employee.id !== user?.id);
   const missingYesterdayDate = previousTasksData?.missingYesterdayDate ?? null;
   const sourceReportDate = previousTasksData?.sourceReportDate ?? null;
+  const previousTasksErrorMessage = previousReportTasksQuery.error instanceof Error
+    ? previousReportTasksQuery.error.message
+    : "Gagal memuat tugas laporan kemarin";
   const existingTasks: ExistingTask[] = report?.tasks ?? [];
 const isSubmitted = report?.status === "dikirim";
 const isReviewed = report?.status === "direview";
@@ -1169,6 +1205,38 @@ useEffect(() => {
   };
 
   const reportStatus = getReportStatusInfo(report?.status ?? "draf");
+  const previousTasksStatusCards = (
+    <>
+      {previousReportTasksQuery.isError && (
+        <Card className="border border-red-200 bg-red-50">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-800">Gagal memuat tugas laporan kemarin</p>
+              <p className="text-xs text-red-600 mt-0.5">{previousTasksErrorMessage}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {missingYesterdayDate && (
+        <Card className="border border-red-200 bg-red-50">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-800">
+                Anda tidak mengisi laporan harian kemarin tanggal {formatIndonesianDate(missingYesterdayDate)}
+              </p>
+              {sourceReportDate && (
+                <p className="text-xs text-red-600 mt-0.5">
+                  Tugas otomatis diambil dari laporan terakhir tanggal {formatIndonesianDate(sourceReportDate)}.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
 
   return (
     <Layout>
@@ -1209,6 +1277,8 @@ useEffect(() => {
             </div>
           )}
         </div>
+
+        {!isLoading && previousTasksStatusCards}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -1334,24 +1404,6 @@ useEffect(() => {
                     <div>
                       <p className="text-sm font-semibold text-orange-800">Laporan perlu direvisi</p>
                       <p className="text-xs text-orange-600 mt-0.5">Revisi diminta. Silakan perbarui dan kirim kembali.</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {missingYesterdayDate && (
-                <Card className="border border-red-200 bg-red-50">
-                  <CardContent className="p-4 flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-semibold text-red-800">
-                        Anda tidak mengisi laporan harian kemarin tanggal {formatIndonesianDate(missingYesterdayDate)}
-                      </p>
-                      {sourceReportDate && (
-                        <p className="text-xs text-red-600 mt-0.5">
-                          Tugas otomatis diambil dari laporan terakhir tanggal {formatIndonesianDate(sourceReportDate)}.
-                        </p>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
