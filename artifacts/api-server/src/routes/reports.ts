@@ -35,6 +35,26 @@ const reportCommenterUsersTable = alias(usersTable, "report_commenter");
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 let dailyReportsSchemaReady: Promise<void> | null = null;
 
+const dailyReportBaseSelect = {
+  id: dailyReportsTable.id,
+  userId: dailyReportsTable.userId,
+  departmentId: dailyReportsTable.departmentId,
+  date: dailyReportsTable.date,
+  obstacles: dailyReportsTable.obstacles,
+  additionalNotes: dailyReportsTable.additionalNotes,
+  tomorrowPlan: dailyReportsTable.tomorrowPlan,
+  status: dailyReportsTable.status,
+  createdAt: dailyReportsTable.createdAt,
+  updatedAt: dailyReportsTable.updatedAt,
+};
+
+const submitTaskSelect = {
+  id: dailyTasksTable.id,
+  title: dailyTasksTable.title,
+  reviewStatus: dailyTasksTable.reviewStatus,
+  revisionSourceTaskId: dailyTasksTable.revisionSourceTaskId,
+};
+
 function ensureDailyReportsSchema() {
   dailyReportsSchemaReady ??= (async () => {
     const submittedAtColumn = await db.execute(sql`
@@ -70,17 +90,14 @@ function ensureDailyReportsSchema() {
   });
 }
 
-router.use(async (_req, res, next) => {
+async function tryEnsureDailyReportsSchema() {
   try {
     await ensureDailyReportsSchema();
-    next();
-  } catch (error) {
-    res.status(500).json({
-      error: "Gagal memastikan struktur tabel laporan harian",
-      detail: error instanceof Error ? error.message : "Unknown error",
-    });
+    return true;
+  } catch {
+    return false;
   }
-});
+}
 
 function getJakartaDateString(date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -164,6 +181,10 @@ function getTaskIdentityKey(task: { title: string; project?: string | null }) {
   return `${String(task.project ?? "").trim()}|${task.title.trim()}`;
 }
 
+function getSubmittedAtFallback(status: string, timestamp?: Date | null) {
+  return isSubmittedStatus(status) ? timestamp?.toISOString() ?? null : null;
+}
+
 function getLatestTasksByProjectTitle<T extends {
   title: string;
   project?: string | null;
@@ -206,7 +227,17 @@ async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: num
   if (!sourceReport) return 0;
 
   const sourceTasks = await db
-    .select()
+    .select({
+      id: dailyTasksTable.id,
+      title: dailyTasksTable.title,
+      project: dailyTasksTable.project,
+      deadline: dailyTasksTable.deadline,
+      completionInputType: dailyTasksTable.completionInputType,
+      completionValue: dailyTasksTable.completionValue,
+      progress: dailyTasksTable.progress,
+      status: dailyTasksTable.status,
+      notes: dailyTasksTable.notes,
+    })
     .from(dailyTasksTable)
     .where(and(
       eq(dailyTasksTable.reportId, sourceReport.id),
@@ -230,7 +261,7 @@ async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: num
 
   if (tasksToCopy.length === 0) return 0;
 
-  await db.insert(dailyTasksTable).values(tasksToCopy.map((task) => ({
+  const copiedValues = tasksToCopy.map((task) => ({
     reportId,
     title: task.title,
     project: task.project ?? null,
@@ -240,8 +271,21 @@ async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: num
     progress: task.progress,
     status: task.status,
     notes: task.notes ?? null,
+  }));
+  const copiedValuesWithSource = tasksToCopy.map((task, index) => ({
+    ...copiedValues[index]!,
     carryForwardSourceTaskId: task.id,
-  })));
+  }));
+
+  try {
+    await db.insert(dailyTasksTable).values(copiedValuesWithSource);
+  } catch (error) {
+    if (error instanceof Error && /carry_forward_source_task_id/i.test(error.message)) {
+      await db.insert(dailyTasksTable).values(copiedValues);
+    } else {
+      throw error;
+    }
+  }
 
   return tasksToCopy.length;
 }
@@ -257,7 +301,6 @@ async function buildReportDetail(reportId: number) {
       additionalNotes: dailyReportsTable.additionalNotes,
       tomorrowPlan: dailyReportsTable.tomorrowPlan,
       status: dailyReportsTable.status,
-      submittedAt: dailyReportsTable.submittedAt,
       createdAt: dailyReportsTable.createdAt,
       updatedAt: dailyReportsTable.updatedAt,
       userName: usersTable.name,
@@ -320,7 +363,7 @@ async function buildReportDetail(reportId: number) {
     ),
     storedStatus: r.status,
     revisionCount: tasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length,
-    submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
+    submittedAt: getSubmittedAtFallback(r.status, r.updatedAt),
     tasks: tasks.map(t => {
       const editCount = t.editCount ?? 0;
 
@@ -376,7 +419,6 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
       additionalNotes: dailyReportsTable.additionalNotes,
       tomorrowPlan: dailyReportsTable.tomorrowPlan,
       status: dailyReportsTable.status,
-      submittedAt: dailyReportsTable.submittedAt,
       createdAt: dailyReportsTable.createdAt,
       updatedAt: dailyReportsTable.updatedAt,
       userName: usersTable.name,
@@ -468,7 +510,7 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
     status: getMonitoringReviewStatus(latestReport.status, revisionCount, correctedCount, reviewedCount),
     storedStatus: latestReport.status,
     revisionCount,
-    submittedAt: latestReport.submittedAt ? latestReport.submittedAt.toISOString() : null,
+    submittedAt: getSubmittedAtFallback(latestReport.status, latestReport.updatedAt),
     tasks: latestTasks.map((task) => {
       const editCount = task.editCount ?? 0;
 
@@ -563,8 +605,8 @@ router.get("/reports", async (req, res) => {
         departmentId: dailyReportsTable.departmentId,
         date: dailyReportsTable.date,
         status: dailyReportsTable.status,
-        submittedAt: dailyReportsTable.submittedAt,
         createdAt: dailyReportsTable.createdAt,
+        updatedAt: dailyReportsTable.updatedAt,
       })
       .from(dailyReportsTable)
       .where(and(eq(dailyReportsTable.date, date), inArray(dailyReportsTable.userId, activeUserIds)))
@@ -626,7 +668,7 @@ router.get("/reports", async (req, res) => {
           storedStatus: rowStatus,
           revisionCount: stats.revisions,
           isSubmitted: isSubmittedStatus(rowStatus),
-          submittedAt: report?.submittedAt?.toISOString() ?? null,
+          submittedAt: report ? getSubmittedAtFallback(report.status, report.updatedAt) : null,
           createdAt: report?.createdAt?.toISOString() ?? null,
         };
       })
@@ -672,8 +714,8 @@ router.get("/reports", async (req, res) => {
       departmentId: dailyReportsTable.departmentId,
       date: dailyReportsTable.date,
       status: dailyReportsTable.status,
-      submittedAt: dailyReportsTable.submittedAt,
       createdAt: dailyReportsTable.createdAt,
+      updatedAt: dailyReportsTable.updatedAt,
       userName: usersTable.name,
       departmentName: departmentsTable.name,
     })
@@ -773,7 +815,7 @@ router.get("/reports", async (req, res) => {
         departmentId: report.departmentId ?? null,
         departmentName: report.departmentName ?? null,
         latestDate: report.date,
-        submittedAt: report.submittedAt?.toISOString() ?? null,
+        submittedAt: getSubmittedAtFallback(report.status, report.updatedAt),
         latestStatus: report.status,
         createdAt: report.createdAt.toISOString(),
       };
@@ -783,7 +825,7 @@ router.get("/reports", async (req, res) => {
         current.id = report.id;
         current.reportId = report.id;
         current.latestDate = report.date;
-        current.submittedAt = report.submittedAt?.toISOString() ?? null;
+        current.submittedAt = getSubmittedAtFallback(report.status, report.updatedAt);
         current.latestStatus = report.status;
       }
       grouped.set(report.userId, current);
@@ -838,7 +880,7 @@ router.get("/reports", async (req, res) => {
       storedStatus: report.status,
       revisionCount: stats.revisions,
       isSubmitted: isSubmittedStatus(report.status),
-      submittedAt: report.submittedAt?.toISOString() ?? null,
+      submittedAt: getSubmittedAtFallback(report.status, report.updatedAt),
       createdAt: report.createdAt.toISOString(),
     };
   }));
@@ -867,7 +909,7 @@ router.post("/reports", async (req, res) => {
   }
 
   // Prevent duplicate: if report exists for this user+date, return existing (upsert pattern)
-  const existing = await db.select().from(dailyReportsTable)
+  const existing = await db.select(dailyReportBaseSelect).from(dailyReportsTable)
     .where(and(eq(dailyReportsTable.userId, user.id), eq(dailyReportsTable.date, date)))
     .limit(1);
 
@@ -892,7 +934,7 @@ router.post("/reports", async (req, res) => {
       additionalNotes: additionalNotes ?? null,
       tomorrowPlan: tomorrowPlan ?? null,
       status: status ?? "draf",
-    }).returning();
+    }).returning({ id: dailyReportsTable.id });
     reportId = report.id;
   }
 
@@ -908,7 +950,7 @@ router.get("/reports/today", async (req, res) => {
 
   const today = getJakartaDateString();
   const reports = await db
-    .select()
+    .select({ id: dailyReportsTable.id })
     .from(dailyReportsTable)
     .where(and(eq(dailyReportsTable.userId, user.id), eq(dailyReportsTable.date, today)))
     .limit(1);
@@ -952,7 +994,11 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
   const requiredPreviousDate = getPreviousRequiredReportDate(today);
 
   const reports = await db
-    .select()
+    .select({
+      id: dailyReportsTable.id,
+      date: dailyReportsTable.date,
+      createdAt: dailyReportsTable.createdAt,
+    })
     .from(dailyReportsTable)
     .where(and(eq(dailyReportsTable.userId, user.id), sql`${dailyReportsTable.date} < ${today}`))
     .orderBy(desc(dailyReportsTable.date), desc(dailyReportsTable.createdAt))
@@ -970,7 +1016,22 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
     return;
   }
 
-  const tasks = await db.select().from(dailyTasksTable)
+  const tasks = await db
+    .select({
+      id: dailyTasksTable.id,
+      reportId: dailyTasksTable.reportId,
+      title: dailyTasksTable.title,
+      project: dailyTasksTable.project,
+      deadline: dailyTasksTable.deadline,
+      completionInputType: dailyTasksTable.completionInputType,
+      completionValue: dailyTasksTable.completionValue,
+      progress: dailyTasksTable.progress,
+      status: dailyTasksTable.status,
+      notes: dailyTasksTable.notes,
+      editCount: dailyTasksTable.editCount,
+      createdAt: dailyTasksTable.createdAt,
+    })
+    .from(dailyTasksTable)
     .where(and(
       eq(dailyTasksTable.reportId, reports[0].id),
       sql`lower(${dailyTasksTable.status}) not in ('selesai', 'delivered')`
@@ -1059,7 +1120,15 @@ router.post("/reports/:id/comments", async (req, res) => {
   if (!Number.isInteger(reportId) || reportId <= 0) { res.status(400).json({ error: "ID laporan tidak valid" }); return; }
   if (!comment) { res.status(400).json({ error: "Komentar wajib diisi" }); return; }
 
-  const [report] = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, reportId)).limit(1);
+  const [report] = await db
+    .select({
+      id: dailyReportsTable.id,
+      userId: dailyReportsTable.userId,
+      date: dailyReportsTable.date,
+    })
+    .from(dailyReportsTable)
+    .where(eq(dailyReportsTable.id, reportId))
+    .limit(1);
   if (!report) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
 
   const [created] = await db.insert(reportCommentsTable).values({
@@ -1149,7 +1218,7 @@ router.patch("/reports/:id", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const id = parseInt(req.params.id);
-  const existing = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
+  const existing = await db.select(dailyReportBaseSelect).from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   if (existing[0].userId !== user.id && user.role !== "admin") { res.status(403).json({ error: "Tidak diizinkan" }); return; }
   if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
@@ -1185,7 +1254,7 @@ router.delete("/reports/:id", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const id = parseInt(req.params.id);
-  const existing = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
+  const existing = await db.select(dailyReportBaseSelect).from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   if (existing[0].userId !== user.id && user.role !== "admin") { res.status(403).json({ error: "Tidak diizinkan" }); return; }
   if (!(await canEditByPermission(user, "daily_report_edit_own"))) {
@@ -1204,7 +1273,7 @@ router.post("/reports/:id/submit", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const id = parseInt(req.params.id);
-  const existing = await db.select().from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
+  const existing = await db.select(dailyReportBaseSelect).from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
   if (!existing[0]) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   if (existing[0].userId !== user.id) { res.status(403).json({ error: "Tidak diizinkan" }); return; }
   if (!(await canEditByPermission(user, "daily_report_submit"))) {
@@ -1218,7 +1287,7 @@ router.post("/reports/:id/submit", async (req, res) => {
   }
 
   let tasks = await db
-    .select()
+    .select(submitTaskSelect)
     .from(dailyTasksTable)
     .where(eq(dailyTasksTable.reportId, id));
 
@@ -1227,7 +1296,7 @@ router.post("/reports/:id/submit", async (req, res) => {
   if (!hasTask && existing[0].date === getTodayString()) {
     await copyUnfinishedPreviousTasksToReport(existing[0].userId, id, existing[0].date);
     tasks = await db
-      .select()
+      .select(submitTaskSelect)
       .from(dailyTasksTable)
       .where(eq(dailyTasksTable.reportId, id));
     hasTask = tasks.some((task) => task.title.trim().length > 0);
@@ -1282,12 +1351,23 @@ router.post("/reports/:id/submit", async (req, res) => {
         ? "selesai"
         : "dikirim";
 
+  const canUseSubmittedAt = await tryEnsureDailyReportsSchema();
   await db.update(dailyReportsTable)
-    .set({ status: submittedStatus, submittedAt: new Date() })
+    .set(canUseSubmittedAt ? { status: submittedStatus, submittedAt: new Date() } : { status: submittedStatus })
     .where(eq(dailyReportsTable.id, id));
 
-  const detail = await buildReportDetail(id);
-  res.json(detail);
+  const detail = await buildReportDetail(id).catch(() => null);
+  res.json(detail ?? {
+    id,
+    userId: existing[0].userId,
+    departmentId: existing[0].departmentId ?? null,
+    date: existing[0].date,
+    status: submittedStatus,
+    storedStatus: submittedStatus,
+    submittedAt: getSubmittedAtFallback(submittedStatus, new Date()),
+    tasks: [],
+    comments: [],
+  });
 });
 
 router.post("/reports/:id/review", async (req, res) => {
