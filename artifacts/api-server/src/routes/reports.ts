@@ -177,7 +177,7 @@ async function buildReportDetail(reportId: number) {
   const userReports = await db
     .select({ id: dailyReportsTable.id, date: dailyReportsTable.date })
     .from(dailyReportsTable)
-    .where(and(eq(dailyReportsTable.userId, r.userId), lte(dailyReportsTable.date, r.date)));
+    .where(eq(dailyReportsTable.userId, r.userId));
   const userReportIds = userReports.map((report) => report.id);
   const reportDateById = new Map(userReports.map((report) => [report.id, report.date]));
 

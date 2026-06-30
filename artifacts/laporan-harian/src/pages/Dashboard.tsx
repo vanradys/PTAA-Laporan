@@ -11,10 +11,7 @@ import {
   Users,
   CheckSquare,
   AlertTriangle,
-  ClipboardList,
-  Clock3,
   Loader2,
-  FileCheck2,
   CalendarDays,
   Filter,
   CheckCircle2,
@@ -334,7 +331,7 @@ export default function Dashboard() {
         createdAt?: string | null;
         relatedReportId?: number | null;
         relatedTodoId?: number | null;
-      }>).filter((item) => !item.isRead).map((item) => ({
+      }>).map((item) => ({
         ...item,
         href: item.relatedTodoId
           ? `/to-do-list?task=${item.relatedTodoId}`
@@ -422,7 +419,7 @@ export default function Dashboard() {
           </div>
         ) : summary ? (
           <>
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <StatCard
                 title={summary.scope === "personal" ? "Hari Kerja" : "Karyawan Office"}
                 value={summary.scope === "personal" ? summary.expectedWorkDays : summary.totalEmployees}
@@ -442,25 +439,6 @@ export default function Dashboard() {
                 value={summary.notSubmittedToday}
                 icon={AlertTriangle}
                 iconClass="bg-amber-50 text-amber-600"
-              />
-              <StatCard
-                title="Total Tugas"
-                value={summary.totalTasksToday}
-                icon={ClipboardList}
-                iconClass="bg-violet-50 text-violet-600"
-              />
-              <StatCard
-                title="Tugas Selesai"
-                value={summary.tasksCompleted}
-                icon={FileCheck2}
-                iconClass="bg-green-50 text-green-600"
-                description={`${summary.completionRate}% selesai`}
-              />
-              <StatCard
-                title="Tugas Pending"
-                value={summary.tasksPending}
-                icon={Clock3}
-                iconClass="bg-orange-50 text-orange-600"
               />
             </section>
 

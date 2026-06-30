@@ -17,6 +17,10 @@ async function getAuthenticatedUser(req: any) {
 function parseReportCommentDate(message: string) {
   const isoMatch = message.match(/\b(\d{4}-\d{2}-\d{2})\b/);
   if (isoMatch?.[1]) return isoMatch[1];
+  const slashMatch = message.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+  if (slashMatch?.[1] && slashMatch[2] && slashMatch[3]) {
+    return `${slashMatch[3]}-${slashMatch[2].padStart(2, "0")}-${slashMatch[1].padStart(2, "0")}`;
+  }
   return null;
 }
 

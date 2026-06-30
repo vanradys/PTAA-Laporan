@@ -101,6 +101,9 @@ function inRange(date: string, task: Task) {
 function taskOverlapsPeriod(task: Task, start: string, end: string) {
   return task.startDate <= end && task.dueDate >= start;
 }
+function isPermanentTaskType(type: TaskType) {
+  return type === "personal_permanent" || type === "team_permanent";
+}
 
 function ViewButton({ active, icon: Icon, label, onClick }: {
   active: boolean; icon: ElementType; label: string; onClick: () => void;
@@ -121,7 +124,9 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (task: Task) => void }
       </div>
       <p className="mt-2 line-clamp-2 text-sm text-slate-600">{task.description || "Tidak ada deskripsi."}</p>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <span className="flex items-center gap-1 font-semibold"><CalendarDays className="h-3.5 w-3.5" />{formatDate(task.startDate)} - {formatDate(task.dueDate)}</span>
+        <span className="flex items-center gap-1 font-semibold">
+          {isPermanentTaskType(task.type) ? "Selalu tampil" : <><CalendarDays className="h-3.5 w-3.5" />{formatDate(task.startDate)} - {formatDate(task.dueDate)}</>}
+        </span>
         <Badge className={cn("border", statusStyles[task.status])}>{task.status}</Badge>
       </div>
       <div className="mt-3 flex items-center justify-between">
@@ -666,8 +671,12 @@ export default function ToDoList() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div><Label>Jenis Tugas</Label><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TaskType, assigneeIds: [] })} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi</option><option value="personal_permanent">Jobdesk Pribadi</option><option value="team">Tugas Tim</option><option value="team_permanent">Jobdesk Team</option></select></div>
               <div><Label>Prioritas</Label><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as TaskPriority })} className="h-10 w-full rounded-md border px-3"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select></div>
-              <div><Label>Tanggal Mulai</Label><Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, dueDate: event.target.value > form.dueDate ? event.target.value : form.dueDate })} /></div>
-              <div><Label>Tanggal Selesai</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></div>
+              {!isPermanentTaskType(form.type) && (
+                <>
+                  <div><Label>Tanggal Mulai</Label><Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, dueDate: event.target.value > form.dueDate ? event.target.value : form.dueDate })} /></div>
+                  <div><Label>Tanggal Selesai</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></div>
+                </>
+              )}
             </div>
             <div><div className="flex items-center justify-between"><Label>Sub-task / Checklist</Label><Button type="button" variant="outline" size="sm" onClick={() => setForm({ ...form, checklist: [...form.checklist, ""] })}><Plus className="mr-1 h-3 w-3" />Tambah</Button></div>
               <div className="mt-2 space-y-2">{form.checklist.map((item, index) => <div key={index} className="flex gap-2"><Input value={item} onChange={(event) => setForm({ ...form, checklist: form.checklist.map((value, itemIndex) => itemIndex === index ? event.target.value : value) })} placeholder={`Sub-task ${index + 1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => setForm({ ...form, checklist: form.checklist.filter((_, itemIndex) => itemIndex !== index) })}><X className="h-4 w-4" /></Button></div>)}</div>
@@ -779,7 +788,7 @@ export default function ToDoList() {
             <div className="space-y-5">
               <div><p className="text-xs font-bold text-slate-400">Jenis Tugas</p>{canManageSelectedTask ? <select value={taskDraft.type} onChange={(event) => setTaskDraft({ ...taskDraft, type: event.target.value as TaskType, assigneeIds: [] })} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option value="personal">Tugas Pribadi</option><option value="personal_permanent">Jobdesk Pribadi</option><option value="team">Tugas Tim</option><option value="team_permanent">Jobdesk Team</option></select> : <p className="mt-1 text-sm font-bold">{selectedTask.type === "team" ? "Tugas Tim" : selectedTask.type === "team_permanent" ? "Jobdesk Team" : selectedTask.type === "personal_permanent" ? "Jobdesk Pribadi" : "Tugas Pribadi"}</p>}</div>
               <div><p className="text-xs font-bold text-slate-400">Karyawan Ditugaskan</p>{canManageSelectedTask && (taskDraft.type === "team" || taskDraft.type === "team_permanent") ? <div className="mt-2 max-h-44 space-y-2 overflow-y-auto">{employees.map((employee) => { const checked = taskDraft.assigneeIds.includes(employee.id); return <button key={employee.id} type="button" onClick={() => setTaskDraft({ ...taskDraft, assigneeIds: checked ? taskDraft.assigneeIds.filter((id) => id !== employee.id) : [...taskDraft.assigneeIds, employee.id] })} className={cn("flex w-full items-center gap-2 rounded-md border bg-white p-2 text-left text-xs font-bold", checked && "border-blue-500 bg-blue-50")}><span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px]">{initials(employee.name)}</span>{employee.name}</button>; })}</div> : <div className="mt-2 space-y-2">{selectedTask.assignees.length ? selectedTask.assignees.map((item) => <div key={item.userId} className="flex items-center gap-2 text-sm font-bold"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs">{initials(item.userName)}</span>{item.userName}</div>) : <p className="text-sm text-slate-500">Pribadi</p>}</div>}</div>
-              <div><p className="text-xs font-bold text-slate-400">Tanggal Selesai</p>{canManageSelectedTask ? <Input type="date" value={taskDraft.dueDate} onChange={(event) => setTaskDraft({ ...taskDraft, dueDate: event.target.value })} className="mt-1" /> : <p className="mt-1 flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4" />{formatDate(selectedTask.dueDate)}</p>}</div>
+              {!isPermanentTaskType(taskDraft.type) && <div><p className="text-xs font-bold text-slate-400">Tanggal Selesai</p>{canManageSelectedTask ? <Input type="date" value={taskDraft.dueDate} onChange={(event) => setTaskDraft({ ...taskDraft, dueDate: event.target.value })} className="mt-1" /> : <p className="mt-1 flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4" />{formatDate(selectedTask.dueDate)}</p>}</div>}
               <div><p className="text-xs font-bold text-slate-400">Prioritas</p>{canManageSelectedTask ? <select value={taskDraft.priority} onChange={(event) => setTaskDraft({ ...taskDraft, priority: event.target.value as TaskPriority })} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select> : <Badge className={cn("mt-1 border", priorityStyles[selectedTask.priority])}>{selectedTask.priority}</Badge>}</div>
               <div><Label>Status tugas</Label><select value={selectedTask.status} disabled={!canUpdateSelectedTaskStatus} onChange={(event) => updateStatus(event.target.value as TaskStatus)} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"><option>Belum Mulai</option><option>In Progress</option><option>Selesai</option></select></div>
               <div><p className="text-xs font-bold text-slate-400">Dibuat oleh</p><p className="mt-1 text-sm font-bold">{selectedTask.createdByName}</p></div>
