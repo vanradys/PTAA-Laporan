@@ -34,6 +34,7 @@ const reportCommenterUsersTable = alias(usersTable, "report_commenter");
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 let dailyReportsSchemaReady: Promise<void> | null = null;
+let dailyTasksSchemaReady: Promise<void> | null = null;
 
 const dailyReportBaseSelect = {
   id: dailyReportsTable.id,
@@ -86,6 +87,51 @@ function ensureDailyReportsSchema() {
 
   return dailyReportsSchemaReady.catch((error) => {
     dailyReportsSchemaReady = null;
+    throw error;
+  });
+}
+
+function ensureDailyTasksSchema() {
+  dailyTasksSchemaReady ??= (async () => {
+    await db.execute(sql`
+      alter table daily_tasks
+        add column if not exists deadline text,
+        add column if not exists completion_input_type text,
+        add column if not exists completion_value text,
+        add column if not exists review_status text,
+        add column if not exists review_comment text,
+        add column if not exists reviewed_by_user_id integer references users(id),
+        add column if not exists reviewed_by_name text,
+        add column if not exists reviewed_at timestamptz,
+        add column if not exists corrected_at timestamptz,
+        add column if not exists revision_source_task_id integer,
+        add column if not exists revision_work_task_id integer,
+        add column if not exists carry_forward_source_task_id integer,
+        add column if not exists edit_count integer default 0,
+        add column if not exists updated_at timestamptz default now()
+    `);
+
+    await db.execute(sql`
+      update daily_tasks
+      set updated_at = created_at
+      where updated_at is null
+    `);
+
+    await db.execute(sql`
+      update daily_tasks
+      set edit_count = 0
+      where edit_count is null
+    `);
+
+    await db.execute(sql`
+      alter table daily_tasks
+        alter column edit_count set default 0,
+        alter column updated_at set default now()
+    `);
+  })();
+
+  return dailyTasksSchemaReady.catch((error) => {
+    dailyTasksSchemaReady = null;
     throw error;
   });
 }
@@ -217,6 +263,8 @@ function getLatestTasksByProjectTitle<T extends {
 }
 
 async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: number, reportDate: string) {
+  await ensureDailyTasksSchema();
+
   const [sourceReport] = await db
     .select({ id: dailyReportsTable.id, date: dailyReportsTable.date })
     .from(dailyReportsTable)
@@ -291,6 +339,8 @@ async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: num
 }
 
 async function buildReportDetail(reportId: number) {
+  await ensureDailyTasksSchema();
+
   const reports = await db
     .select({
       id: dailyReportsTable.id,
@@ -409,6 +459,8 @@ async function buildReportDetail(reportId: number) {
 }
 
 async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo: string) {
+  await ensureDailyTasksSchema();
+
   const reports = await db
     .select({
       id: dailyReportsTable.id,
@@ -563,6 +615,7 @@ router.get("/reports", async (req, res) => {
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  await ensureDailyTasksSchema();
 
   const { date, dateFrom, dateTo, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
 
@@ -989,6 +1042,7 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  await ensureDailyTasksSchema();
 
   const today = getTodayString();
   const requiredPreviousDate = getPreviousRequiredReportDate(today);
@@ -1271,6 +1325,7 @@ router.post("/reports/:id/submit", async (req, res) => {
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
+  await ensureDailyTasksSchema();
 
   const id = parseInt(req.params.id);
   const existing = await db.select(dailyReportBaseSelect).from(dailyReportsTable).where(eq(dailyReportsTable.id, id)).limit(1);
