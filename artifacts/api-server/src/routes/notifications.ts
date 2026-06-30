@@ -1,5 +1,5 @@
 import express from "express";
-import { and, db, deviceTokensTable, eq, inArray, notificationsTable, sql } from "@workspace/db";
+import { and, dailyReportsTable, db, deviceTokensTable, eq, inArray, notificationsTable, or, sql } from "@workspace/db";
 import { getUserFromToken } from "./auth";
 
 const router = (express as any).Router();
@@ -14,7 +14,53 @@ async function getAuthenticatedUser(req: any) {
   return getUserFromToken(token);
 }
 
-function mapNotification(notification: typeof notificationsTable.$inferSelect) {
+function parseReportCommentDate(message: string) {
+  const isoMatch = message.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (isoMatch?.[1]) return isoMatch[1];
+  return null;
+}
+
+async function mapNotifications(notifications: Array<typeof notificationsTable.$inferSelect>) {
+  const unresolvedReportCommentDates = notifications
+    .filter((notification) =>
+      notification.type === "report_comment" &&
+      !notification.relatedReportId &&
+      parseReportCommentDate(notification.message),
+    )
+    .map((notification) => ({
+      userId: notification.userId,
+      date: parseReportCommentDate(notification.message) as string,
+    }));
+
+  const reportTargetByKey = new Map<string, number>();
+  if (unresolvedReportCommentDates.length > 0) {
+    const targetReports = await db
+      .select({
+        id: dailyReportsTable.id,
+        userId: dailyReportsTable.userId,
+        date: dailyReportsTable.date,
+      })
+      .from(dailyReportsTable)
+      .where(or(...unresolvedReportCommentDates.map((item) =>
+        and(eq(dailyReportsTable.userId, item.userId), eq(dailyReportsTable.date, item.date)),
+      )));
+
+    targetReports.forEach((report) => {
+      reportTargetByKey.set(`${report.userId}|${report.date}`, report.id);
+    });
+  }
+
+  return notifications.map((notification) => {
+    const fallbackDate = parseReportCommentDate(notification.message);
+    const fallbackReportId = fallbackDate
+      ? reportTargetByKey.get(`${notification.userId}|${fallbackDate}`) ?? null
+      : null;
+
+    return mapNotification(notification, fallbackReportId);
+  });
+}
+
+function mapNotification(notification: typeof notificationsTable.$inferSelect, fallbackReportId: number | null = null) {
   return {
     id: notification.id,
     userId: notification.userId,
@@ -22,7 +68,7 @@ function mapNotification(notification: typeof notificationsTable.$inferSelect) {
     message: notification.message,
     isRead: notification.isRead,
     type: notification.type,
-    relatedReportId: notification.relatedReportId ?? null,
+    relatedReportId: notification.relatedReportId ?? fallbackReportId,
     relatedTodoId: notification.relatedTodoId ?? null,
     createdAt: notification.createdAt.toISOString(),
   };
@@ -58,7 +104,7 @@ router.get("/notifications", async (req: any, res: any) => {
     )
     .orderBy(notificationsTable.createdAt);
 
-  res.json(notifications.map(mapNotification).reverse());
+  res.json((await mapNotifications(notifications)).reverse());
 });
 
 async function markNotificationRead(req: any, res: any) {

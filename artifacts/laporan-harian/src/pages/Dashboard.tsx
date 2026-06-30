@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getDepartmentProductivity,
+  getListNotificationsQueryKey,
   useGetDashboardSummary,
   useListNotifications,
 } from "@workspace/api-client-react";
@@ -27,7 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import Layout from "@/components/Layout";
 import { formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
 import {
@@ -184,6 +185,7 @@ function getDepartmentDayStatus(submitted: number, expected: number) {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [requestedName, setRequestedName] = useState("");
@@ -332,7 +334,7 @@ export default function Dashboard() {
         createdAt?: string | null;
         relatedReportId?: number | null;
         relatedTodoId?: number | null;
-      }>).map((item) => ({
+      }>).filter((item) => !item.isRead).map((item) => ({
         ...item,
         href: item.relatedTodoId
           ? `/to-do-list?task=${item.relatedTodoId}`
@@ -341,6 +343,15 @@ export default function Dashboard() {
             : "/notifikasi",
       }))
     : [];
+
+  const openDashboardNotification = async (notification: typeof dashboardNotifications[number]) => {
+    try {
+      await apiRequest(`/api/notifications/${notification.id}/read`, { method: "POST" });
+      await queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+    } finally {
+      setLocation(notification.href);
+    }
+  };
 
   return (
     <Layout>
@@ -478,6 +489,13 @@ export default function Dashboard() {
                     <div className="min-w-36 text-center text-sm font-bold text-slate-800">
                       {formatMonthLabel(selectedDate)}
                     </div>
+                    <Input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(event) => setSelectedDate(event.target.value)}
+                      className="h-9 w-40"
+                      title="Filter tanggal"
+                    />
                     <Button
                       type="button"
                       variant="outline"
@@ -690,6 +708,10 @@ export default function Dashboard() {
                       <Link
                         key={notification.id}
                         href={notification.href}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void openDashboardNotification(notification);
+                        }}
                         className={cn(
                           "block rounded-lg border px-4 py-3 transition hover:border-blue-300 hover:bg-blue-50",
                           notification.isRead

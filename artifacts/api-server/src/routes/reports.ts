@@ -174,9 +174,24 @@ async function buildReportDetail(reportId: number) {
   if (!reports[0]) return null;
   const r = reports[0];
 
-  const tasks = await db.select().from(dailyTasksTable)
-    .where(eq(dailyTasksTable.reportId, reportId))
-    .orderBy(dailyTasksTable.createdAt);
+  const userReports = await db
+    .select({ id: dailyReportsTable.id, date: dailyReportsTable.date })
+    .from(dailyReportsTable)
+    .where(and(eq(dailyReportsTable.userId, r.userId), lte(dailyReportsTable.date, r.date)));
+  const userReportIds = userReports.map((report) => report.id);
+  const reportDateById = new Map(userReports.map((report) => [report.id, report.date]));
+
+  const allTasks = userReportIds.length
+    ? await db.select().from(dailyTasksTable)
+        .where(inArray(dailyTasksTable.reportId, userReportIds))
+        .orderBy(dailyTasksTable.createdAt)
+    : [];
+  const tasks = getLatestTasksByProjectTitle(
+    allTasks.map((task) => ({
+      ...task,
+      reportDate: reportDateById.get(task.reportId) ?? r.date,
+    })),
+  );
 
   const comments = await db
     .select({
@@ -242,6 +257,8 @@ async function buildReportDetail(reportId: number) {
         correctedAt: t.correctedAt?.toISOString() ?? null,
         revisionSourceTaskId: t.revisionSourceTaskId ?? null,
         revisionWorkTaskId: t.revisionWorkTaskId ?? null,
+        carryForwardSourceTaskId: t.carryForwardSourceTaskId ?? null,
+        reportDate: t.reportDate ?? null,
         editCount,
         remainingActions: getRemainingActions(editCount),
         isLocked: isTaskLockedByCount(editCount),
@@ -584,20 +601,39 @@ router.get("/reports", async (req, res) => {
   let tasksByReport: Record<number, { count: number; avg: number; revisions: number; corrected: number; reviewed: number }> = {};
 
   if (reportIds.length > 0) {
-    const taskStats = await db
+    const userIds = [...new Set(reports.map((report) => report.userId))];
+    const maxReportDate = reports.reduce((latest, report) => report.date > latest ? report.date : latest, reports[0].date);
+    const userTaskRows = await db
       .select({
         reportId: dailyTasksTable.reportId,
-        count: sql<number>`count(*)::int`,
-        avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int`,
-        revisions: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} in ('revisi', 'sedang_diperbaiki'))::int`,
-        corrected: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} in ('sudah_diperbaiki', 'selesai'))::int`,
-        reviewed: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'direview')::int`,
+        userId: dailyReportsTable.userId,
+        title: dailyTasksTable.title,
+        project: dailyTasksTable.project,
+        progress: dailyTasksTable.progress,
+        reviewStatus: dailyTasksTable.reviewStatus,
+        reportDate: dailyReportsTable.date,
+        createdAt: dailyTasksTable.createdAt,
+        updatedAt: dailyTasksTable.updatedAt,
       })
       .from(dailyTasksTable)
-      .where(inArray(dailyTasksTable.reportId, reportIds))
-      .groupBy(dailyTasksTable.reportId);
+      .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+      .where(and(
+        inArray(dailyReportsTable.userId, userIds),
+        lte(dailyReportsTable.date, maxReportDate),
+      ));
 
-    tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, item]));
+    tasksByReport = Object.fromEntries(reports.map((report) => {
+      const latestTasks = getLatestTasksByProjectTitle(
+        userTaskRows.filter((task) => task.userId === report.userId && task.reportDate <= report.date),
+      );
+      return [report.id, {
+        count: latestTasks.length,
+        avg: latestTasks.length ? Math.round(latestTasks.reduce((sum, task) => sum + task.progress, 0) / latestTasks.length) : 0,
+        revisions: latestTasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length,
+        corrected: latestTasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length,
+        reviewed: latestTasks.filter((task) => task.reviewStatus === "direview").length,
+      }];
+    }));
   }
 
   if (dateFrom && dateTo && dateFrom !== dateTo) {

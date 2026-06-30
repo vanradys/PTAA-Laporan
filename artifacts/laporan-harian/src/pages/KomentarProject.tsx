@@ -308,7 +308,7 @@ export default function KomentarProject() {
               ) : reportComments.length ? reportComments.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/laporan/${item.reportId}?commentId=${item.id}&returnTo=/komentar-project`}
+                  href={`/laporan/${item.reportId}?commentId=${item.id}&returnTo=${encodeURIComponent("/komentar-project")}`}
                   className="block rounded-lg border bg-white p-4 transition hover:border-blue-300 hover:shadow-sm"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

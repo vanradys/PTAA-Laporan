@@ -117,13 +117,7 @@ function AppRoutes() {
           </FeatureGate>
         )}
       </Route>
-      <Route path="/komentar-project">
-        {() => (
-          <FeatureGate featureKey="project_comments">
-            <KomentarProject />
-          </FeatureGate>
-        )}
-      </Route>
+      <Route path="/komentar-project" component={KomentarProject} />
       <Route path="/panduan-website">
         {() => (
           <FeatureGate featureKey="website_guide">

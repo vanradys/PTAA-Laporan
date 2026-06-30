@@ -22,7 +22,7 @@ import { apiRequest } from "@/lib/apiRequest";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
-type TaskType = "personal" | "personal_permanent" | "team";
+type TaskType = "personal" | "personal_permanent" | "team" | "team_permanent";
 type TaskStatus = "Belum Mulai" | "In Progress" | "Selesai";
 type TaskPriority = "Rendah" | "Sedang" | "Urgent";
 type ViewMode = "today" | "calendar" | "cards";
@@ -95,7 +95,7 @@ function initials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 function inRange(date: string, task: Task) {
-  if (task.type === "personal_permanent") return true;
+  if (task.type === "personal_permanent" || task.type === "team_permanent") return true;
   return date >= task.startDate && date <= task.dueDate;
 }
 function taskOverlapsPeriod(task: Task, start: string, end: string) {
@@ -266,7 +266,7 @@ export default function ToDoList() {
       : taskOverlapsPeriod(task, periodStart, periodEnd),
   );
   const personal = filteredTasks.filter((task) => task.type === "personal" || task.type === "personal_permanent");
-  const team = filteredTasks.filter((task) => task.type === "team");
+  const team = filteredTasks.filter((task) => task.type === "team" || task.type === "team_permanent");
   const completed = filteredTasks.filter((task) => task.status === "Selesai");
   const openPersonal = personal.filter((task) => task.status !== "Selesai");
   const openTeam = team.filter((task) => task.status !== "Selesai");
@@ -322,7 +322,7 @@ export default function ToDoList() {
 
   const submitTask = async (event: FormEvent) => {
     event.preventDefault();
-    if (form.type === "team" && form.assigneeIds.length === 0) {
+    if ((form.type === "team" || form.type === "team_permanent") && form.assigneeIds.length === 0) {
       toast({ title: "Pilih karyawan", description: "Tugas tim wajib memiliki minimal 1 karyawan.", variant: "destructive" });
       return;
     }
@@ -595,7 +595,7 @@ export default function ToDoList() {
                             "block w-full truncate rounded px-2 py-1 text-left text-[11px] font-bold",
                             task.status === "Selesai"
                               ? "bg-emerald-100 text-emerald-800"
-                              : task.type === "team"
+                              : task.type === "team" || task.type === "team_permanent"
                                 ? "bg-violet-100 text-violet-800"
                                 : "bg-blue-100 text-blue-800",
                           )}
@@ -664,7 +664,7 @@ export default function ToDoList() {
             <div><Label>Nama Tugas</Label><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></div>
             <div><Label>Deskripsi</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div><Label>Jenis Tugas</Label><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TaskType, assigneeIds: [] })} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi</option><option value="personal_permanent">Tugas Pribadi Permanen</option><option value="team">Tugas Tim</option></select></div>
+              <div><Label>Jenis Tugas</Label><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TaskType, assigneeIds: [] })} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi</option><option value="personal_permanent">Jobdesk Pribadi</option><option value="team">Tugas Tim</option><option value="team_permanent">Jobdesk Team</option></select></div>
               <div><Label>Prioritas</Label><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as TaskPriority })} className="h-10 w-full rounded-md border px-3"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select></div>
               <div><Label>Tanggal Mulai</Label><Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, dueDate: event.target.value > form.dueDate ? event.target.value : form.dueDate })} /></div>
               <div><Label>Tanggal Selesai</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></div>
@@ -672,7 +672,7 @@ export default function ToDoList() {
             <div><div className="flex items-center justify-between"><Label>Sub-task / Checklist</Label><Button type="button" variant="outline" size="sm" onClick={() => setForm({ ...form, checklist: [...form.checklist, ""] })}><Plus className="mr-1 h-3 w-3" />Tambah</Button></div>
               <div className="mt-2 space-y-2">{form.checklist.map((item, index) => <div key={index} className="flex gap-2"><Input value={item} onChange={(event) => setForm({ ...form, checklist: form.checklist.map((value, itemIndex) => itemIndex === index ? event.target.value : value) })} placeholder={`Sub-task ${index + 1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => setForm({ ...form, checklist: form.checklist.filter((_, itemIndex) => itemIndex !== index) })}><X className="h-4 w-4" /></Button></div>)}</div>
             </div>
-            {form.type === "team" && <div><Label>Tag Karyawan</Label><p className="mb-2 text-xs text-slate-500">Data diambil dari database karyawan aktif.</p><div className="grid gap-2 sm:grid-cols-2">{employees.map((employee) => {
+            {(form.type === "team" || form.type === "team_permanent") && <div><Label>Tag Karyawan</Label><p className="mb-2 text-xs text-slate-500">Data diambil dari database karyawan aktif.</p><div className="grid gap-2 sm:grid-cols-2">{employees.map((employee) => {
               const checked = form.assigneeIds.includes(employee.id);
               return <button key={employee.id} type="button" onClick={() => setForm({ ...form, assigneeIds: checked ? form.assigneeIds.filter((id) => id !== employee.id) : [...form.assigneeIds, employee.id] })} className={cn("flex items-center gap-3 rounded-lg border p-3 text-left", checked && "border-blue-600 bg-blue-50")}><span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-black">{initials(employee.name)}</span><span><b className="block text-sm">{employee.name}</b><small className="text-slate-500">{employee.departmentName || "Tanpa Departemen"}</small></span>{checked && <CheckCircle2 className="ml-auto h-4 w-4 text-blue-700" />}</button>;
             })}</div></div>}
@@ -777,8 +777,8 @@ export default function ToDoList() {
           </div>
           <aside className="border-t bg-slate-50 p-6 lg:border-l lg:border-t-0">
             <div className="space-y-5">
-              <div><p className="text-xs font-bold text-slate-400">Jenis Tugas</p>{canManageSelectedTask ? <select value={taskDraft.type} onChange={(event) => setTaskDraft({ ...taskDraft, type: event.target.value as TaskType, assigneeIds: [] })} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option value="personal">Tugas Pribadi</option><option value="personal_permanent">Tugas Pribadi Permanen</option><option value="team">Tugas Tim</option></select> : <p className="mt-1 text-sm font-bold">{selectedTask.type === "team" ? "Tugas Tim" : selectedTask.type === "personal_permanent" ? "Tugas Pribadi Permanen" : "Tugas Pribadi"}</p>}</div>
-              <div><p className="text-xs font-bold text-slate-400">Karyawan Ditugaskan</p>{canManageSelectedTask && taskDraft.type === "team" ? <div className="mt-2 max-h-44 space-y-2 overflow-y-auto">{employees.map((employee) => { const checked = taskDraft.assigneeIds.includes(employee.id); return <button key={employee.id} type="button" onClick={() => setTaskDraft({ ...taskDraft, assigneeIds: checked ? taskDraft.assigneeIds.filter((id) => id !== employee.id) : [...taskDraft.assigneeIds, employee.id] })} className={cn("flex w-full items-center gap-2 rounded-md border bg-white p-2 text-left text-xs font-bold", checked && "border-blue-500 bg-blue-50")}><span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px]">{initials(employee.name)}</span>{employee.name}</button>; })}</div> : <div className="mt-2 space-y-2">{selectedTask.assignees.length ? selectedTask.assignees.map((item) => <div key={item.userId} className="flex items-center gap-2 text-sm font-bold"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs">{initials(item.userName)}</span>{item.userName}</div>) : <p className="text-sm text-slate-500">Pribadi</p>}</div>}</div>
+              <div><p className="text-xs font-bold text-slate-400">Jenis Tugas</p>{canManageSelectedTask ? <select value={taskDraft.type} onChange={(event) => setTaskDraft({ ...taskDraft, type: event.target.value as TaskType, assigneeIds: [] })} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option value="personal">Tugas Pribadi</option><option value="personal_permanent">Jobdesk Pribadi</option><option value="team">Tugas Tim</option><option value="team_permanent">Jobdesk Team</option></select> : <p className="mt-1 text-sm font-bold">{selectedTask.type === "team" ? "Tugas Tim" : selectedTask.type === "team_permanent" ? "Jobdesk Team" : selectedTask.type === "personal_permanent" ? "Jobdesk Pribadi" : "Tugas Pribadi"}</p>}</div>
+              <div><p className="text-xs font-bold text-slate-400">Karyawan Ditugaskan</p>{canManageSelectedTask && (taskDraft.type === "team" || taskDraft.type === "team_permanent") ? <div className="mt-2 max-h-44 space-y-2 overflow-y-auto">{employees.map((employee) => { const checked = taskDraft.assigneeIds.includes(employee.id); return <button key={employee.id} type="button" onClick={() => setTaskDraft({ ...taskDraft, assigneeIds: checked ? taskDraft.assigneeIds.filter((id) => id !== employee.id) : [...taskDraft.assigneeIds, employee.id] })} className={cn("flex w-full items-center gap-2 rounded-md border bg-white p-2 text-left text-xs font-bold", checked && "border-blue-500 bg-blue-50")}><span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px]">{initials(employee.name)}</span>{employee.name}</button>; })}</div> : <div className="mt-2 space-y-2">{selectedTask.assignees.length ? selectedTask.assignees.map((item) => <div key={item.userId} className="flex items-center gap-2 text-sm font-bold"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs">{initials(item.userName)}</span>{item.userName}</div>) : <p className="text-sm text-slate-500">Pribadi</p>}</div>}</div>
               <div><p className="text-xs font-bold text-slate-400">Tanggal Selesai</p>{canManageSelectedTask ? <Input type="date" value={taskDraft.dueDate} onChange={(event) => setTaskDraft({ ...taskDraft, dueDate: event.target.value })} className="mt-1" /> : <p className="mt-1 flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4" />{formatDate(selectedTask.dueDate)}</p>}</div>
               <div><p className="text-xs font-bold text-slate-400">Prioritas</p>{canManageSelectedTask ? <select value={taskDraft.priority} onChange={(event) => setTaskDraft({ ...taskDraft, priority: event.target.value as TaskPriority })} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select> : <Badge className={cn("mt-1 border", priorityStyles[selectedTask.priority])}>{selectedTask.priority}</Badge>}</div>
               <div><Label>Status tugas</Label><select value={selectedTask.status} disabled={!canUpdateSelectedTaskStatus} onChange={(event) => updateStatus(event.target.value as TaskStatus)} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"><option>Belum Mulai</option><option>In Progress</option><option>Selesai</option></select></div>

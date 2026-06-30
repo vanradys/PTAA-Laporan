@@ -3,4 +3,4 @@ ALTER TABLE todo_tasks
 
 ALTER TABLE todo_tasks
   ADD CONSTRAINT todo_tasks_type_check
-  CHECK (type IN ('personal', 'personal_permanent', 'team'));
+  CHECK (type IN ('personal', 'personal_permanent', 'team', 'team_permanent'));

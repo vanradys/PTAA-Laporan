@@ -191,6 +191,8 @@ router.post("/todo-tasks", async (req, res) => {
   const description = String(req.body?.description ?? "").trim();
   const type = req.body?.type === "team"
     ? "team"
+    : req.body?.type === "team_permanent"
+      ? "team_permanent"
     : req.body?.type === "personal_permanent"
       ? "personal_permanent"
       : "personal";
@@ -198,7 +200,7 @@ router.post("/todo-tasks", async (req, res) => {
   const dueDate = String(req.body?.dueDate ?? startDate);
   const priority = ["Rendah", "Sedang", "Urgent"].includes(req.body?.priority)
     ? req.body.priority : "Sedang";
-  const assigneeIds: number[] = type === "team"
+  const assigneeIds: number[] = ["team", "team_permanent"].includes(type)
     ? [...new Set<number>((Array.isArray(req.body?.assigneeIds) ? req.body.assigneeIds : [])
         .map(Number)
         .filter((value: number) => Number.isInteger(value)))]
@@ -211,7 +213,7 @@ router.post("/todo-tasks", async (req, res) => {
   if (dueDate < startDate) {
     res.status(400).json({ error: "Due date tidak boleh sebelum tanggal mulai" }); return;
   }
-  if (type === "team" && assigneeIds.length === 0) {
+  if (["team", "team_permanent"].includes(type) && assigneeIds.length === 0) {
     res.status(400).json({ error: "Tugas tim wajib memiliki minimal 1 karyawan" }); return;
   }
 
@@ -299,6 +301,8 @@ router.patch("/todo-tasks/:id", async (req, res) => {
     if (req.body?.type !== undefined) {
       updateData.type = req.body.type === "team"
         ? "team"
+        : req.body.type === "team_permanent"
+          ? "team_permanent"
         : req.body.type === "personal_permanent"
           ? "personal_permanent"
           : "personal";
@@ -329,7 +333,7 @@ router.patch("/todo-tasks/:id", async (req, res) => {
 
   if (manager && req.body?.assigneeIds !== undefined) {
     const nextType = updateData.type ?? access.task.type;
-    const assigneeIds: number[] = nextType === "team"
+    const assigneeIds: number[] = ["team", "team_permanent"].includes(nextType)
       ? [...new Set<number>((Array.isArray(req.body?.assigneeIds) ? req.body.assigneeIds : [])
           .map(Number)
           .filter((value: number) => Number.isInteger(value)))]
