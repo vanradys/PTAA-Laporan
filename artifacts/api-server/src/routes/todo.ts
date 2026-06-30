@@ -18,6 +18,41 @@ import {
 import { getUserFromToken } from "./auth";
 
 const router = Router();
+let todoTypeConstraintReady: Promise<void> | null = null;
+
+function getJakartaDateString(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return year && month && day ? `${year}-${month}-${day}` : date.toISOString().slice(0, 10);
+}
+
+function isPermanentTodoType(type: string) {
+  return type === "personal_permanent" || type === "team_permanent";
+}
+
+function ensureTodoTypeConstraint() {
+  if (!todoTypeConstraintReady) {
+    todoTypeConstraintReady = (async () => {
+      await db.execute(sql`
+        ALTER TABLE todo_tasks
+          DROP CONSTRAINT IF EXISTS todo_tasks_type_check
+      `);
+      await db.execute(sql`
+        ALTER TABLE todo_tasks
+          ADD CONSTRAINT todo_tasks_type_check
+          CHECK (type IN ('personal', 'personal_permanent', 'team', 'team_permanent'))
+      `);
+    })();
+  }
+  return todoTypeConstraintReady;
+}
 
 async function getUser(req: any, res: any) {
   const token = req.cookies?.session_token;
@@ -196,8 +231,15 @@ router.post("/todo-tasks", async (req, res) => {
     : req.body?.type === "personal_permanent"
       ? "personal_permanent"
       : "personal";
-  const startDate = String(req.body?.startDate ?? "");
-  const dueDate = String(req.body?.dueDate ?? startDate);
+  const today = getJakartaDateString();
+  const rawStartDate = String(req.body?.startDate ?? "");
+  const rawDueDate = String(req.body?.dueDate ?? rawStartDate);
+  const startDate = isPermanentTodoType(type) && !/^\d{4}-\d{2}-\d{2}$/.test(rawStartDate)
+    ? today
+    : rawStartDate;
+  const dueDate = isPermanentTodoType(type) && !/^\d{4}-\d{2}-\d{2}$/.test(rawDueDate)
+    ? startDate
+    : rawDueDate;
   const priority = ["Rendah", "Sedang", "Urgent"].includes(req.body?.priority)
     ? req.body.priority : "Sedang";
   const assigneeIds: number[] = ["team", "team_permanent"].includes(type)
@@ -230,6 +272,8 @@ router.post("/todo-tasks", async (req, res) => {
     res.status(400).json({ error: "Salah satu karyawan yang dipilih tidak valid atau tidak aktif" });
     return;
   }
+
+  await ensureTodoTypeConstraint();
 
   const created = await db.transaction(async (tx) => {
     const [task] = await tx.insert(todoTasksTable).values({
@@ -330,6 +374,9 @@ router.patch("/todo-tasks/:id", async (req, res) => {
   }
 
   let assigneesForUpdate: Array<{ id: number; name: string }> | null = null;
+  if (updateData.type !== undefined) {
+    await ensureTodoTypeConstraint();
+  }
 
   if (manager && req.body?.assigneeIds !== undefined) {
     const nextType = updateData.type ?? access.task.type;
