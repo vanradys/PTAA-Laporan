@@ -113,7 +113,7 @@ function getMonitoringReviewStatus(
 }
 
 function getTaskIdentityKey(task: { title: string; project?: string | null }) {
-  return `${String(task.project ?? "")}|${task.title}`;
+  return `${String(task.project ?? "").trim()}|${task.title.trim()}`;
 }
 
 function getLatestTasksByProjectTitle<T extends {
@@ -355,10 +355,10 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
     .where(inArray(reportCommentsTable.reportId, reportIds))
     .orderBy(reportCommentsTable.createdAt);
 
-  const revisionCount = tasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length;
-  const correctedCount = tasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length;
-  const reviewedCount = tasks.filter((task) => task.reviewStatus === "direview").length;
   const latestTasks = getLatestTasksByProjectTitle(tasks);
+  const revisionCount = latestTasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length;
+  const correctedCount = latestTasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length;
+  const reviewedCount = latestTasks.filter((task) => task.reviewStatus === "direview").length;
   const avgProgress = latestTasks.length > 0
     ? Math.round(latestTasks.reduce((sum, task) => sum + task.progress, 0) / latestTasks.length)
     : 0;

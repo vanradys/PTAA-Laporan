@@ -75,7 +75,7 @@ export default function KomentarProject() {
   const [filterProject, setFilterProject] = useState("all");
   const [search, setSearch] = useState("");
 
-  const canAccessProjectComments = (() => {
+  const canManageProjectComments = (() => {
     const role = String(user?.role ?? "").toLowerCase();
     const departmentCode = String(user?.departmentCode ?? "").toUpperCase();
     const departmentName = String(user?.departmentName ?? "").toLowerCase();
@@ -91,13 +91,13 @@ export default function KomentarProject() {
     );
   })();
   const canViewCustomerNotes =
-    canAccessProjectComments && canViewFeature("customer_notes", true);
-  const canAddProjectComments = canAccessProjectComments && canEdit("project_comment_add", true);
+    canManageProjectComments && canViewFeature("customer_notes", true);
+  const canAddProjectComments = canManageProjectComments && canEdit("project_comment_add", true);
 
   const { data: poData } = useQuery({
     queryKey: ["project-comments-po", "active"],
     queryFn: () => apiRequest<PoItem[]>("/api/po?openOnly=true"),
-    enabled: canAccessProjectComments,
+    enabled: Boolean(user),
   });
   const pos = (Array.isArray(poData) ? poData : []) as PoItem[];
   const poById = new Map(pos.map((item) => [item.id, item]));
@@ -112,12 +112,13 @@ export default function KomentarProject() {
   const internalCommentsQuery = useQuery({
     queryKey: ["project-comments", "internal"],
     queryFn: () => apiRequest<ProjectComment[]>("/api/po/internal-comments"),
-    enabled: canAccessProjectComments,
+    enabled: Boolean(user),
     refetchInterval: 15000,
   });
   const reportCommentsQuery = useQuery({
     queryKey: ["report-comments"],
     queryFn: () => apiRequest<ReportComment[]>("/api/report-comments"),
+    enabled: Boolean(user),
     refetchInterval: 15000,
   });
 
@@ -163,6 +164,17 @@ export default function KomentarProject() {
       ].some((value) => String(value ?? "").toLowerCase().includes(term));
     });
   }, [reportCommentsQuery.data, search]);
+
+  const buildReportCommentHref = (item: ReportComment) => {
+    const params = new URLSearchParams({
+      periodUserId: String(item.reportOwnerUserId),
+      dateFrom: item.reportDate,
+      dateTo: item.reportDate,
+      commentId: String(item.id),
+      returnTo: "/komentar-project",
+    });
+    return `/laporan/${item.reportId}?${params.toString()}`;
+  };
 
   const refresh = async () => {
     await Promise.all([
@@ -248,14 +260,6 @@ export default function KomentarProject() {
           </TabsList>
 
           <TabsContent value="project" className="space-y-5">
-            {!canAccessProjectComments ? (
-              <Card>
-                <CardContent className="p-8 text-center text-sm text-red-600">
-                  Komentar Project hanya dapat diakses Admin, Direktur, Monitoring Laporan, dan Engineering.
-                </CardContent>
-              </Card>
-            ) : (
-              <>
         <Card>
           <CardContent className="grid gap-3 p-4 md:grid-cols-5">
             <div className="space-y-1"><Label>Filter No PO</Label><Select value={filterNoPo} onValueChange={setFilterNoPo}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Semua</SelectItem>{pos.map((item) => <SelectItem key={item.id} value={item.noPo}>{item.noPo}</SelectItem>)}</SelectContent></Select></div>
@@ -265,7 +269,7 @@ export default function KomentarProject() {
           </CardContent>
         </Card>
 
-        <Card>
+        {canAddProjectComments && <Card>
           <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Plus className="h-4 w-4" />Tambah Komentar</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
@@ -278,14 +282,12 @@ export default function KomentarProject() {
               {canViewCustomerNotes && <TabsContent value="customer" className="space-y-2"><Textarea value={customerComment} onChange={(event) => setCustomerComment(event.target.value)} rows={3} placeholder="Tulis customer notes..." disabled={!canAddProjectComments} /><Button onClick={sendCustomerComment} disabled={!selectedPo || !canAddProjectComments || !customerComment.trim()}><Send className="mr-2 h-4 w-4" />Kirim Customer Notes</Button></TabsContent>}
             </Tabs>
           </CardContent>
-        </Card>
+        </Card>}
 
         <div className="grid gap-5 lg:grid-cols-2">
           <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Komentar Internal</CardTitle></CardHeader><CardContent>{renderComments(internalComments, "userName")}</CardContent></Card>
           {canViewCustomerNotes && <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="h-4 w-4" />Customer Notes</CardTitle></CardHeader><CardContent>{renderComments(customerComments, "customerName")}</CardContent></Card>}
         </div>
-              </>
-            )}
           </TabsContent>
 
           <TabsContent value="daily" className="space-y-4">
@@ -308,7 +310,7 @@ export default function KomentarProject() {
               ) : reportComments.length ? reportComments.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/laporan/${item.reportId}?commentId=${item.id}&returnTo=${encodeURIComponent("/komentar-project")}`}
+                  href={buildReportCommentHref(item)}
                   className="block rounded-lg border bg-white p-4 transition hover:border-blue-300 hover:shadow-sm"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

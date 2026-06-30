@@ -312,15 +312,7 @@ export default function Dashboard() {
     }
     return true;
   });
-  const todoNotifications = Array.isArray(notifications)
-    ? (notifications as Array<{
-        id: number;
-        type: string;
-        message: string;
-        isRead: boolean;
-        relatedTodoId?: number | null;
-      }>).filter((item) => item.type === "todo" && !item.isRead).slice(0, 3)
-    : [];
+  const dashboardSummaryNotificationTypes = new Set(["todo", "report_comment", "revision", "review"]);
   const dashboardNotifications = Array.isArray(notifications)
     ? (notifications as Array<{
         id: number;
@@ -331,7 +323,7 @@ export default function Dashboard() {
         createdAt?: string | null;
         relatedReportId?: number | null;
         relatedTodoId?: number | null;
-      }>).map((item) => ({
+      }>).filter((item) => dashboardSummaryNotificationTypes.has(item.type)).map((item) => ({
         ...item,
         href: item.relatedTodoId
           ? `/to-do-list?task=${item.relatedTodoId}`
@@ -357,10 +349,7 @@ export default function Dashboard() {
           <h1 className="text-xl font-bold text-slate-950">Dashboard</h1>
         </div>
 
-        <section className={cn(
-          "relative overflow-hidden rounded-xl bg-[#062bbd] px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6",
-          todoNotifications.length > 0 && "lg:pr-[430px]",
-        )}>
+        <section className="relative overflow-hidden rounded-xl bg-[#062bbd] px-5 py-5 text-white shadow-sm sm:px-7 sm:py-6">
           <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
           <p className="text-sm font-medium text-blue-100">
             Selamat datang kembali,
@@ -372,22 +361,6 @@ export default function Dashboard() {
             <CalendarDays className="h-4 w-4" />
             {todayFormatted}
           </div>
-          {todoNotifications.length > 0 && (
-            <div className="relative mt-4 space-y-2 rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm lg:absolute lg:inset-y-3 lg:right-4 lg:mt-0 lg:w-[390px] lg:overflow-y-auto">
-              <p className="text-xs font-black uppercase tracking-wide text-blue-100">
-                To Do List Baru
-              </p>
-              {todoNotifications.map((notification) => (
-                <Link
-                  key={notification.id}
-                  href={`/to-do-list?task=${notification.relatedTodoId ?? ""}`}
-                  className="block rounded-lg bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-white"
-                >
-                  {notification.message}
-                </Link>
-              ))}
-            </div>
-          )}
         </section>
         <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
