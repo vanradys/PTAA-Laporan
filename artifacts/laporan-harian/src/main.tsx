@@ -7,7 +7,7 @@ function getApiBaseUrl() {
   const envUrl = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
   if (import.meta.env.DEV) {
-    return envUrl || "http://localhost:5000";
+    return envUrl;
   }
 
   // Production memakai /api pada origin frontend. Vercel meneruskan request
