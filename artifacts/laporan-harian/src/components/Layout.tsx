@@ -27,6 +27,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import NotificationBell from "@/components/NotificationBell";
 import { getRoleDisplayName } from "@/lib/roleDisplay";
+import { MONITORING_FILTERS_STORAGE_KEY } from "@/lib/storageKeys";
 
 const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
 
@@ -61,6 +62,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleLogout = async () => {
     await logout.mutateAsync(undefined as unknown as void);
+    localStorage.removeItem(MONITORING_FILTERS_STORAGE_KEY);
     clearUser();
     queryClient.clear();
     window.location.href = import.meta.env.BASE_URL || "/";
@@ -85,9 +87,10 @@ export default function Layout({ children }: LayoutProps) {
     userDepartmentName.includes("engineering");
   const canViewProjectCommentsNav =
     canViewProjectComments && canViewFeature("project_comments", true);
+  const hideDailyReportsNav = ["direktur", "director", "dir", "monitoring_dummy"].includes(userRole);
   const visibleNavItems = [
     ...(canViewFeature("dashboard", true) ? [navItems[0]] : []),
-    ...(canViewFeature("daily_reports", true) ? [navItems[1]] : []),
+    ...(canViewFeature("daily_reports", true) && !hideDailyReportsNav ? [navItems[1]] : []),
     ...(canViewFeature("todo_list", true) ? [navItems[2]] : []),
     ...(canViewFeature("monitoring_reports", true) ? [navItems[3]] : []),
     ...(canViewFeature("project_schedule", true) ? [navItems[4]] : []),
@@ -108,7 +111,6 @@ export default function Layout({ children }: LayoutProps) {
           icon: UsersRound,
         }]
       : []),
-    ...(canViewFeature("attendance", true) ? [navItems[6]] : []),
     ...(canViewFeature("website_guide", true) ? [navItems[7]] : []),
     ...(canViewFeature("notifications", true) ? [navItems[8]] : []),
   ];

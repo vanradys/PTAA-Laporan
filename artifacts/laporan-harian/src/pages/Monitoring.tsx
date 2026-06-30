@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
 import { useListReports, useListDepartments, useListEmployees } from "@workspace/api-client-react";
@@ -18,6 +18,7 @@ import {
   useMissingDailyReportsToday,
 } from "@/hooks/use-daily-report-reminder";
 import { useEditPermissions } from "@/hooks/use-edit-permissions";
+import { MONITORING_FILTERS_STORAGE_KEY } from "@/lib/storageKeys";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 type MonitoringFilters = {
@@ -188,9 +189,8 @@ export default function Monitoring() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { canEdit } = useEditPermissions();
-  const defaultDateFrom = `${todayString.slice(0, 8)}01`;
   const defaultFilters: MonitoringFilters = {
-    dateFrom: defaultDateFrom,
+    dateFrom: todayString,
     dateTo: todayString,
     departmentId: "",
     userId: "",
@@ -199,6 +199,21 @@ export default function Monitoring() {
   };
   const readFiltersFromUrl = (): MonitoringFilters => {
     const params = new URLSearchParams(searchParams);
+    const hasUrlFilters = ["dateFrom", "dateTo", "departmentId", "userId", "status", "search"].some((key) =>
+      params.has(key),
+    );
+
+    if (!hasUrlFilters) {
+      const savedFilters = localStorage.getItem(MONITORING_FILTERS_STORAGE_KEY);
+      if (savedFilters) {
+        try {
+          return { ...defaultFilters, ...JSON.parse(savedFilters) };
+        } catch {
+          localStorage.removeItem(MONITORING_FILTERS_STORAGE_KEY);
+        }
+      }
+    }
+
     return {
       dateFrom: params.get("dateFrom") || defaultFilters.dateFrom,
       dateTo: params.get("dateTo") || defaultFilters.dateTo,
@@ -211,6 +226,10 @@ export default function Monitoring() {
   const [filters, setFilters] = useState<MonitoringFilters>(readFiltersFromUrl);
   const [draftFilters, setDraftFilters] = useState<MonitoringFilters>(filters);
   const [showFilters, setShowFilters] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(MONITORING_FILTERS_STORAGE_KEY, JSON.stringify(filters));
+  }, [filters]);
 
   const userRole = user?.role?.toLowerCase() ?? "";
   const canManageReminder =
@@ -362,7 +381,8 @@ export default function Monitoring() {
   const resetFilters = () => {
     setFilters(defaultFilters);
     setDraftFilters(defaultFilters);
-    navigate("/monitoring", { replace: true });
+    localStorage.setItem(MONITORING_FILTERS_STORAGE_KEY, JSON.stringify(defaultFilters));
+    navigate(buildMonitoringUrl(defaultFilters), { replace: true });
   };
 
   const periodLabel = `${new Date(`${filters.dateFrom}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })} - ${new Date(`${filters.dateTo}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}`;

@@ -286,4 +286,45 @@
     font-size: 0.72rem;
     line-height: 1.2rem;
   }
+
+  .overflow-auto,
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .sticky-scroll-area {
+    scrollbar-color: #94a3b8 #e2e8f0;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+  }
+
+  .overflow-auto::-webkit-scrollbar,
+  .overflow-x-auto::-webkit-scrollbar,
+  .overflow-y-auto::-webkit-scrollbar,
+  .sticky-scroll-area::-webkit-scrollbar {
+    height: 0.75rem;
+    width: 0.75rem;
+  }
+
+  .overflow-auto::-webkit-scrollbar-track,
+  .overflow-x-auto::-webkit-scrollbar-track,
+  .overflow-y-auto::-webkit-scrollbar-track,
+  .sticky-scroll-area::-webkit-scrollbar-track {
+    background: #e2e8f0;
+    border-radius: 9999px;
+  }
+
+  .overflow-auto::-webkit-scrollbar-thumb,
+  .overflow-x-auto::-webkit-scrollbar-thumb,
+  .overflow-y-auto::-webkit-scrollbar-thumb,
+  .sticky-scroll-area::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border: 3px solid #e2e8f0;
+    border-radius: 9999px;
+  }
+
+  .overflow-auto::-webkit-scrollbar-thumb:hover,
+  .overflow-x-auto::-webkit-scrollbar-thumb:hover,
+  .overflow-y-auto::-webkit-scrollbar-thumb:hover,
+  .sticky-scroll-area::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
 }

@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getDepartmentProductivity,
   useGetDashboardSummary,
-  useGetDepartmentProductivity,
   useListNotifications,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,20 +17,17 @@ import {
   CalendarDays,
   Filter,
   Copy,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  Minus,
+  XCircle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { Link } from "wouter";
 import Layout from "@/components/Layout";
 import { formatJakartaDateLong, getJakartaDateString } from "@/lib/date";
@@ -98,15 +95,92 @@ function formatDepartmentChartLabel(value: string) {
   return value;
 }
 
-function DepartmentAxisTick(props: any) {
-  const { x, y, payload } = props;
-  const label = formatDepartmentChartLabel(String(payload?.value ?? ""));
+const WEEKDAY_LABELS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"] as const;
 
-  return (
-    <text x={x} y={y + 14} textAnchor="middle" fill="#94a3b8" fontSize={11}>
-      {label}
-    </text>
-  );
+function addDays(dateString: string, amount: number) {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function addMonths(dateString: string, amount: number) {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  date.setUTCMonth(date.getUTCMonth() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekDates(dateString: string) {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  const day = date.getUTCDay();
+  const monday = addDays(dateString, -(day === 0 ? 6 : day - 1));
+  return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
+}
+
+function getMonthGridDates(dateString: string) {
+  const date = new Date(`${dateString}T00:00:00.000Z`);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const firstDate = new Date(Date.UTC(year, month, 1));
+  const firstDay = firstDate.getUTCDay();
+  const gridStart = addDays(firstDate.toISOString().slice(0, 10), -(firstDay === 0 ? 6 : firstDay - 1));
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const current = addDays(gridStart, index);
+    const currentDate = new Date(`${current}T00:00:00.000Z`);
+    return {
+      date: current,
+      day: currentDate.getUTCDate(),
+      isCurrentMonth: currentDate.getUTCMonth() === month,
+    };
+  });
+}
+
+function formatMonthLabel(dateString: string) {
+  return new Intl.DateTimeFormat("id-ID", {
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(`${dateString}T12:00:00+07:00`));
+}
+
+function formatShortDate(dateString: string) {
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(`${dateString}T12:00:00+07:00`));
+}
+
+function getDepartmentDayStatus(submitted: number, expected: number) {
+  if (expected <= 0) {
+    return {
+      label: "-",
+      icon: Minus,
+      className: "border-slate-200 bg-slate-50 text-slate-400",
+    };
+  }
+
+  if (submitted >= expected) {
+    return {
+      label: "Lengkap",
+      icon: CheckCircle2,
+      className: "border-emerald-200 bg-emerald-50 text-emerald-600",
+    };
+  }
+
+  if (submitted > 0) {
+    return {
+      label: "Sebagian",
+      icon: CircleAlert,
+      className: "border-amber-200 bg-amber-50 text-amber-600",
+    };
+  }
+
+  return {
+    label: "Belum",
+    icon: XCircle,
+    className: "border-red-200 bg-red-50 text-red-600",
+  };
 }
 
 export default function Dashboard() {
@@ -115,33 +189,31 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [requestedName, setRequestedName] = useState("");
   const today = getJakartaDateString();
-  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("weekly");
-  const periodLabels = {
-    daily: "Harian",
-    weekly: "Mingguan",
-    monthly: "Bulanan",
-    yearly: "Tahunan",
-  } as const;
-  const periodSummaryLabels = {
-    daily: "Hari Ini",
-    weekly: "Minggu Ini",
-    monthly: "Bulan Ini",
-    yearly: "Tahun Ini",
-  } as const;
-  const periodLabel = periodLabels[period];
-  const periodSummaryLabel = periodSummaryLabels[period];
-  const dashboardParams = { date: today, period };
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [departmentSearch, setDepartmentSearch] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const period = "weekly" as const;
+  const periodLabel = "Mingguan";
+  const periodSummaryLabel = "Minggu Ini";
+  const dashboardParams = { date: selectedDate, period };
 
   const { data: summary, isLoading: summaryLoading } = useGetDashboardSummary(
     dashboardParams,
-    { query: { queryKey: ["dashboard-summary", today, period] } },
+    { query: { queryKey: ["dashboard-summary", selectedDate, period] } },
   );
 
-  const { data: deptData, isLoading: deptLoading } =
-    useGetDepartmentProductivity(
-      dashboardParams,
-      { query: { queryKey: ["dept-productivity", today, period] } },
-    );
+  const selectedWeekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
+  const selectedWeekSet = useMemo(() => new Set(selectedWeekDates), [selectedWeekDates]);
+  const monthGridDates = useMemo(() => getMonthGridDates(selectedDate), [selectedDate]);
+  const dailyDepartmentQueries = useQueries({
+    queries: selectedWeekDates.map((date) => ({
+      queryKey: ["dept-productivity", date, "daily"],
+      queryFn: () => getDepartmentProductivity({ date, period: "daily" }),
+      staleTime: 30000,
+      retry: false,
+    })),
+  });
+  const deptLoading = dailyDepartmentQueries.some((query) => query.isLoading);
   const { data: notifications } = useListNotifications();
   const { data: myNameRequests } = useQuery({
     queryKey: ["name-change-requests", "mine"],
@@ -179,21 +251,13 @@ export default function Dashboard() {
 
   const todayFormatted = formatJakartaDateLong();
   const periodRangeText = summary
-    ? period === "daily"
-      ? new Intl.DateTimeFormat("id-ID", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-          timeZone: "Asia/Jakarta",
-        }).format(new Date(`${summary.periodStartDate}T12:00:00+07:00`))
-      : `${summary.periodStartDate} s/d ${summary.periodEndDate}`
+    ? `${summary.periodStartDate} s/d ${summary.periodEndDate}`
     : today;
   const missingEmployees = summary?.missingEmployees ?? [];
   const isDirector = ["direktur", "director", "dir"].includes(String(user?.role ?? "").toLowerCase());
 
   const copyMissingReportTemplate = async () => {
-    const referenceDate = today;
+    const referenceDate = selectedDate;
     const formattedDate = new Intl.DateTimeFormat("id-ID", {
       day: "numeric",
       month: "long",
@@ -247,22 +311,73 @@ Terima kasih.`;
     }
   };
 
-  const chartData = Array.isArray(deptData)
-    ? Array.from(
-        deptData.reduce((groups, dept: any) => {
-          const name = formatDepartmentChartLabel(dept.departmentName);
-          const current = groups.get(name) ?? { name, Submit: 0, Target: 0 };
-          current.Submit += Number(dept.submittedCount ?? 0);
-          current.Target += Number(dept.expectedSubmissions ?? dept.employeeCount ?? 0);
-          groups.set(name, current);
-          return groups;
-        }, new Map<string, { name: string; Submit: number; Target: number }>())
-        .values(),
-      ).map((item) => ({
-        ...item,
-        ringkasan: `${item.Submit}/${item.Target} Submit`,
-      }))
-    : [];
+  const dailyDepartmentData = selectedWeekDates.map((date, index) => ({
+    date,
+    rows: Array.isArray(dailyDepartmentQueries[index]?.data)
+      ? (dailyDepartmentQueries[index].data as Array<{
+          departmentId: number;
+          departmentName: string;
+          employeeCount: number;
+          submittedCount: number;
+          expectedSubmissions?: number;
+          submitRate?: number;
+        }>)
+      : [],
+  }));
+  const dateRateByDate = new Map(
+    dailyDepartmentData.map(({ date, rows }) => {
+      const submitted = rows.reduce((sum, item) => sum + Number(item.submittedCount ?? 0), 0);
+      const expected = rows.reduce(
+        (sum, item) => sum + Number(item.expectedSubmissions ?? item.employeeCount ?? 0),
+        0,
+      );
+      return [date, expected > 0 ? Math.round((submitted / expected) * 100) : null];
+    }),
+  );
+  const weeklyDepartmentRows = Array.from(
+    dailyDepartmentData.reduce((groups, { date, rows }) => {
+      rows.forEach((item) => {
+        const departmentId = Number(item.departmentId);
+        const current = groups.get(departmentId) ?? {
+          departmentId,
+          departmentName: item.departmentName,
+          displayName: formatDepartmentChartLabel(item.departmentName),
+          submittedTotal: 0,
+          expectedTotal: 0,
+          days: new Map<string, { submitted: number; expected: number }>(),
+        };
+        const submitted = Number(item.submittedCount ?? 0);
+        const expected = Number(item.expectedSubmissions ?? item.employeeCount ?? 0);
+        current.submittedTotal += submitted;
+        current.expectedTotal += expected;
+        current.days.set(date, { submitted, expected });
+        groups.set(departmentId, current);
+      });
+      return groups;
+    }, new Map<number, {
+      departmentId: number;
+      departmentName: string;
+      displayName: string;
+      submittedTotal: number;
+      expectedTotal: number;
+      days: Map<string, { submitted: number; expected: number }>;
+    }>()).values(),
+  ).sort((a, b) => a.displayName.localeCompare(b.displayName, "id"));
+  const departmentOptions = weeklyDepartmentRows.map((row) => ({
+    value: String(row.departmentId),
+    label: row.displayName,
+  }));
+  const filteredDepartmentRows = weeklyDepartmentRows.filter((row) => {
+    if (departmentFilter !== "all" && String(row.departmentId) !== departmentFilter) return false;
+    if (
+      departmentSearch.trim() &&
+      !row.displayName.toLowerCase().includes(departmentSearch.trim().toLowerCase()) &&
+      !row.departmentName.toLowerCase().includes(departmentSearch.trim().toLowerCase())
+    ) {
+      return false;
+    }
+    return true;
+  });
   const todoNotifications = Array.isArray(notifications)
     ? (notifications as Array<{
         id: number;
@@ -386,26 +501,51 @@ Terima kasih.`;
 
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_470px]">
               <Card className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
-                  <CardTitle className="text-base font-bold text-slate-800">
-                    Rekap Laporan Departemen {periodLabel}
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Filter className="h-4 w-4 text-slate-500" />
-                    <Select value={period} onValueChange={(value) => setPeriod(value as "daily" | "weekly" | "monthly" | "yearly")}>
-                      <SelectTrigger className="h-9 w-36 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="daily">Harian</SelectItem>
-                        <SelectItem value="weekly">Mingguan</SelectItem>
-                        <SelectItem value="monthly">Bulanan</SelectItem>
-                        <SelectItem value="yearly">Tahunan</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <CardHeader className="flex flex-col gap-3 pb-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <CardTitle className="text-base font-bold text-slate-800">
+                      Rekap Laporan Departemen {periodLabel}
+                    </CardTitle>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      {formatShortDate(selectedWeekDates[0])} - {formatShortDate(selectedWeekDates[6])}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={() => setSelectedDate((current) => addMonths(current, -1))}
+                      title="Bulan sebelumnya"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <div className="min-w-36 text-center text-sm font-bold text-slate-800">
+                      {formatMonthLabel(selectedDate)}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={() => setSelectedDate((current) => addMonths(current, 1))}
+                      title="Bulan berikutnya"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9"
+                      onClick={() => setSelectedDate(today)}
+                    >
+                      Hari Ini
+                    </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="overflow-x-auto">
+                <CardContent className="space-y-4">
                   <div className="mb-3 flex flex-wrap gap-2 text-xs text-slate-500">
                     <span className="rounded-md bg-slate-100 px-2 py-1 font-semibold">
                       Periode: {periodRangeText}
@@ -421,61 +561,143 @@ Terima kasih.`;
                     <div className="flex h-[285px] items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin text-[#06258d]" />
                     </div>
-                  ) : chartData.length > 0 ? (
-                    <div className="min-w-[560px] sm:min-w-0">
-                    <div className="h-[250px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={chartData}
-                        margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke="#e5e7eb"
-                          vertical={false}
-                        />
-                        <XAxis
-                          dataKey="name"
-                          interval={0}
-                          minTickGap={0}
-                          height={45}
-                          axisLine={false}
-                          tickLine={false}
-                          tick={<DepartmentAxisTick />}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 12, fill: "#94a3b8" }}
-                          axisLine={false}
-                          tickLine={false}
-                          allowDecimals={false}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            borderRadius: 12,
-                            borderColor: "#e5e7eb",
-                            fontSize: 12,
-                          }}
-                        />
-                        <Bar
-                          dataKey="Submit"
-                          fill="#06258d"
-                          radius={[5, 5, 0, 0]}
-                        />
-                        <Bar
-                          dataKey="Target"
-                          fill="#ef0012"
-                          radius={[5, 5, 0, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                    </div>
-                    <div className="mt-2 flex flex-wrap justify-center gap-2">
-                      {chartData.map((item) => (
-                        <span key={item.name} className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-                          {formatDepartmentChartLabel(item.name)}: {item.ringkasan}
-                        </span>
-                      ))}
-                    </div>
+                  ) : weeklyDepartmentRows.length > 0 ? (
+                    <div className="grid gap-4 2xl:grid-cols-[280px_minmax(0,1fr)]">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="mb-3 grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-500">
+                          {WEEKDAY_LABELS.map((day) => (
+                            <div key={day}>{day}</div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                          {monthGridDates.map((day) => {
+                            const isSelected = day.date === selectedDate;
+                            const isInSelectedWeek = selectedWeekSet.has(day.date);
+                            const dayRate = dateRateByDate.get(day.date);
+
+                            return (
+                              <button
+                                key={day.date}
+                                type="button"
+                                onClick={() => setSelectedDate(day.date)}
+                                className={cn(
+                                  "min-h-14 rounded-md border p-1 text-left transition hover:border-blue-300 hover:bg-white",
+                                  day.isCurrentMonth ? "border-slate-200 bg-white" : "border-transparent bg-slate-100 text-slate-400",
+                                  isInSelectedWeek && "border-blue-200 bg-blue-50",
+                                  isSelected && "border-blue-500 bg-white shadow-sm ring-1 ring-blue-500",
+                                )}
+                              >
+                                <span className="block text-xs font-bold">{day.day}</span>
+                                {day.isCurrentMonth && dayRate !== undefined && dayRate !== null && (
+                                  <span className={cn(
+                                    "mt-1 inline-flex rounded px-1 text-[10px] font-black",
+                                    dayRate >= 90
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : dayRate > 0
+                                        ? "bg-amber-100 text-amber-700"
+                                        : "bg-red-100 text-red-700",
+                                  )}>
+                                    {dayRate}%
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 space-y-3">
+                        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+                          <div className="relative flex-1">
+                            <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <Input
+                              value={departmentSearch}
+                              onChange={(event) => setDepartmentSearch(event.target.value)}
+                              placeholder="Cari departemen..."
+                              className="h-9 pl-9"
+                            />
+                          </div>
+                          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                            <SelectTrigger className="h-9 lg:w-52">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Semua Departemen</SelectItem>
+                              {departmentOptions.map((department) => (
+                                <SelectItem key={department.value} value={department.value}>
+                                  {department.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="sticky-scroll-area max-h-[360px] overflow-auto rounded-lg border border-slate-200">
+                          <table className="w-full min-w-[760px] text-sm">
+                            <thead className="sticky top-0 z-20 bg-slate-100">
+                              <tr className="border-b border-slate-200">
+                                <th className="sticky left-0 z-30 bg-slate-100 px-4 py-3 text-left text-xs font-bold text-slate-600">
+                                  Departemen
+                                </th>
+                                {selectedWeekDates.map((date, index) => (
+                                  <th key={date} className="px-3 py-3 text-center text-xs font-bold text-slate-600">
+                                    <span className="block">{WEEKDAY_LABELS[index]}</span>
+                                    <span className="block text-[11px] font-semibold text-slate-400">
+                                      {formatShortDate(date)}
+                                    </span>
+                                  </th>
+                                ))}
+                                <th className="px-4 py-3 text-center text-xs font-bold text-slate-600">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredDepartmentRows.length === 0 ? (
+                                <tr>
+                                  <td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-500">
+                                    Tidak ada departemen sesuai filter.
+                                  </td>
+                                </tr>
+                              ) : (
+                                filteredDepartmentRows.map((row) => (
+                                  <tr key={row.departmentId} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                                    <td className="sticky left-0 z-10 bg-white px-4 py-3">
+                                      <p className="font-bold text-slate-800">{row.displayName}</p>
+                                      <p className="text-xs text-slate-500">{row.departmentName}</p>
+                                    </td>
+                                    {selectedWeekDates.map((date) => {
+                                      const day = row.days.get(date) ?? { submitted: 0, expected: 0 };
+                                      const status = getDepartmentDayStatus(day.submitted, day.expected);
+                                      const StatusIcon = status.icon;
+
+                                      return (
+                                        <td key={date} className="px-3 py-3 text-center">
+                                          <span
+                                            className={cn(
+                                              "mx-auto inline-flex h-8 w-8 items-center justify-center rounded-full border",
+                                              status.className,
+                                            )}
+                                            title={`${status.label}: ${day.submitted}/${day.expected}`}
+                                          >
+                                            <StatusIcon className="h-4 w-4" />
+                                          </span>
+                                          <span className="mt-1 block text-[11px] font-semibold text-slate-500">
+                                            {day.expected > 0 ? `${day.submitted}/${day.expected}` : "-"}
+                                          </span>
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="px-4 py-3 text-center">
+                                      <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">
+                                        {row.submittedTotal}/{row.expectedTotal}
+                                      </Badge>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex h-[285px] items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
