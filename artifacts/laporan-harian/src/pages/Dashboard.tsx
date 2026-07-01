@@ -396,11 +396,11 @@ export default function Dashboard() {
           <>
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <StatCard
-                title={summary.scope === "personal" ? "Hari Kerja" : "Karyawan Office"}
-                value={summary.scope === "personal" ? summary.expectedWorkDays : summary.totalEmployees}
+                title="Target Submit (Periode)"
+                value={summary.expectedSubmissions}
                 icon={Users}
                 iconClass="bg-blue-50 text-blue-600"
-                description={summary.scope === "personal" ? "Denominator periode aktif" : "Wajib submit laporan"}
+                description={`${summary.totalEmployees} karyawan x ${summary.expectedWorkDays} hari kerja`}
               />
               <StatCard
                 title="Sudah Submit (Periode)"

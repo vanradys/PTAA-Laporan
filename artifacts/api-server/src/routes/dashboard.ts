@@ -105,6 +105,7 @@ router.get("/dashboard/summary", async (req, res) => {
       }).from(dailyReportsTable).where(and(
         inArray(dailyReportsTable.userId, scopedUserIds),
         inArray(dailyReportsTable.date, workingDates),
+        sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
       ))
     : [];
   const submittedCount = new Set(submittedReports.map((item) => `${item.userId}:${item.date}`)).size;
@@ -208,6 +209,7 @@ router.get("/dashboard/department-productivity", async (req, res) => {
         }).from(dailyReportsTable).where(and(
           inArray(dailyReportsTable.userId, employeeIds),
           inArray(dailyReportsTable.date, workingDates),
+          sql`lower(${dailyReportsTable.status}) not in ('draf', 'belum_submit')`,
         ))
       : [];
     const submittedCount = new Set(reports.map((item) => `${item.userId}:${item.date}`)).size;
