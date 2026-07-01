@@ -338,7 +338,7 @@ async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: num
   return tasksToCopy.length;
 }
 
-async function buildReportDetail(reportId: number) {
+async function buildReportDetail(reportId: number, options: { latestOnly?: boolean } = {}) {
   await ensureDailyTasksSchema();
 
   const reports = await db
@@ -367,10 +367,41 @@ async function buildReportDetail(reportId: number) {
   const r = reports[0];
 
   const tasks = await db
-    .select()
+    .select({
+      id: dailyTasksTable.id,
+      reportId: dailyTasksTable.reportId,
+      title: dailyTasksTable.title,
+      project: dailyTasksTable.project,
+      deadline: dailyTasksTable.deadline,
+      completionInputType: dailyTasksTable.completionInputType,
+      completionValue: dailyTasksTable.completionValue,
+      progress: dailyTasksTable.progress,
+      status: dailyTasksTable.status,
+      notes: dailyTasksTable.notes,
+      reviewStatus: dailyTasksTable.reviewStatus,
+      reviewComment: dailyTasksTable.reviewComment,
+      reviewedByUserId: dailyTasksTable.reviewedByUserId,
+      reviewedByName: dailyTasksTable.reviewedByName,
+      reviewedAt: dailyTasksTable.reviewedAt,
+      correctedAt: dailyTasksTable.correctedAt,
+      revisionSourceTaskId: dailyTasksTable.revisionSourceTaskId,
+      revisionWorkTaskId: dailyTasksTable.revisionWorkTaskId,
+      carryForwardSourceTaskId: dailyTasksTable.carryForwardSourceTaskId,
+      editCount: dailyTasksTable.editCount,
+      createdAt: dailyTasksTable.createdAt,
+      updatedAt: dailyTasksTable.updatedAt,
+      reportDate: dailyReportsTable.date,
+    })
     .from(dailyTasksTable)
-    .where(eq(dailyTasksTable.reportId, reportId))
-    .orderBy(dailyTasksTable.createdAt);
+    .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+    .where(options.latestOnly
+      ? and(
+          eq(dailyReportsTable.userId, r.userId),
+          lte(dailyReportsTable.date, r.date),
+        )
+      : eq(dailyTasksTable.reportId, reportId))
+    .orderBy(dailyReportsTable.date, dailyTasksTable.createdAt);
+  const visibleTasks = options.latestOnly ? getLatestTasksByProjectTitle(tasks) : tasks;
 
   const comments = await db
     .select({
@@ -389,9 +420,12 @@ async function buildReportDetail(reportId: number) {
 
   const dateObj = new Date(r.date + "T00:00:00");
   const dayName = DAY_NAMES[dateObj.getDay()];
-  const avgProgress = tasks.length > 0
-    ? Math.round(tasks.reduce((s, t) => s + t.progress, 0) / tasks.length)
+  const avgProgress = visibleTasks.length > 0
+    ? Math.round(visibleTasks.reduce((s, t) => s + t.progress, 0) / visibleTasks.length)
     : 0;
+  const revisionCount = visibleTasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length;
+  const correctedCount = visibleTasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length;
+  const reviewedCount = visibleTasks.filter((task) => task.reviewStatus === "direview").length;
 
   return {
     id: r.id,
@@ -407,14 +441,14 @@ async function buildReportDetail(reportId: number) {
     tomorrowPlan: r.tomorrowPlan ?? null,
     status: getMonitoringReviewStatus(
       r.status,
-      tasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length,
-      tasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length,
-      tasks.filter((task) => task.reviewStatus === "direview").length,
+      revisionCount,
+      correctedCount,
+      reviewedCount,
     ),
     storedStatus: r.status,
-    revisionCount: tasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length,
+    revisionCount,
     submittedAt: getSubmittedAtFallback(r.status, r.updatedAt),
-    tasks: tasks.map(t => {
+    tasks: visibleTasks.map(t => {
       const editCount = t.editCount ?? 0;
 
       return {
@@ -437,7 +471,7 @@ async function buildReportDetail(reportId: number) {
         revisionSourceTaskId: t.revisionSourceTaskId ?? null,
         revisionWorkTaskId: t.revisionWorkTaskId ?? null,
         carryForwardSourceTaskId: t.carryForwardSourceTaskId ?? null,
-        reportDate: r.date,
+        reportDate: t.reportDate,
         editCount,
         remainingActions: getRemainingActions(editCount),
         isLocked: isTaskLockedByCount(editCount),
@@ -451,7 +485,7 @@ async function buildReportDetail(reportId: number) {
       userName: c.userName ?? "", userRole: c.userRole ?? "",
       comment: c.comment, createdAt: c.createdAt.toISOString(),
     })),
-    taskCount: tasks.length,
+    taskCount: visibleTasks.length,
     avgProgress,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
@@ -672,24 +706,40 @@ router.get("/reports", async (req, res) => {
       }
     }
 
-    const reportIds = reportsToday.map((report) => report.id);
     let tasksByReport: Record<number, { count: number; avg: number; revisions: number; corrected: number; reviewed: number }> = {};
 
-    if (reportIds.length > 0) {
-      const taskStats = await db
+    if (reportsToday.length > 0) {
+      const userTaskRows = await db
         .select({
           reportId: dailyTasksTable.reportId,
-          count: sql<number>`count(*)::int`,
-          avg: sql<number>`coalesce(avg(${dailyTasksTable.progress}), 0)::int`,
-          revisions: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} in ('revisi', 'sedang_diperbaiki'))::int`,
-          corrected: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} in ('sudah_diperbaiki', 'selesai'))::int`,
-          reviewed: sql<number>`count(*) filter (where ${dailyTasksTable.reviewStatus} = 'direview')::int`,
+          userId: dailyReportsTable.userId,
+          title: dailyTasksTable.title,
+          project: dailyTasksTable.project,
+          progress: dailyTasksTable.progress,
+          reviewStatus: dailyTasksTable.reviewStatus,
+          reportDate: dailyReportsTable.date,
+          createdAt: dailyTasksTable.createdAt,
+          updatedAt: dailyTasksTable.updatedAt,
         })
         .from(dailyTasksTable)
-        .where(inArray(dailyTasksTable.reportId, reportIds))
-        .groupBy(dailyTasksTable.reportId);
+        .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+        .where(and(
+          inArray(dailyReportsTable.userId, activeUserIds),
+          lte(dailyReportsTable.date, date),
+        ));
 
-      tasksByReport = Object.fromEntries(taskStats.map((item) => [item.reportId, item]));
+      tasksByReport = Object.fromEntries(reportsToday.map((report) => {
+        const latestTasks = getLatestTasksByProjectTitle(
+          userTaskRows.filter((task) => task.userId === report.userId && task.reportDate <= report.date),
+        );
+        return [report.id, {
+          count: latestTasks.length,
+          avg: latestTasks.length ? Math.round(latestTasks.reduce((sum, task) => sum + task.progress, 0) / latestTasks.length) : 0,
+          revisions: latestTasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length,
+          corrected: latestTasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length,
+          reviewed: latestTasks.filter((task) => task.reviewStatus === "direview").length,
+        }];
+      }));
     }
 
     const rows = activeUsers
@@ -1260,7 +1310,7 @@ router.get("/reports/:id", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const id = parseInt(req.params.id);
-  const detail = await buildReportDetail(id);
+  const detail = await buildReportDetail(id, { latestOnly: true });
   if (!detail) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   res.json(detail);
 });
