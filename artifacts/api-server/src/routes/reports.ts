@@ -709,10 +709,10 @@ router.get("/reports", async (req, res) => {
     let tasksByReport: Record<number, { count: number; avg: number; revisions: number; corrected: number; reviewed: number }> = {};
 
     if (reportsToday.length > 0) {
+      const reportIdsToday = reportsToday.map((report) => report.id);
       const userTaskRows = await db
         .select({
           reportId: dailyTasksTable.reportId,
-          userId: dailyReportsTable.userId,
           title: dailyTasksTable.title,
           project: dailyTasksTable.project,
           progress: dailyTasksTable.progress,
@@ -723,14 +723,11 @@ router.get("/reports", async (req, res) => {
         })
         .from(dailyTasksTable)
         .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
-        .where(and(
-          inArray(dailyReportsTable.userId, activeUserIds),
-          lte(dailyReportsTable.date, date),
-        ));
+        .where(inArray(dailyTasksTable.reportId, reportIdsToday));
 
       tasksByReport = Object.fromEntries(reportsToday.map((report) => {
         const latestTasks = getLatestTasksByProjectTitle(
-          userTaskRows.filter((task) => task.userId === report.userId && task.reportDate <= report.date),
+          userTaskRows.filter((task) => task.reportId === report.id),
         );
         return [report.id, {
           count: latestTasks.length,
@@ -832,12 +829,9 @@ router.get("/reports", async (req, res) => {
   let tasksByReport: Record<number, { count: number; avg: number; revisions: number; corrected: number; reviewed: number }> = {};
 
   if (reportIds.length > 0) {
-    const userIds = [...new Set(reports.map((report) => report.userId))];
-    const maxReportDate = reports.reduce((latest, report) => report.date > latest ? report.date : latest, reports[0].date);
     const userTaskRows = await db
       .select({
         reportId: dailyTasksTable.reportId,
-        userId: dailyReportsTable.userId,
         title: dailyTasksTable.title,
         project: dailyTasksTable.project,
         progress: dailyTasksTable.progress,
@@ -848,14 +842,11 @@ router.get("/reports", async (req, res) => {
       })
       .from(dailyTasksTable)
       .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
-      .where(and(
-        inArray(dailyReportsTable.userId, userIds),
-        lte(dailyReportsTable.date, maxReportDate),
-      ));
+      .where(inArray(dailyTasksTable.reportId, reportIds));
 
     tasksByReport = Object.fromEntries(reports.map((report) => {
       const latestTasks = getLatestTasksByProjectTitle(
-        userTaskRows.filter((task) => task.userId === report.userId && task.reportDate <= report.date),
+        userTaskRows.filter((task) => task.reportId === report.id),
       );
       return [report.id, {
         count: latestTasks.length,
@@ -1310,7 +1301,7 @@ router.get("/reports/:id", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const id = parseInt(req.params.id);
-  const detail = await buildReportDetail(id, { latestOnly: true });
+  const detail = await buildReportDetail(id);
   if (!detail) { res.status(404).json({ error: "Laporan tidak ditemukan" }); return; }
   res.json(detail);
 });
