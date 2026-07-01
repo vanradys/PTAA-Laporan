@@ -1657,7 +1657,7 @@ useEffect(() => {
                               <Label className="text-xs">Job yang dikerjakan</Label>
                                 <Input
                                   defaultValue={task.notes ?? ""}
-                                  disabled={taskLocked || isCarryForwardTask}
+                                  disabled={taskLocked}
                                   onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "notes", e.target.value) : handleUpdateExistingTask(task.id, "notes", e.target.value)}
                                   className="h-8 text-sm"
                                   placeholder="Catatan opsional..."
@@ -1755,7 +1755,7 @@ useEffect(() => {
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Job yang dikerjakan</Label>
-                        <Input value={task.notes} onChange={e => updateNewTask(task.id, "notes", e.target.value)} placeholder="Catatan opsional..." disabled={isCarryForwardTask} className="h-8 text-sm" />
+                        <Input value={task.notes} onChange={e => updateNewTask(task.id, "notes", e.target.value)} placeholder="Catatan opsional..." className="h-8 text-sm" />
                       </div>
                     </div>
                     );

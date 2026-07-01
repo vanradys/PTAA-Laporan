@@ -383,21 +383,25 @@ export default function DetailLaporan() {
               <table className="w-full min-w-[1120px] table-fixed text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    <th className="w-[16%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Tugas</th>
+                    <th className="w-[5%] text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">No.</th>
+                    <th className="w-[14%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Nama Tugas</th>
                     <th className="w-[12%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Project</th>
-                    <th className="w-[11%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diberikan</th>
-                    <th className="w-[11%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diselesaikan</th>
-                    <th className="w-[13%] text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
-                    <th className="w-[13%] text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
+                    <th className="w-[10%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diberikan</th>
+                    <th className="w-[10%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Tanggal Tugas Diselesaikan</th>
+                    <th className="w-[12%] text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Status</th>
+                    <th className="w-[12%] text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground">Progress</th>
                     <th className="w-[14%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Job yang dikerjakan</th>
-                    <th className="w-[10%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Revisi</th>
+                    <th className="w-[11%] text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground">Review / Revisi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedTasks.map((task) => {
+                  {displayedTasks.map((task, index) => {
                     const ts = TASK_STATUSES[task.status] ?? TASK_STATUSES.belum_mulai;
                     return (
                       <tr key={task.id} className="border-b border-border last:border-0">
+                        <td className="px-4 py-3 align-top text-center text-sm font-semibold text-muted-foreground">
+                          {index + 1}
+                        </td>
                         <td className="px-4 py-3 align-top font-medium text-foreground">
                           <div className="whitespace-pre-wrap break-words">{task.title}</div>
                           {task.reportDate && (
