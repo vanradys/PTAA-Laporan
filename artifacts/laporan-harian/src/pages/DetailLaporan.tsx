@@ -71,6 +71,8 @@ interface Task {
   reviewedByName?: string | null;
   revisionWorkTaskId?: number | null;
   reportDate?: string | null;
+  firstReportDate?: string | null;
+  deliveredReportDate?: string | null;
 }
 
 interface Comment {
@@ -81,6 +83,25 @@ interface Comment {
   comment: string;
   createdAt: string;
 }
+
+const isDeliveredStatus = (status: string) => ["delivered", "selesai"].includes(status.toLowerCase());
+
+const formatShortTaskDate = (value?: string | null) => {
+  if (!value) return "-";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const getTaskStartDate = (task: Task) => task.firstReportDate ?? task.reportDate ?? task.deadline ?? null;
+
+const getTaskDeliveredDate = (task: Task) => (
+  task.deliveredReportDate ?? (isDeliveredStatus(task.status) ? task.completionValue ?? null : null)
+);
+
+const getTaskReportRangeText = (task: Task) => {
+  return `${formatShortTaskDate(getTaskStartDate(task))} s/d ${formatShortTaskDate(getTaskDeliveredDate(task))}`;
+};
 
 export default function DetailLaporan() {
   const { id } = useParams<{ id: string }>();
@@ -256,7 +277,7 @@ export default function DetailLaporan() {
   const comments: Comment[] = r.comments ?? [];
   const selectedTaskStatus = TASK_STATUS_FILTER_OPTIONS.find((item) => item.value === taskStatusFilter);
   const getTaskSortTime = (task: Task) => {
-    const value = task.reportDate || task.deadline || task.completionValue;
+    const value = getTaskStartDate(task) || task.completionValue;
     const time = value ? new Date(`${value}T00:00:00`).getTime() : Number.NaN;
     return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
   };
@@ -404,15 +425,13 @@ export default function DetailLaporan() {
                         </td>
                         <td className="px-4 py-3 align-top font-medium text-foreground">
                           <div className="whitespace-pre-wrap break-words">{task.title}</div>
-                          {task.reportDate && (
-                            <p className="mt-1 text-xs font-normal text-muted-foreground">
-                              Laporan {new Date(task.reportDate + "T00:00:00").toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
-                            </p>
-                          )}
+                          <p className="mt-1 text-xs font-normal text-muted-foreground">
+                            {getTaskReportRangeText(task)}
+                          </p>
                         </td>
                         <td className="px-4 py-3 align-top text-muted-foreground"><div className="whitespace-pre-wrap break-words">{task.project ?? "—"}</div></td>
-                        <td className="px-4 py-3 align-top text-muted-foreground">{task.deadline ?? "-"}</td>
-                        <td className="px-4 py-3 align-top text-muted-foreground">{task.completionValue ?? "-"}</td>
+                        <td className="px-4 py-3 align-top text-muted-foreground">{getTaskStartDate(task) ?? "-"}</td>
+                        <td className="px-4 py-3 align-top text-muted-foreground">{getTaskDeliveredDate(task) ?? "-"}</td>
                         <td className="px-4 py-3 align-top text-center">
                           <span className={`inline-flex max-w-full whitespace-normal break-words text-xs px-2 py-0.5 rounded-full border font-medium ${ts.color}`}>
                             {ts.label}

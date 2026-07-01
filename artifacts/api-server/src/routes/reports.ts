@@ -262,6 +262,36 @@ function getLatestTasksByProjectTitle<T extends {
   return Array.from(latestByKey.values());
 }
 
+function getTaskReportDateRanges<T extends {
+  title: string;
+  project?: string | null;
+  reportDate?: string | null;
+  status?: string | null;
+}>(tasks: T[]) {
+  const ranges = new Map<string, { firstReportDate: string | null; deliveredReportDate: string | null }>();
+
+  for (const task of tasks) {
+    const reportDate = task.reportDate ?? null;
+    if (!reportDate) continue;
+
+    const key = getTaskIdentityKey(task);
+    const current = ranges.get(key) ?? { firstReportDate: null, deliveredReportDate: null };
+
+    if (!current.firstReportDate || reportDate < current.firstReportDate) {
+      current.firstReportDate = reportDate;
+    }
+
+    const status = String(task.status ?? "").toLowerCase();
+    if ((status === "delivered" || status === "selesai") && (!current.deliveredReportDate || reportDate < current.deliveredReportDate)) {
+      current.deliveredReportDate = reportDate;
+    }
+
+    ranges.set(key, current);
+  }
+
+  return ranges;
+}
+
 async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: number, reportDate: string) {
   await ensureDailyTasksSchema();
 
@@ -402,6 +432,7 @@ async function buildReportDetail(reportId: number, options: { latestOnly?: boole
       : eq(dailyTasksTable.reportId, reportId))
     .orderBy(dailyReportsTable.date, dailyTasksTable.createdAt);
   const visibleTasks = options.latestOnly ? getLatestTasksByProjectTitle(tasks) : tasks;
+  const taskReportDateRanges = getTaskReportDateRanges(tasks);
 
   const comments = await db
     .select({
@@ -450,6 +481,7 @@ async function buildReportDetail(reportId: number, options: { latestOnly?: boole
     submittedAt: getSubmittedAtFallback(r.status, r.updatedAt),
     tasks: visibleTasks.map(t => {
       const editCount = t.editCount ?? 0;
+      const taskRange = taskReportDateRanges.get(getTaskIdentityKey(t));
 
       return {
         id: t.id,
@@ -472,6 +504,8 @@ async function buildReportDetail(reportId: number, options: { latestOnly?: boole
         revisionWorkTaskId: t.revisionWorkTaskId ?? null,
         carryForwardSourceTaskId: t.carryForwardSourceTaskId ?? null,
         reportDate: t.reportDate,
+        firstReportDate: taskRange?.firstReportDate ?? t.reportDate ?? null,
+        deliveredReportDate: taskRange?.deliveredReportDate ?? null,
         editCount,
         remainingActions: getRemainingActions(editCount),
         isLocked: isTaskLockedByCount(editCount),
@@ -570,6 +604,7 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
     .orderBy(reportCommentsTable.createdAt);
 
   const latestTasks = getLatestTasksByProjectTitle(tasks);
+  const taskReportDateRanges = getTaskReportDateRanges(tasks);
   const revisionCount = latestTasks.filter((task) => ["revisi", "sedang_diperbaiki"].includes(task.reviewStatus ?? "")).length;
   const correctedCount = latestTasks.filter((task) => ["sudah_diperbaiki", "selesai"].includes(task.reviewStatus ?? "")).length;
   const reviewedCount = latestTasks.filter((task) => task.reviewStatus === "direview").length;
@@ -599,11 +634,14 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
     submittedAt: getSubmittedAtFallback(latestReport.status, latestReport.updatedAt),
     tasks: latestTasks.map((task) => {
       const editCount = task.editCount ?? 0;
+      const taskRange = taskReportDateRanges.get(getTaskIdentityKey(task));
 
       return {
         id: task.id,
         reportId: task.reportId,
         reportDate: task.reportDate,
+        firstReportDate: taskRange?.firstReportDate ?? task.reportDate ?? null,
+        deliveredReportDate: taskRange?.deliveredReportDate ?? null,
         title: task.title,
         project: task.project ?? null,
         deadline: task.deadline ?? null,
