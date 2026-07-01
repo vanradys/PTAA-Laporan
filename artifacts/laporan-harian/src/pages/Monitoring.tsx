@@ -618,7 +618,7 @@ export default function Monitoring() {
                       const detailParams = new URLSearchParams({
                         returnTo: monitoringReturnTo,
                       });
-                      if (filters.dateFrom && filters.dateTo && filters.dateFrom !== filters.dateTo) {
+                      if (filters.dateFrom && filters.dateTo) {
                         detailParams.set("periodUserId", String(report.userId));
                         detailParams.set("dateFrom", filters.dateFrom);
                         detailParams.set("dateTo", filters.dateTo);
