@@ -329,21 +329,13 @@ function getTaskReportDateRanges<T extends {
   return normalizedRanges;
 }
 
-async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: number, reportDate: string) {
+async function getLatestUnfinishedTasksBeforeReport(userId: number, reportDate: string) {
   await ensureDailyTasksSchema();
 
-  const [sourceReport] = await db
-    .select({ id: dailyReportsTable.id, date: dailyReportsTable.date })
-    .from(dailyReportsTable)
-    .where(and(eq(dailyReportsTable.userId, userId), sql`${dailyReportsTable.date} < ${reportDate}`))
-    .orderBy(desc(dailyReportsTable.date), desc(dailyReportsTable.createdAt))
-    .limit(1);
-
-  if (!sourceReport) return 0;
-
-  const sourceTasks = await db
+  const historicalTasks = await db
     .select({
       id: dailyTasksTable.id,
+      reportId: dailyTasksTable.reportId,
       title: dailyTasksTable.title,
       project: dailyTasksTable.project,
       deadline: dailyTasksTable.deadline,
@@ -352,13 +344,29 @@ async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: num
       progress: dailyTasksTable.progress,
       status: dailyTasksTable.status,
       notes: dailyTasksTable.notes,
+      editCount: dailyTasksTable.editCount,
+      createdAt: dailyTasksTable.createdAt,
+      updatedAt: dailyTasksTable.updatedAt,
+      reportDate: dailyReportsTable.date,
     })
     .from(dailyTasksTable)
+    .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
     .where(and(
-      eq(dailyTasksTable.reportId, sourceReport.id),
-      sql`lower(${dailyTasksTable.status}) not in ('selesai', 'delivered')`,
-    ));
+      eq(dailyReportsTable.userId, userId),
+      sql`${dailyReportsTable.date} < ${reportDate}`,
+    ))
+    .orderBy(dailyReportsTable.date, dailyTasksTable.createdAt);
 
+  return getLatestTasksByProjectTitle(historicalTasks).filter((task) =>
+    task.title.trim().length > 0 &&
+    !["selesai", "delivered"].includes(String(task.status).toLowerCase()),
+  );
+}
+
+async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: number, reportDate: string) {
+  await ensureDailyTasksSchema();
+
+  const sourceTasks = await getLatestUnfinishedTasksBeforeReport(userId, reportDate);
   if (sourceTasks.length === 0) return 0;
 
   const targetTasks = await db
@@ -1180,6 +1188,14 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
     .orderBy(desc(dailyReportsTable.date), desc(dailyReportsTable.createdAt))
     .limit(1);
 
+  const tasks = await getLatestUnfinishedTasksBeforeReport(user.id, today);
+  const latestTaskSource = tasks.reduce<typeof tasks[number] | null>((latest, task) => {
+    if (!latest) return task;
+    if ((task.reportDate ?? "") > (latest.reportDate ?? "")) return task;
+    if ((task.reportDate ?? "") === (latest.reportDate ?? "") && task.createdAt.getTime() > latest.createdAt.getTime()) return task;
+    return latest;
+  }, null);
+
   if (!reports[0]) {
     res.json({
       tasks: [],
@@ -1191,27 +1207,6 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
     });
     return;
   }
-
-  const tasks = await db
-    .select({
-      id: dailyTasksTable.id,
-      reportId: dailyTasksTable.reportId,
-      title: dailyTasksTable.title,
-      project: dailyTasksTable.project,
-      deadline: dailyTasksTable.deadline,
-      completionInputType: dailyTasksTable.completionInputType,
-      completionValue: dailyTasksTable.completionValue,
-      progress: dailyTasksTable.progress,
-      status: dailyTasksTable.status,
-      notes: dailyTasksTable.notes,
-      editCount: dailyTasksTable.editCount,
-      createdAt: dailyTasksTable.createdAt,
-    })
-    .from(dailyTasksTable)
-    .where(and(
-      eq(dailyTasksTable.reportId, reports[0].id),
-      sql`lower(${dailyTasksTable.status}) not in ('selesai', 'delivered')`
-    ));
 
   res.json({
     tasks: tasks.map(t => {
@@ -1232,11 +1227,12 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
       remainingActions: getRemainingActions(editCount),
       isLocked: isTaskLockedByCount(editCount),
       isDelay: isTaskDelay(t.deadline, t.status),
+      reportDate: t.reportDate,
       createdAt: t.createdAt.toISOString(),
     };
   }),
-    sourceReportId: reports[0].id,
-    sourceReportDate: reports[0].date,
+    sourceReportId: latestTaskSource?.reportId ?? reports[0].id,
+    sourceReportDate: latestTaskSource?.reportDate ?? reports[0].date,
     requestedYesterdayDate: requiredPreviousDate,
     missingYesterdayDate: !isWeekendReportDate(today) && reports[0].date !== requiredPreviousDate ? requiredPreviousDate : null,
     yesterdayReportMissing: reports[0].date !== requiredPreviousDate,

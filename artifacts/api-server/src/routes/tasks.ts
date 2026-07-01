@@ -547,6 +547,23 @@ router.post("/reports/:id/tasks", async (req, res) => {
   const carryForwardSourceTaskId = Number(req.body?.carryForwardSourceTaskId);
   if (!title || !title.trim()) { res.status(400).json({ error: "Nama tugas diperlukan" }); return; }
 
+  if (Number.isInteger(carryForwardSourceTaskId) && carryForwardSourceTaskId > 0) {
+    const [existingCarryForwardTask] = await db
+      .select()
+      .from(dailyTasksTable)
+      .where(and(
+        eq(dailyTasksTable.reportId, reportId),
+        sql`trim(${dailyTasksTable.title}) = ${String(title).trim()}`,
+        sql`trim(coalesce(${dailyTasksTable.project}, '')) = ${String(project ?? "").trim()}`,
+      ))
+      .limit(1);
+
+    if (existingCarryForwardTask) {
+      res.json(buildTaskResponse(existingCarryForwardTask));
+      return;
+    }
+  }
+
   const [task] = await db.insert(dailyTasksTable).values({
     reportId,
     title,
