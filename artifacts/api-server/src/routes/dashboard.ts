@@ -18,7 +18,7 @@ import { getUserFromToken } from "./auth";
 import { getJakartaDateString, reportingUserCondition } from "../services/dailyReportReminder";
 
 const router = Router();
-const COMPANY_DASHBOARD_ROLES = new Set(["admin", "direktur", "director", "dir"]);
+const COMPANY_DASHBOARD_ROLES = new Set(["admin", "direktur", "director", "dir", "monitoring_dummy", "monitoring", "monitor"]);
 const COMPLETED_TASK_STATUSES = new Set(["delivered", "selesai"]);
 const PENDING_TASK_STATUSES = new Set(["belum_mulai", "input_data_proses", "proses", "pending"]);
 
