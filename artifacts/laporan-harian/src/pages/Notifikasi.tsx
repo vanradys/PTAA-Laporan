@@ -35,6 +35,7 @@ function getNotificationTarget(notif: NotifItem) {
 
   if (notif.relatedTodoId) return `/to-do-list?task=${notif.relatedTodoId}`;
   if (notif.relatedReportId) return `/laporan/${notif.relatedReportId}`;
+  if (notif.type === "po_note") return "/jadwal-project";
   if (notif.type === "attendance") {
     return "/absensi";
   }

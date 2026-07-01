@@ -100,7 +100,8 @@ const getTaskDeliveredDate = (task: Task) => (
 );
 
 const getTaskReportRangeText = (task: Task) => {
-  return `sejak tanggal ${formatShortTaskDate(getTaskStartDate(task))} - tanggal ${formatShortTaskDate(getTaskDeliveredDate(task))}`;
+  const deliveredDate = getTaskDeliveredDate(task);
+  return `sejak ${formatShortTaskDate(getTaskStartDate(task))} s/d ${deliveredDate ? formatShortTaskDate(deliveredDate) : "belum delivered"}`;
 };
 
 export default function DetailLaporan() {
@@ -430,8 +431,8 @@ export default function DetailLaporan() {
                           </p>
                         </td>
                         <td className="px-4 py-3 align-top text-muted-foreground"><div className="whitespace-pre-wrap break-words">{task.project ?? "—"}</div></td>
-                        <td className="px-4 py-3 align-top text-muted-foreground">{getTaskStartDate(task) ?? "-"}</td>
-                        <td className="px-4 py-3 align-top text-muted-foreground">{getTaskDeliveredDate(task) ?? "-"}</td>
+                        <td className="px-4 py-3 align-top text-muted-foreground">{task.deadline ?? "-"}</td>
+                        <td className="px-4 py-3 align-top text-muted-foreground">{task.completionValue ?? "-"}</td>
                         <td className="px-4 py-3 align-top text-center">
                           <span className={`inline-flex max-w-full whitespace-normal break-words text-xs px-2 py-0.5 rounded-full border font-medium ${ts.color}`}>
                             {ts.label}

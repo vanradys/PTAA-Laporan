@@ -482,6 +482,9 @@ function getActivityActionLabel(action: string) {
   if (action === "updated") return "mengubah PO";
   if (action === "closed") return "menutup PO";
   if (action === "deleted") return "menghapus PO";
+  if (action === "note_created") return "menambah catatan PO";
+  if (action === "note_updated") return "mengubah catatan PO";
+  if (action === "note_deleted") return "menghapus catatan PO";
   return "mengubah PO";
 }
 
@@ -593,6 +596,7 @@ function normalizeFlexibleSearch(value: unknown) {
 interface PoNote {
   id: number;
   poId: number;
+  userId?: number | null;
   userName: string;
   note: string;
   createdAt: string;
@@ -682,11 +686,12 @@ export default function JadwalProject() {
     baseCanUpdateProjectProgress &&
     canViewProjectSchedule &&
     canEdit("po_edit_customer_timeline", true);
-  const canOpenPoEdit = canEditPoData || canUpdateProjectProgress || canManageCustomerTimeline;
-  const canAddPoNotes =
-    baseCanEditPoData && canViewProjectSchedule && canEdit("po_add_notes", true);
-  const canManagePoNotes =
-    canViewProjectSchedule && canEdit("po_manage_notes", role === "admin");
+  const canAddPoNotes = Boolean(user) && canViewProjectSchedule;
+  const canDeleteAnyPoNote =
+    canViewProjectSchedule &&
+    ["admin", "direktur", "director", "dir", "monitoring_dummy", "monitoring", "monitor"].includes(role);
+  const canSavePoChanges = canEditPoData || canUpdateProjectProgress || canManageCustomerTimeline;
+  const canOpenPoEdit = canSavePoChanges || canAddPoNotes;
   const canViewPoNotes = canViewProjectSchedule;
   const hasFullPoAccess = ["admin", "direktur", "director", "dir"].includes(
     role,
@@ -881,6 +886,9 @@ export default function JadwalProject() {
   const poInternalComments = Array.isArray(internalPoComments)
     ? internalPoComments
     : [];
+  const canEditPoNote = (note: PoNote) => note.userId === user?.id;
+  const canDeletePoNote = (note: PoNote) =>
+    canDeleteAnyPoNote || note.userId === user?.id;
   const posRaw = (Array.isArray(poList) ? poList : []) as PoItem[];
   const allPosRaw = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
   const matchesDeliveryFilter = (po: PoItem) => {
@@ -1219,6 +1227,8 @@ export default function JadwalProject() {
   };
 
   const handleSave = async () => {
+    if (editingId && !canSavePoChanges) return;
+
     if (canEditPoData && (
       !form.noPo.trim() ||
       !form.namaProject.trim() ||
@@ -1269,6 +1279,7 @@ export default function JadwalProject() {
     }
     setFormLoading(true);
     try {
+      const shouldRefreshNotifications = !editingId && Boolean(form.catatan.trim());
       const timelinePayload = form.trackingTimeline
         .map((item) => ({
           date: item.date.trim(),
@@ -1317,6 +1328,9 @@ export default function JadwalProject() {
       }
       closeForm();
       invalidate();
+      if (shouldRefreshNotifications) {
+        queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Gagal menyimpan PO";
@@ -1428,6 +1442,8 @@ export default function JadwalProject() {
       });
       setForm((current) => ({ ...current, catatan: "" }));
       await refetchFormPoNotes();
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() });
       toast({ title: "Berhasil", description: "Catatan PO ditambahkan" });
     } catch (error) {
       toast({
@@ -1439,6 +1455,7 @@ export default function JadwalProject() {
   };
 
   const handleEditPoNote = async (note: PoNote) => {
+    if (!canEditPoNote(note)) return;
     const nextNote = window.prompt("Edit catatan PO", note.note)?.trim();
     if (!editingId || !nextNote || nextNote === note.note) return;
     await apiRequest(`/api/po/${editingId}/notes/${note.id}`, {
@@ -1447,12 +1464,15 @@ export default function JadwalProject() {
       body: JSON.stringify({ note: nextNote }),
     });
     await refetchFormPoNotes();
+    invalidate();
   };
 
   const handleDeletePoNote = async (note: PoNote) => {
+    if (!canDeletePoNote(note)) return;
     if (!editingId || !window.confirm("Hapus catatan PO ini?")) return;
     await apiRequest(`/api/po/${editingId}/notes/${note.id}`, { method: "DELETE" });
     await refetchFormPoNotes();
+    invalidate();
   };
 
   const handleExportExcel = async () => {
@@ -3496,14 +3516,18 @@ export default function JadwalProject() {
                               {note.userName} • {new Date(note.createdAt).toLocaleString("id-ID")}
                             </p>
                           </div>
-                          {canManagePoNotes && (
+                          {(canEditPoNote(note) || canDeletePoNote(note)) && (
                             <div className="flex">
-                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditPoNote(note)}>
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                              <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-600" onClick={() => handleDeletePoNote(note)}>
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
+                              {canEditPoNote(note) && (
+                                <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditPoNote(note)}>
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              )}
+                              {canDeletePoNote(note) && (
+                                <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-600" onClick={() => handleDeletePoNote(note)}>
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -3544,7 +3568,7 @@ export default function JadwalProject() {
               >
                 Batal
               </Button>
-              <Button onClick={handleSave} disabled={formLoading}>
+              <Button onClick={handleSave} disabled={formLoading || (Boolean(editingId) && !canSavePoChanges)}>
                 {formLoading ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 ) : null}

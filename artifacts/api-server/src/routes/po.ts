@@ -153,6 +153,7 @@ const PO_MANAGE_DEPARTMENT_NAMES = ["finance", "marketing", "general affairs"];
 const PO_ACTIVITY_VISIBLE_ROLES = ["admin", "direktur", "director", "dir", "monitoring_dummy"];
 const PO_ACTIVITY_VISIBLE_DEPARTMENT_CODES = ["GA"];
 const PO_ACTIVITY_VISIBLE_DEPARTMENT_NAMES = ["general affairs"];
+const PO_NOTE_DELETE_ALL_ROLES = ["admin", "direktur", "director", "dir", "monitoring_dummy", "monitoring", "monitor"];
 
 function canManagePo(user?: {
   role?: string | null;
@@ -467,6 +468,52 @@ async function recordPoChange(options: {
     changedByUserId: options.user.id,
     changedByName: options.user.name ?? null,
   });
+}
+
+function canDeleteAnyPoNote(user?: { role?: string | null }) {
+  const role = String(user?.role ?? "").toLowerCase();
+  return PO_NOTE_DELETE_ALL_ROLES.includes(role);
+}
+
+function canMutateOwnPoNote(
+  user: { id: number },
+  note: { userId?: number | null },
+) {
+  return note.userId === user.id;
+}
+
+function summarizePoNote(note: string) {
+  const compact = note.replace(/\s+/g, " ").trim();
+  return compact.length > 90 ? `${compact.slice(0, 87)}...` : compact;
+}
+
+async function notifyPoNoteRecipients(options: {
+  po: Pick<typeof projectsPoTable.$inferSelect, "noPo" | "namaProject">;
+  fromName: string;
+  note: string;
+}) {
+  const recipients = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.isActive, true));
+
+  if (recipients.length === 0) return;
+
+  await db.insert(notificationsTable).values(recipients.map((recipient) => ({
+    userId: recipient.id,
+    type: "po_note",
+    title: `Catatan internal baru pada PO ${options.po.noPo}`,
+    message: `Catatan internal baru pada PO ${options.po.noPo}/${options.po.namaProject} dari ${options.fromName}: ${summarizePoNote(options.note)}.`,
+    isRead: false,
+  })));
+}
+
+function serializePoNote(note: typeof poNotesTable.$inferSelect) {
+  return {
+    ...note,
+    createdAt: note.createdAt.toISOString(),
+    updatedAt: note.updatedAt.toISOString(),
+  };
 }
 
 async function buildPoItem(
@@ -993,12 +1040,18 @@ router.post("/po", async (req, res) => {
     })
     .returning();
 
-  if (String(catatan ?? "").trim()) {
+  const initialNote = String(catatan ?? "").trim();
+  if (initialNote) {
     await db.insert(poNotesTable).values({
       poId: po.id,
       userId: user.id,
       userName: user.name ?? "User",
-      note: String(catatan).trim(),
+      note: initialNote,
+    });
+    await notifyPoNoteRecipients({
+      po,
+      fromName: user.name ?? "User",
+      note: initialNote,
     });
   }
 
@@ -1140,6 +1193,7 @@ router.get("/po/:id/notes", async (req, res) => {
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const poId = Number(req.params.id);
+  if (!Number.isInteger(poId)) { res.status(400).json({ error: "ID PO tidak valid" }); return; }
   const notes = await db.select().from(poNotesTable)
     .where(eq(poNotesTable.poId, poId))
     .orderBy(poNotesTable.createdAt);
@@ -1154,14 +1208,15 @@ router.post("/po/:id/notes", async (req, res) => {
   const token = req.cookies?.session_token;
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  if (!(await canEditByPermission(user, "po_add_notes"))) {
-    res.status(403).json({ error: "Tidak diizinkan menambah catatan PO" });
-    return;
-  }
   const poId = Number(req.params.id);
+  if (!Number.isInteger(poId)) { res.status(400).json({ error: "ID PO tidak valid" }); return; }
   const note = String(req.body?.note ?? "").trim();
   if (!note) { res.status(400).json({ error: "Isi catatan wajib diisi" }); return; }
-  const [po] = await db.select({ id: projectsPoTable.id }).from(projectsPoTable)
+  const [po] = await db.select({
+    id: projectsPoTable.id,
+    noPo: projectsPoTable.noPo,
+    namaProject: projectsPoTable.namaProject,
+  }).from(projectsPoTable)
     .where(eq(projectsPoTable.id, poId)).limit(1);
   if (!po) { res.status(404).json({ error: "PO tidak ditemukan" }); return; }
   const [created] = await db.insert(poNotesTable).values({
@@ -1170,39 +1225,109 @@ router.post("/po/:id/notes", async (req, res) => {
     userName: user.name ?? "User",
     note,
   }).returning();
-  res.status(201).json(created);
+  await recordPoChange({
+    poId,
+    noPo: po.noPo,
+    action: "note_created",
+    user,
+    changes: { catatan: { before: null, after: note } },
+  });
+  await notifyPoNoteRecipients({
+    po,
+    fromName: user.name ?? "User",
+    note,
+  });
+  res.status(201).json(serializePoNote(created));
 });
 
 router.patch("/po/:poId/notes/:noteId", async (req, res) => {
   const token = req.cookies?.session_token;
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  if (!(await canEditByPermission(user, "po_manage_notes"))) {
-    res.status(403).json({ error: "Tidak punya izin untuk mengedit catatan PO" }); return;
-  }
   const note = String(req.body?.note ?? "").trim();
   if (!note) { res.status(400).json({ error: "Isi catatan wajib diisi" }); return; }
+  const poId = Number(req.params.poId);
+  const noteId = Number(req.params.noteId);
+  if (!Number.isInteger(poId) || !Number.isInteger(noteId)) {
+    res.status(400).json({ error: "ID catatan PO tidak valid" });
+    return;
+  }
+  const [existing] = await db
+    .select({
+      id: poNotesTable.id,
+      poId: poNotesTable.poId,
+      userId: poNotesTable.userId,
+      note: poNotesTable.note,
+      noPo: projectsPoTable.noPo,
+    })
+    .from(poNotesTable)
+    .innerJoin(projectsPoTable, eq(poNotesTable.poId, projectsPoTable.id))
+    .where(and(
+      eq(poNotesTable.id, noteId),
+      eq(poNotesTable.poId, poId),
+    ))
+    .limit(1);
+  if (!existing) { res.status(404).json({ error: "Catatan tidak ditemukan" }); return; }
+  if (!canMutateOwnPoNote(user, existing)) {
+    res.status(403).json({ error: "Tidak punya izin untuk mengedit catatan PO ini" }); return;
+  }
   const [updated] = await db.update(poNotesTable).set({ note, updatedAt: new Date() })
     .where(and(
-      eq(poNotesTable.id, Number(req.params.noteId)),
-      eq(poNotesTable.poId, Number(req.params.poId)),
+      eq(poNotesTable.id, noteId),
+      eq(poNotesTable.poId, poId),
     )).returning();
   if (!updated) { res.status(404).json({ error: "Catatan tidak ditemukan" }); return; }
-  res.json(updated);
+  await recordPoChange({
+    poId,
+    noPo: existing.noPo,
+    action: "note_updated",
+    user,
+    changes: { catatan: { before: existing.note, after: note } },
+  });
+  res.json(serializePoNote(updated));
 });
 
 router.delete("/po/:poId/notes/:noteId", async (req, res) => {
   const token = req.cookies?.session_token;
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
-  if (!(await canEditByPermission(user, "po_manage_notes"))) {
-    res.status(403).json({ error: "Tidak punya izin untuk menghapus catatan PO" }); return;
+  const poId = Number(req.params.poId);
+  const noteId = Number(req.params.noteId);
+  if (!Number.isInteger(poId) || !Number.isInteger(noteId)) {
+    res.status(400).json({ error: "ID catatan PO tidak valid" });
+    return;
+  }
+  const [existing] = await db
+    .select({
+      id: poNotesTable.id,
+      poId: poNotesTable.poId,
+      userId: poNotesTable.userId,
+      note: poNotesTable.note,
+      noPo: projectsPoTable.noPo,
+    })
+    .from(poNotesTable)
+    .innerJoin(projectsPoTable, eq(poNotesTable.poId, projectsPoTable.id))
+    .where(and(
+      eq(poNotesTable.id, noteId),
+      eq(poNotesTable.poId, poId),
+    ))
+    .limit(1);
+  if (!existing) { res.status(404).json({ error: "Catatan tidak ditemukan" }); return; }
+  if (!canMutateOwnPoNote(user, existing) && !canDeleteAnyPoNote(user)) {
+    res.status(403).json({ error: "Tidak punya izin untuk menghapus catatan PO ini" }); return;
   }
   const [deleted] = await db.delete(poNotesTable).where(and(
-    eq(poNotesTable.id, Number(req.params.noteId)),
-    eq(poNotesTable.poId, Number(req.params.poId)),
+    eq(poNotesTable.id, noteId),
+    eq(poNotesTable.poId, poId),
   )).returning();
   if (!deleted) { res.status(404).json({ error: "Catatan tidak ditemukan" }); return; }
+  await recordPoChange({
+    poId,
+    noPo: existing.noPo,
+    action: "note_deleted",
+    user,
+    changes: { catatan: { before: existing.note, after: null } },
+  });
   res.json({ success: true });
 });
 

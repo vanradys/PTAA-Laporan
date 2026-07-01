@@ -312,7 +312,7 @@ export default function Dashboard() {
     }
     return true;
   });
-  const dashboardSummaryNotificationTypes = new Set(["todo", "report_comment", "revision", "review"]);
+  const dashboardSummaryNotificationTypes = new Set(["todo", "report_comment", "revision", "review", "po_note"]);
   const dashboardNotifications = Array.isArray(notifications)
     ? (notifications as Array<{
         id: number;
@@ -329,6 +329,8 @@ export default function Dashboard() {
           ? `/to-do-list?task=${item.relatedTodoId}`
           : item.relatedReportId
             ? `/laporan/${item.relatedReportId}${item.type === "report_comment" ? "?returnTo=/dashboard" : ""}`
+            : item.type === "po_note"
+              ? "/jadwal-project"
             : "/notifikasi",
       }))
     : [];

@@ -262,34 +262,71 @@ function getLatestTasksByProjectTitle<T extends {
   return Array.from(latestByKey.values());
 }
 
+const TASK_RANGE_START_STATUSES = new Set([
+  "belum_mulai",
+  "menerima_permintaan",
+  "inquiry",
+  "input_data_proses",
+  "proses",
+]);
+
 function getTaskReportDateRanges<T extends {
   title: string;
   project?: string | null;
   reportDate?: string | null;
   status?: string | null;
+  progress?: number | null;
 }>(tasks: T[]) {
-  const ranges = new Map<string, { firstReportDate: string | null; deliveredReportDate: string | null }>();
+  const ranges = new Map<string, {
+    firstReportDate: string | null;
+    firstProgress: number | null;
+    deliveredReportDate: string | null;
+    fallbackFirstReportDate: string | null;
+  }>();
 
   for (const task of tasks) {
     const reportDate = task.reportDate ?? null;
     if (!reportDate) continue;
 
     const key = getTaskIdentityKey(task);
-    const current = ranges.get(key) ?? { firstReportDate: null, deliveredReportDate: null };
+    const current = ranges.get(key) ?? {
+      firstReportDate: null,
+      firstProgress: null,
+      deliveredReportDate: null,
+      fallbackFirstReportDate: null,
+    };
 
-    if (!current.firstReportDate || reportDate < current.firstReportDate) {
-      current.firstReportDate = reportDate;
+    if (!current.fallbackFirstReportDate || reportDate < current.fallbackFirstReportDate) {
+      current.fallbackFirstReportDate = reportDate;
     }
 
     const status = String(task.status ?? "").toLowerCase();
-    if ((status === "delivered" || status === "selesai") && (!current.deliveredReportDate || reportDate < current.deliveredReportDate)) {
+    const progress = Number(task.progress ?? 0);
+    if (TASK_RANGE_START_STATUSES.has(status) && (
+      current.firstProgress === null ||
+      progress < current.firstProgress ||
+      (progress === current.firstProgress && (!current.firstReportDate || reportDate < current.firstReportDate))
+    )) {
+      current.firstReportDate = reportDate;
+      current.firstProgress = progress;
+    }
+
+    if ((status === "delivered" || status === "selesai") && (!current.deliveredReportDate || reportDate > current.deliveredReportDate)) {
       current.deliveredReportDate = reportDate;
     }
 
     ranges.set(key, current);
   }
 
-  return ranges;
+  const normalizedRanges = new Map<string, { firstReportDate: string | null; deliveredReportDate: string | null }>();
+  for (const [key, range] of ranges) {
+    normalizedRanges.set(key, {
+      firstReportDate: range.firstReportDate ?? range.deliveredReportDate ?? range.fallbackFirstReportDate,
+      deliveredReportDate: range.deliveredReportDate,
+    });
+  }
+
+  return normalizedRanges;
 }
 
 async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: number, reportDate: string) {

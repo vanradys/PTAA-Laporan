@@ -142,6 +142,17 @@ function includesText(value: unknown, search: string) {
   return String(value ?? "").toLowerCase().includes(search);
 }
 
+function getPoActivityActionLabel(action: string) {
+  if (action === "created") return "menambah PO";
+  if (action === "updated") return "mengubah PO";
+  if (action === "closed") return "menutup PO";
+  if (action === "deleted") return "menghapus PO";
+  if (action === "note_created") return "menambah catatan PO";
+  if (action === "note_updated") return "mengubah catatan PO";
+  if (action === "note_deleted") return "menghapus catatan PO";
+  return action;
+}
+
 export default function MonitoringKeseluruhan() {
   const { canViewFeature } = useFeatureVisibility();
   const [startDate, setStartDate] = useState("");
@@ -366,7 +377,7 @@ export default function MonitoringKeseluruhan() {
                         <div key={item.id} className="rounded-lg border border-border bg-white p-3">
                           <div className="flex flex-wrap justify-between gap-2">
                             <p className="text-sm font-semibold">
-                              {item.changedByName ?? "User"} - {item.action} - {item.noPo}
+                              {item.changedByName ?? "User"} - {getPoActivityActionLabel(item.action)} - {item.noPo}
                             </p>
                             <span className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</span>
                           </div>
