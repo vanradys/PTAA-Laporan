@@ -60,8 +60,10 @@ type EmployeeOption = {
 
 type ReportSummaryLike = {
   id: number;
+  reportId?: number | null;
   userId: number;
   userName: string;
+  userEmail?: string | null;
   departmentId?: number | null;
   departmentName?: string | null;
   date: string;
@@ -161,10 +163,10 @@ function buildRowsFromEmployeesAndReports(
 
     return {
       id: report?.id ?? -employee.id,
-      reportId: report?.id ?? null,
+      reportId: report?.reportId ?? report?.id ?? null,
       userId: employee.id,
       userName: report?.userName ?? employee.name,
-      userEmail: employee.email,
+      userEmail: report?.userEmail ?? employee.email,
       departmentId: report?.departmentId ?? employee.departmentId ?? null,
       departmentName: report?.departmentName ?? employee.departmentName ?? null,
       date: report?.date ?? reportDate,
@@ -266,18 +268,16 @@ export default function Monitoring() {
   const reportList: ReportSummaryLike[] = Array.isArray(reports) ? (reports as ReportSummaryLike[]) : [];
 
   const reportRows = useMemo(() => {
-    const hasSingleDate = filters.dateFrom === filters.dateTo;
-
-    if (hasSingleDate && employeeList.length > 0) {
-      return buildRowsFromEmployeesAndReports(employeeList, reportList, filters.dateFrom);
+    if (employeeList.length > 0) {
+      return buildRowsFromEmployeesAndReports(employeeList, reportList, filters.dateTo || filters.dateFrom);
     }
 
     return reportList.map((report) => ({
       id: report.id,
-      reportId: report.id,
+      reportId: report.reportId ?? report.id,
       userId: report.userId,
       userName: report.userName,
-      userEmail: "",
+      userEmail: report.userEmail ?? "",
       departmentId: report.departmentId ?? null,
       departmentName: report.departmentName ?? null,
       date: report.date,
