@@ -100,7 +100,7 @@ const getTaskDeliveredDate = (task: Task) => (
 );
 
 const getTaskReportRangeText = (task: Task) => {
-  return `${formatShortTaskDate(getTaskStartDate(task))} s/d ${formatShortTaskDate(getTaskDeliveredDate(task))}`;
+  return `sejak tanggal ${formatShortTaskDate(getTaskStartDate(task))} - tanggal ${formatShortTaskDate(getTaskDeliveredDate(task))}`;
 };
 
 export default function DetailLaporan() {
