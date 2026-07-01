@@ -1107,6 +1107,10 @@ router.post("/reports", async (req, res) => {
     reportId = report.id;
   }
 
+  if (date === getTodayString()) {
+    await copyUnfinishedPreviousTasksToReport(user.id, reportId, date);
+  }
+
   const detail = await buildReportDetail(reportId);
   res.status(201).json(detail);
 });
@@ -1128,6 +1132,8 @@ router.get("/reports/today", async (req, res) => {
     res.status(404).json({ error: "Tidak ada laporan hari ini" });
     return;
   }
+
+  await copyUnfinishedPreviousTasksToReport(user.id, reports[0].id, today);
 
   const detail = await buildReportDetail(reports[0].id);
   res.json(detail);
