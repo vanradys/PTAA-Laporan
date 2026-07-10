@@ -7,6 +7,8 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+app.set("trust proxy", 1);
+
 const defaultAllowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",

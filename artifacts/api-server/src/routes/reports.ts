@@ -17,7 +17,7 @@ import {
   usersTable,
   type SQL,
 } from "@workspace/db";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 import { Router } from "express";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -107,6 +107,7 @@ function ensureDailyTasksSchema() {
         add column if not exists revision_source_task_id integer,
         add column if not exists revision_work_task_id integer,
         add column if not exists carry_forward_source_task_id integer,
+        add column if not exists carry_forward_stopped_at timestamptz,
         add column if not exists edit_count integer default 0,
         add column if not exists updated_at timestamptz default now()
     `);
@@ -209,6 +210,16 @@ function isTaskDelay(deadline: string | null, status: string): boolean {
   if (["selesai", "delivered"].includes(status)) return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return false;
   return deadline < getTodayString();
+}
+
+function isTaskCompleteForCarryForward(task: {
+  progress?: number | null;
+  status?: string | null;
+}): boolean {
+  const status = String(task.status ?? "").toLowerCase();
+  const progress = Number(task.progress ?? 0);
+
+  return ["selesai", "delivered"].includes(status) || progress >= 100;
 }
 
 function getMonitoringReviewStatus(
@@ -345,6 +356,7 @@ async function getLatestUnfinishedTasksBeforeReport(userId: number, reportDate: 
       status: dailyTasksTable.status,
       notes: dailyTasksTable.notes,
       editCount: dailyTasksTable.editCount,
+      carryForwardStoppedAt: dailyTasksTable.carryForwardStoppedAt,
       createdAt: dailyTasksTable.createdAt,
       updatedAt: dailyTasksTable.updatedAt,
       reportDate: dailyReportsTable.date,
@@ -359,7 +371,8 @@ async function getLatestUnfinishedTasksBeforeReport(userId: number, reportDate: 
 
   return getLatestTasksByProjectTitle(historicalTasks).filter((task) =>
     task.title.trim().length > 0 &&
-    !["selesai", "delivered"].includes(String(task.status).toLowerCase()),
+    !task.carryForwardStoppedAt &&
+    !isTaskCompleteForCarryForward(task),
   );
 }
 
@@ -728,7 +741,7 @@ async function buildPeriodReportDetail(userId: number, dateFrom: string, dateTo:
 }
 
 router.get("/reports", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1064,7 +1077,7 @@ router.get("/reports", async (req, res) => {
 });
 
 router.post("/reports", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1124,7 +1137,7 @@ router.post("/reports", async (req, res) => {
 });
 
 router.get("/reports/today", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1148,7 +1161,7 @@ router.get("/reports/today", async (req, res) => {
 });
 
 router.get("/reports/period-detail", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1168,7 +1181,7 @@ router.get("/reports/period-detail", async (req, res) => {
 });
 
 router.get("/reports/yesterday-tasks", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1240,7 +1253,7 @@ router.get("/reports/yesterday-tasks", async (req, res) => {
 });
 
 router.get("/report-comments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1282,7 +1295,7 @@ router.get("/report-comments", async (req, res) => {
 });
 
 router.post("/reports/:id/comments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1328,7 +1341,7 @@ router.post("/reports/:id/comments", async (req, res) => {
 });
 
 router.patch("/reports/:id/comments/:commentId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1351,7 +1364,7 @@ router.patch("/reports/:id/comments/:commentId", async (req, res) => {
 });
 
 router.delete("/reports/:id/comments/:commentId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1372,7 +1385,7 @@ router.delete("/reports/:id/comments/:commentId", async (req, res) => {
 });
 
 router.get("/reports/:id", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1384,7 +1397,7 @@ router.get("/reports/:id", async (req, res) => {
 });
 
 router.patch("/reports/:id", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1420,7 +1433,7 @@ router.patch("/reports/:id", async (req, res) => {
 });
 
 router.delete("/reports/:id", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1439,7 +1452,7 @@ router.delete("/reports/:id", async (req, res) => {
 });
 
 router.post("/reports/:id/submit", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -1544,7 +1557,7 @@ router.post("/reports/:id/submit", async (req, res) => {
 });
 
 router.post("/reports/:id/review", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }

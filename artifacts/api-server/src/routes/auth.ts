@@ -1,8 +1,9 @@
 import { db, usersTable, departmentsTable, sessionsTable, eq, ilike } from "@workspace/db";
 import crypto from "crypto";
-import { Router } from "express";
+import { Router, type CookieOptions, type Request } from "express";
 
 const router = Router();
+const SESSION_COOKIE_NAME = "session_token";
 
 export function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
@@ -10,6 +11,39 @@ export function hashPassword(password: string): string {
 
 function generateToken(): string {
   return crypto.randomBytes(32).toString("hex");
+}
+
+function isHttpsRequest(req: Request): boolean {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] ?? "")
+    .split(",")[0]
+    ?.trim()
+    .toLowerCase();
+
+  return req.secure || forwardedProto === "https";
+}
+
+function getSessionCookieOptions(req: Request, expiresAt?: Date): CookieOptions {
+  const secure = process.env.NODE_ENV === "production" || isHttpsRequest(req);
+
+  return {
+    httpOnly: true,
+    secure,
+    sameSite: secure ? "none" : "lax",
+    path: "/",
+    ...(expiresAt ? { expires: expiresAt } : {}),
+  };
+}
+
+export function getSessionTokenFromRequest(req: Request): string | null {
+  const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
+  if (typeof cookieToken === "string" && cookieToken.trim()) {
+    return cookieToken.trim();
+  }
+
+  const authorization = req.headers.authorization;
+  const headerValue = Array.isArray(authorization) ? authorization[0] : authorization;
+  const match = /^Bearer\s+(.+)$/i.exec(String(headerValue ?? ""));
+  return match?.[1]?.trim() || null;
 }
 
 async function getUserFromToken(token: string) {
@@ -273,7 +307,7 @@ router.post("/seed-ptaa-users", async (req, res) => {
 });
 
 router.get("/me", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) {
     res.status(401).json({ error: "Tidak terautentikasi" });
     return;
@@ -366,12 +400,7 @@ router.post("/login", async (req, res) => {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await db.insert(sessionsTable).values({ userId: user.id, token, expiresAt });
 
-  res.cookie("session_token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    expires: expiresAt,
-  });
+  res.cookie(SESSION_COOKIE_NAME, token, getSessionCookieOptions(req, expiresAt));
 
   const initials = user.name
     .split(" ")
@@ -393,17 +422,13 @@ router.post("/login", async (req, res) => {
 });
 
 router.post("/logout", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
 
   if (token) {
     await db.delete(sessionsTable).where(eq(sessionsTable.token, token));
   }
 
-  res.clearCookie("session_token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  });
+  res.clearCookie(SESSION_COOKIE_NAME, getSessionCookieOptions(req));
 
   res.json({ success: true, message: "Berhasil keluar" });
 });

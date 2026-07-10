@@ -13,10 +13,11 @@ import {
   sql,
   usersTable,
 } from "@workspace/db";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
+let dailyTasksCarryForwardStopSchemaReady: Promise<void> | null = null;
 
 const MAX_TASK_ACTIONS = 2;
 const TASK_PROGRESS_BY_STATUS: Record<string, number> = {
@@ -39,6 +40,18 @@ function normalizeTaskStatus(value: unknown): string {
 
 function getTaskProgress(status: unknown): number {
   return TASK_PROGRESS_BY_STATUS[normalizeTaskStatus(status)] ?? 0;
+}
+
+function ensureDailyTasksCarryForwardStopSchema() {
+  dailyTasksCarryForwardStopSchemaReady ??= db.execute(sql`
+    alter table daily_tasks
+      add column if not exists carry_forward_stopped_at timestamptz
+  `).then(() => undefined);
+
+  return dailyTasksCarryForwardStopSchemaReady.catch((error) => {
+    dailyTasksCarryForwardStopSchemaReady = null;
+    throw error;
+  });
 }
 
 function getTodayString(): string {
@@ -292,8 +305,50 @@ async function refreshReportReviewStatus(reportId: number) {
   return { status, revisionCount };
 }
 
+async function stopDeletedTaskFromFutureCarryForward(
+  task: typeof dailyTasksTable.$inferSelect,
+  report: typeof dailyReportsTable.$inferSelect,
+) {
+  await ensureDailyTasksCarryForwardStopSchema();
+
+  const sourceIds = new Set<number>();
+  if (task.carryForwardSourceTaskId) {
+    sourceIds.add(task.carryForwardSourceTaskId);
+  }
+
+  const [previousTask] = await db
+    .select({ id: dailyTasksTable.id })
+    .from(dailyTasksTable)
+    .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+    .where(and(
+      eq(dailyReportsTable.userId, report.userId),
+      sql`${dailyReportsTable.date} < ${report.date}`,
+      sql`trim(${dailyTasksTable.title}) = ${task.title.trim()}`,
+      sql`trim(coalesce(${dailyTasksTable.project}, '')) = ${String(task.project ?? "").trim()}`,
+    ))
+    .orderBy(desc(dailyReportsTable.date), desc(dailyTasksTable.updatedAt), desc(dailyTasksTable.createdAt))
+    .limit(1);
+
+  if (previousTask) {
+    sourceIds.add(previousTask.id);
+  }
+
+  if (sourceIds.size === 0) return;
+
+  const stoppedAt = new Date();
+  for (const sourceId of sourceIds) {
+    await db
+      .update(dailyTasksTable)
+      .set({
+        carryForwardStoppedAt: stoppedAt,
+        updatedAt: stoppedAt,
+      })
+      .where(eq(dailyTasksTable.id, sourceId));
+  }
+}
+
 router.get("/assigned-tasks/pending", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -314,7 +369,7 @@ router.get("/assigned-tasks/pending", async (req, res) => {
 });
 
 router.get("/assigned-tasks/history", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -342,7 +397,7 @@ router.get("/assigned-tasks/history", async (req, res) => {
 });
 
 router.post("/assigned-tasks", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -417,7 +472,7 @@ router.post("/assigned-tasks", async (req, res) => {
 });
 
 router.post("/assigned-tasks/:assignmentId/respond", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -506,7 +561,7 @@ router.post("/assigned-tasks/:assignmentId/respond", async (req, res) => {
 });
 
 router.get("/reports/:id/tasks", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -521,7 +576,7 @@ router.get("/reports/:id/tasks", async (req, res) => {
 });
 
 router.post("/reports/:id/tasks", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -583,7 +638,7 @@ router.post("/reports/:id/tasks", async (req, res) => {
 });
 
 router.patch("/tasks/:taskId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -662,7 +717,7 @@ router.patch("/tasks/:taskId", async (req, res) => {
 });
 
 router.post("/tasks/:taskId/start-correction", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -739,7 +794,7 @@ router.post("/tasks/:taskId/submit-correction", async (_req, res) => {
 });
 
 router.post("/tasks/:taskId/review", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -825,7 +880,7 @@ router.post("/tasks/:taskId/review", async (req, res) => {
 });
 
 router.delete("/tasks/:taskId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
   const user = await getUserFromToken(token);
@@ -849,6 +904,7 @@ router.delete("/tasks/:taskId", async (req, res) => {
     return;
   }
 
+  await stopDeletedTaskFromFutureCarryForward(task[0], report[0]);
   await db.delete(dailyTasksTable).where(eq(dailyTasksTable.id, taskId));
   res.json({ success: true, message: "Tugas berhasil dihapus" });
 });

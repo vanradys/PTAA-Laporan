@@ -49,6 +49,16 @@ function getTaskProgress(status: string) {
   return TASK_PROGRESS_BY_STATUS[status] ?? 0;
 }
 
+function isTaskCompleteForCarryForward(task: {
+  progress?: number | null;
+  status?: string | null;
+}) {
+  const status = String(task.status ?? "").toLowerCase();
+  const progress = Number(task.progress ?? 0);
+
+  return ["selesai", "delivered"].includes(status) || progress >= 100;
+}
+
 const REPORT_STATUSES = [
   { value: "draf", label: "Draf", color: "bg-gray-100 text-gray-600 border-gray-200" },
   { value: "dikirim", label: "Sudah Dikirim", color: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -629,7 +639,7 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
   const watchedTomorrowPlan = watch("tomorrowPlan") ?? "";
 
   const hasUnfinishedYesterdayTask = yesterdayTasks.some((task) =>
-    !["selesai", "delivered"].includes(String(task.status).toLowerCase()) &&
+    !isTaskCompleteForCarryForward(task) &&
     task.title.trim().length > 0
   );
   const hasRequiredTask =
@@ -704,7 +714,7 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
 
     return yesterdayTasks.filter((task) => {
       if (
-        ["selesai", "delivered"].includes(String(task.status).toLowerCase()) ||
+        isTaskCompleteForCarryForward(task) ||
         task.title.trim().length === 0
       ) {
         return false;
@@ -1623,7 +1633,7 @@ useEffect(() => {
 
                               <div className={`rounded-md border p-2 text-xs ${taskLocked ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
                                 {isCarryForwardTask
-                                  ? "Tugas lanjutan dari laporan sebelumnya. Nama tugas dan project dikunci; lanjutkan dengan mengubah status atau tanggal."
+                                  ? "Tugas lanjutan dari laporan sebelumnya. Nama tugas dan project dikunci; lanjutkan dengan mengubah status/tanggal atau hapus jika tidak perlu diteruskan."
                                   : taskLocked
                                   ? "Tugas terkunci. Batas edit/hapus sudah habis atau tanggal laporan sudah berganti."
                                   : isFinanceUser
@@ -1668,7 +1678,7 @@ useEffect(() => {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                disabled={taskLocked || isCarryForwardTask}
+                                disabled={taskLocked}
                                 className="text-destructive hover:text-destructive hover:bg-destructive/10 disabled:opacity-50"
                                 onClick={() => isEditingSubmitted ? deleteEditableTask(task.id) : handleDeleteExistingTask(task.id)}
                               >
