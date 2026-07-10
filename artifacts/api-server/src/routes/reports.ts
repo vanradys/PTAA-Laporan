@@ -33,6 +33,7 @@ const reportOwnerUsersTable = alias(usersTable, "report_owner");
 const reportCommenterUsersTable = alias(usersTable, "report_commenter");
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const CARRY_FORWARD_START_DATE = "2026-06-29";
 let dailyReportsSchemaReady: Promise<void> | null = null;
 let dailyTasksSchemaReady: Promise<void> | null = null;
 
@@ -365,6 +366,7 @@ async function getLatestUnfinishedTasksBeforeReport(userId: number, reportDate: 
     .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
     .where(and(
       eq(dailyReportsTable.userId, userId),
+      gte(dailyReportsTable.date, CARRY_FORWARD_START_DATE),
       sql`${dailyReportsTable.date} < ${reportDate}`,
     ))
     .orderBy(dailyReportsTable.date, dailyTasksTable.createdAt);

@@ -547,11 +547,11 @@ function getNominalAxisValue(value: number) {
 }
 
 function formatNominalAxisLabel(value: number) {
-  if (value === 1) return "200jt";
-  if (value === 2) return "500jt";
-  if (value === 3) return "2M";
-  if (value === 4) return "5M";
-  if (value === 5) return "10M";
+  if (value === 1) return "1M";
+  if (value === 2) return "2M";
+  if (value === 3) return "3M";
+  if (value === 4) return "4M";
+  if (value === 5) return "5M";
   return "";
 }
 
