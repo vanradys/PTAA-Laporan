@@ -488,15 +488,6 @@ function getActivityActionLabel(action: string) {
   return "mengubah PO";
 }
 
-const NOMINAL_AXIS_TICKS = [
-  { value: 0, axis: 0 },
-  { value: 200_000_000, axis: 1 },
-  { value: 500_000_000, axis: 2 },
-  { value: 2_000_000_000, axis: 3 },
-  { value: 5_000_000_000, axis: 4 },
-  { value: 10_000_000_000, axis: 5 },
-] as const;
-
 const YEARLY_TREND_MONTHS = [
   "Jan",
   "Feb",
@@ -530,29 +521,11 @@ function getNumberFromRecord(
 }
 
 function getNominalAxisValue(value: number) {
-  if (value <= 0) return 0;
-
-  for (let i = 1; i < NOMINAL_AXIS_TICKS.length; i += 1) {
-    const previous = NOMINAL_AXIS_TICKS[i - 1];
-    const current = NOMINAL_AXIS_TICKS[i];
-
-    if (value <= current.value) {
-      const ratio =
-        (value - previous.value) / (current.value - previous.value);
-      return previous.axis + ratio * (current.axis - previous.axis);
-    }
-  }
-
-  return NOMINAL_AXIS_TICKS[NOMINAL_AXIS_TICKS.length - 1].axis;
+  return Math.max(0, value) / 1_000_000_000;
 }
 
 function formatNominalAxisLabel(value: number) {
-  if (value === 1) return "1M";
-  if (value === 2) return "2M";
-  if (value === 3) return "3M";
-  if (value === 4) return "4M";
-  if (value === 5) return "5M";
-  return "";
+  return value > 0 ? `${value}M` : "";
 }
 
 function isFinishedPo(status: string) {
@@ -991,6 +964,19 @@ export default function JadwalProject() {
   });
   const poCountCeil = 35;
   const poCountTicks = [0, 7, 14, 21, 28, 35];
+  const nominalAxisCeil = Math.max(
+    5,
+    Math.ceil(
+      Math.max(
+        ...yearlyTrendItems.map((item) => item.totalAmountAxis),
+        getNominalAxisValue(MONTHLY_PO_TARGET),
+      ),
+    ),
+  );
+  const nominalAxisTicks = Array.from(
+    { length: nominalAxisCeil },
+    (_, index) => index + 1,
+  );
   const poCountReferenceValues = Array.from(
     new Set(
       yearlyTrendItems
@@ -1981,8 +1967,8 @@ export default function JadwalProject() {
                       orientation="right"
                       tick={{ fontSize: 12 }}
                       width={84}
-                      domain={[0, 5]}
-                      ticks={[1, 2, 3, 4, 5]}
+                      domain={[0, nominalAxisCeil]}
+                      ticks={nominalAxisTicks}
                       interval={0}
                       tickMargin={8}
                       tickFormatter={(value) =>
