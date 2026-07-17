@@ -477,9 +477,9 @@ function canDeleteAnyPoNote(user?: { role?: string | null }) {
 
 function canMutateOwnPoNote(
   user: { id: number },
-  note: { userId?: number | null },
+  note: { userId?: number | null; createdByUserId?: number | null },
 ) {
-  return note.userId === user.id;
+  return note.userId === user.id || note.createdByUserId === user.id;
 }
 
 function summarizePoNote(note: string) {
@@ -1259,6 +1259,7 @@ router.patch("/po/:poId/notes/:noteId", async (req, res) => {
       userId: poNotesTable.userId,
       note: poNotesTable.note,
       noPo: projectsPoTable.noPo,
+      createdByUserId: projectsPoTable.createdByUserId,
     })
     .from(poNotesTable)
     .innerJoin(projectsPoTable, eq(poNotesTable.poId, projectsPoTable.id))
@@ -1268,7 +1269,8 @@ router.patch("/po/:poId/notes/:noteId", async (req, res) => {
     ))
     .limit(1);
   if (!existing) { res.status(404).json({ error: "Catatan tidak ditemukan" }); return; }
-  if (!canMutateOwnPoNote(user, existing)) {
+  const canManageNotes = await canEditByPermission(user, "po_manage_notes");
+  if (!canMutateOwnPoNote(user, existing) && !canManageNotes) {
     res.status(403).json({ error: "Tidak punya izin untuk mengedit catatan PO ini" }); return;
   }
   const [updated] = await db.update(poNotesTable).set({ note, updatedAt: new Date() })
@@ -1304,6 +1306,7 @@ router.delete("/po/:poId/notes/:noteId", async (req, res) => {
       userId: poNotesTable.userId,
       note: poNotesTable.note,
       noPo: projectsPoTable.noPo,
+      createdByUserId: projectsPoTable.createdByUserId,
     })
     .from(poNotesTable)
     .innerJoin(projectsPoTable, eq(poNotesTable.poId, projectsPoTable.id))
@@ -1313,7 +1316,8 @@ router.delete("/po/:poId/notes/:noteId", async (req, res) => {
     ))
     .limit(1);
   if (!existing) { res.status(404).json({ error: "Catatan tidak ditemukan" }); return; }
-  if (!canMutateOwnPoNote(user, existing) && !canDeleteAnyPoNote(user)) {
+  const canManageNotes = await canEditByPermission(user, "po_manage_notes");
+  if (!canMutateOwnPoNote(user, existing) && !canDeleteAnyPoNote(user) && !canManageNotes) {
     res.status(403).json({ error: "Tidak punya izin untuk menghapus catatan PO ini" }); return;
   }
   const [deleted] = await db.delete(poNotesTable).where(and(

@@ -5,7 +5,6 @@ import {
   desc,
   eq,
   poInternalCommentsTable,
-  poChangeLogsTable,
   projectsPoTable,
   notificationsTable,
   sql,
@@ -281,25 +280,6 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
   );
   const completedStages = buildCompletedStages(currentStage, po.hasPainting);
   const manualTimeline = normalizeTrackingTimeline(po.trackingTimeline);
-  const catatanLogs = await db
-    .select()
-    .from(poChangeLogsTable)
-    .where(eq(poChangeLogsTable.poId, po.id))
-    .orderBy(desc(poChangeLogsTable.createdAt))
-    .limit(30);
-  const catatanHistory = catatanLogs
-    .map((log) => {
-      const changes = log.changes as
-        | Record<string, { before: unknown; after: unknown }>
-        | undefined;
-      const nextValue = changes?.catatan?.after;
-      const text = String(nextValue ?? "").trim();
-      if (!text || text === "-") return null;
-      return text;
-    })
-    .filter((item): item is string => Boolean(item));
-  const uniqueCatatanHistory = Array.from(new Set(catatanHistory));
-
   return {
     id: po.id,
     noPo: po.noPo,
@@ -314,10 +294,6 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
       TRACKING_STAGES.find((stage) => stage.key === currentStage)?.label ??
       customerStatusLabel(po.status),
     progress: getProjectProgressPercent(currentStage),
-    catatan:
-      uniqueCatatanHistory.length > 0
-        ? uniqueCatatanHistory.join("\n")
-        : po.catatan,
     stages: getVisibleStages(po.hasPainting).map((stage) => ({
       key: stage.key,
       label: stage.label,

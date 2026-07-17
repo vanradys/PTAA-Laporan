@@ -50,7 +50,6 @@ interface TrackingDetail {
   picName?: string | null;
   statusLabel: string;
   progress: number;
-  catatan?: string | null;
   stages: TrackingStage[];
   timeline: TrackingTimelineItem[];
   history: TrackingHistoryItem[];
@@ -383,7 +382,7 @@ export default function CustomerTracking() {
               </Card>
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-3">
+            <section className="grid gap-4 lg:grid-cols-2">
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
                   <CardTitle>Project Progress</CardTitle>
@@ -399,17 +398,6 @@ export default function CustomerTracking() {
                       <span className="text-sm font-medium">{stage.label}</span>
                     </div>
                   ))}
-                </CardContent>
-              </Card>
-
-              <Card className="border border-slate-200 bg-white shadow-sm">
-                <CardHeader>
-                  <CardTitle>Project Issue & Action</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="whitespace-pre-line text-sm text-slate-700">
-                    {detail.catatan?.trim() || "Tidak ada kendala yang dilaporkan."}
-                  </p>
                 </CardContent>
               </Card>
 

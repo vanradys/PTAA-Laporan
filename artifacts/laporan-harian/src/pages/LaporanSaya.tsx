@@ -618,6 +618,12 @@ const canAssignDailyTasks = canEdit("daily_report_assign_tasks", true);
 const isLocked = isReviewed || isPastReport;
 const showSubmittedReadOnly = isSubmitted && !isEditingSubmitted;
 const displayedExistingTasks = isEditingSubmitted ? editableTasks : existingTasks;
+const visibleExistingTasks = displayedExistingTasks.filter(
+  (task) => !isTaskCompleteForCarryForward(task),
+);
+const visibleNewTasks = newTasks.filter(
+  (task) => !isTaskCompleteForCarryForward(task),
+);
 
 const canEditReportFields =
   canEditOwnDailyReport &&
@@ -1337,7 +1343,7 @@ useEffect(() => {
                 <CardTitle className="text-base flex items-center justify-between">
                   <span>Daftar Tugas Hari Ini</span>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-normal text-muted-foreground">{existingTasks.length} tugas</span>
+                    <span className="text-sm font-normal text-muted-foreground">{visibleExistingTasks.length} tugas</span>
                     {showSubmittedReadOnly && canEditOwnDailyReport && (
                       <Button type="button" variant="outline" size="sm" onClick={startEditSubmittedReport}>
                         Edit
@@ -1347,7 +1353,7 @@ useEffect(() => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                {existingTasks.length === 0 ? (
+                {visibleExistingTasks.length === 0 ? (
                   <p className="px-5 py-8 text-center text-sm text-muted-foreground">Tidak ada tugas</p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1361,7 +1367,7 @@ useEffect(() => {
                       </tr>
                     </thead>
                     <tbody>
-                      {existingTasks.map(task => {
+                      {visibleExistingTasks.map(task => {
                         const ts = getStatusInfo(task.status);
                         return (
                           <tr key={task.id} className="border-b border-border last:border-0">
@@ -1510,7 +1516,7 @@ useEffect(() => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {displayedExistingTasks.length === 0 && newTasks.length === 0 && (
+                  {visibleExistingTasks.length === 0 && visibleNewTasks.length === 0 && (
                     <div className="text-center py-8 text-muted-foreground">
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
                       <p className="text-sm">Belum ada tugas. Klik "Tambah Tugas" untuk mulai.</p>
@@ -1518,7 +1524,7 @@ useEffect(() => {
                   )}
 
                   {/* Existing Tasks */}
-                  {displayedExistingTasks.map(task => {
+                  {visibleExistingTasks.map(task => {
                     const statusInfo = getStatusInfo(task.status);
                     const isExpanded = expandedTasks.has(task.id);
                     const taskLocked =
@@ -1693,7 +1699,7 @@ useEffect(() => {
                   })}
 
                   {/* New Tasks */}
-                  {newTasks.map(task => {
+                  {visibleNewTasks.map(task => {
                     const isCarryForwardTask = Boolean(task.carryForwardSourceTaskId);
                     return (
                         <div key={task.id} className="border border-border rounded-lg bg-white p-4 space-y-3">

@@ -292,6 +292,7 @@ interface PoItem {
   closedAt?: string | null;
   isEditLocked?: boolean;
   editLockNotice?: string | null;
+  createdByUserId?: number | null;
 }
 
 interface PoFormState {
@@ -659,13 +660,19 @@ export default function JadwalProject() {
     baseCanUpdateProjectProgress &&
     canViewProjectSchedule &&
     canEdit("po_edit_customer_timeline", true);
-  const canAddPoNotes = Boolean(user) && canViewProjectSchedule;
+  const canAddPoNotes =
+    Boolean(user) &&
+    canViewProjectSchedule &&
+    canEdit("po_add_notes", true);
+  const canManagePoNotes =
+    canViewProjectSchedule && canEdit("po_manage_notes", false);
   const canDeleteAnyPoNote =
     canViewProjectSchedule &&
-    ["admin", "direktur", "director", "dir", "monitoring_dummy", "monitoring", "monitor"].includes(role);
+    (canManagePoNotes ||
+      ["admin", "direktur", "director", "dir", "monitoring_dummy", "monitoring", "monitor"].includes(role));
   const canSavePoChanges = canEditPoData || canUpdateProjectProgress || canManageCustomerTimeline;
   const canOpenPoEdit = canSavePoChanges || canAddPoNotes;
-  const canViewPoNotes = canViewProjectSchedule;
+  const canViewPoNotes = Boolean(user) && canViewProjectSchedule;
   const hasFullPoAccess = ["admin", "direktur", "director", "dir"].includes(
     role,
   );
@@ -859,11 +866,19 @@ export default function JadwalProject() {
   const poInternalComments = Array.isArray(internalPoComments)
     ? internalPoComments
     : [];
-  const canEditPoNote = (note: PoNote) => note.userId === user?.id;
-  const canDeletePoNote = (note: PoNote) =>
-    canDeleteAnyPoNote || note.userId === user?.id;
   const posRaw = (Array.isArray(poList) ? poList : []) as PoItem[];
   const allPosRaw = (Array.isArray(allPoList) ? allPoList : []) as PoItem[];
+  const editingPo = editingId
+    ? [...posRaw, ...allPosRaw].find((po) => po.id === editingId)
+    : undefined;
+  const canEditPoNote = (note: PoNote) =>
+    canManagePoNotes ||
+    note.userId === user?.id ||
+    editingPo?.createdByUserId === user?.id;
+  const canDeletePoNote = (note: PoNote) =>
+    canDeleteAnyPoNote ||
+    note.userId === user?.id ||
+    editingPo?.createdByUserId === user?.id;
   const matchesDeliveryFilter = (po: PoItem) => {
     if (filterDeliveryStatus === "semua") return true;
     if (filterDeliveryStatus === "delay")
