@@ -42,6 +42,63 @@ function getTaskProgress(status: unknown): number {
   return TASK_PROGRESS_BY_STATUS[normalizeTaskStatus(status)] ?? 0;
 }
 
+function getTaskIdentityKey(task: { title: string; project?: string | null }) {
+  const normalizePart = (value: string | null | undefined) =>
+    String(value ?? "")
+      .normalize("NFKC")
+      .trim()
+      .toLocaleLowerCase("id-ID")
+      .replace(/\s+/g, " ");
+
+  return `${normalizePart(task.project)}|${normalizePart(task.title)}`;
+}
+
+async function getHighestTaskProgressForIdentity(
+  userId: number,
+  reportDate: string,
+  task: { title: string; project?: string | null },
+  excludeTaskId?: number,
+) {
+  const historicalTasks = await db
+    .select({
+      id: dailyTasksTable.id,
+      title: dailyTasksTable.title,
+      project: dailyTasksTable.project,
+      progress: dailyTasksTable.progress,
+      status: dailyTasksTable.status,
+    })
+    .from(dailyTasksTable)
+    .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+    .where(and(
+      eq(dailyReportsTable.userId, userId),
+      sql`${dailyReportsTable.date} <= ${reportDate}`,
+    ));
+  const identityKey = getTaskIdentityKey(task);
+
+  return historicalTasks.reduce((highestProgress, historicalTask) => {
+    if (
+      historicalTask.id === excludeTaskId ||
+      getTaskIdentityKey(historicalTask) !== identityKey
+    ) {
+      return highestProgress;
+    }
+
+    return Math.max(
+      highestProgress,
+      historicalTask.progress,
+      getTaskProgress(historicalTask.status),
+    );
+  }, 0);
+}
+
+function getStatusForProgress(progress: number) {
+  if (progress >= 100) return "delivered";
+  if (progress >= 75) return "review_approval";
+  if (progress >= 50) return "input_data_proses";
+  if (progress >= 25) return "menerima_permintaan";
+  return "belum_mulai";
+}
+
 function ensureDailyTasksCarryForwardStopSchema() {
   dailyTasksCarryForwardStopSchemaReady ??= db.execute(sql`
     alter table daily_tasks
@@ -602,22 +659,45 @@ router.post("/reports/:id/tasks", async (req, res) => {
   const carryForwardSourceTaskId = Number(req.body?.carryForwardSourceTaskId);
   if (!title || !title.trim()) { res.status(400).json({ error: "Nama tugas diperlukan" }); return; }
 
-  if (Number.isInteger(carryForwardSourceTaskId) && carryForwardSourceTaskId > 0) {
-    const [existingCarryForwardTask] = await db
-      .select()
-      .from(dailyTasksTable)
-      .where(and(
-        eq(dailyTasksTable.reportId, reportId),
-        sql`trim(${dailyTasksTable.title}) = ${String(title).trim()}`,
-        sql`trim(coalesce(${dailyTasksTable.project}, '')) = ${String(project ?? "").trim()}`,
-      ))
-      .limit(1);
-
-    if (existingCarryForwardTask) {
+  const existingReportTasks = await db
+    .select()
+    .from(dailyTasksTable)
+    .where(eq(dailyTasksTable.reportId, reportId));
+  const taskIdentityKey = getTaskIdentityKey({ title, project });
+  const duplicateTask = existingReportTasks.find(
+    (existingTask) => getTaskIdentityKey(existingTask) === taskIdentityKey,
+  );
+  const isCarryForward =
+    Number.isInteger(carryForwardSourceTaskId) && carryForwardSourceTaskId > 0;
+  if (duplicateTask) {
+    if (isCarryForward) {
+      const existingCarryForwardTask = duplicateTask;
       res.json(buildTaskResponse(existingCarryForwardTask));
       return;
     }
+
+    res.status(409).json({
+      error: "Nama tugas dan project yang sama sudah ada pada laporan hari ini.",
+    });
+    return;
   }
+
+  const requestedStatus = normalizeTaskStatus(status);
+  const requestedProgress = getTaskProgress(requestedStatus);
+  const highestHistoricalProgress = await getHighestTaskProgressForIdentity(
+    report[0].userId,
+    report[0].date,
+    { title, project },
+  );
+  if (!isCarryForward && highestHistoricalProgress > requestedProgress) {
+    res.status(409).json({
+      error: "Tugas dengan nama dan project yang sama sudah pernah memiliki progres lebih tinggi. Gunakan nama tugas berbeda untuk pekerjaan baru.",
+    });
+    return;
+  }
+  const normalizedStatus = highestHistoricalProgress > requestedProgress
+    ? getStatusForProgress(highestHistoricalProgress)
+    : requestedStatus;
 
   const [task] = await db.insert(dailyTasksTable).values({
     reportId,
@@ -626,8 +706,8 @@ router.post("/reports/:id/tasks", async (req, res) => {
     deadline: deadline || null,
     completionInputType: completionInputType === "date" ? "date" : completionInputType === "text" ? "text" : null,
     completionValue: completionValue ? String(completionValue).trim() : null,
-    progress: getTaskProgress(status),
-    status: normalizeTaskStatus(status),
+    progress: getTaskProgress(normalizedStatus),
+    status: normalizedStatus,
     notes: notes ?? null,
     carryForwardSourceTaskId: Number.isInteger(carryForwardSourceTaskId) && carryForwardSourceTaskId > 0
       ? carryForwardSourceTaskId
@@ -686,6 +766,29 @@ router.patch("/tasks/:taskId", async (req, res) => {
   if (!hasUpdate) {
     res.status(400).json({ error: "Tidak ada data tugas yang diubah" });
     return;
+  }
+
+  if (status !== undefined || title !== undefined || project !== undefined) {
+    const requestedProgress = status !== undefined
+      ? getTaskProgress(status)
+      : task[0].progress;
+    const prospectiveTask = {
+      title: title !== undefined ? String(title) : task[0].title,
+      project: project !== undefined ? String(project ?? "") : task[0].project,
+    };
+    const highestHistoricalProgress = await getHighestTaskProgressForIdentity(
+      report[0].userId,
+      report[0].date,
+      prospectiveTask,
+      task[0].id,
+    );
+
+    if (requestedProgress < Math.max(task[0].progress, highestHistoricalProgress)) {
+      res.status(409).json({
+        error: "Status tugas tidak dapat dimundurkan karena progres yang lebih tinggi sudah pernah tersimpan.",
+      });
+      return;
+    }
   }
 
   const [updated] = await db.update(dailyTasksTable)

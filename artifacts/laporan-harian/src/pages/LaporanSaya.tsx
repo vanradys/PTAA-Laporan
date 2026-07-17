@@ -708,8 +708,16 @@ const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitte
   const getTaskCopyKey = (task: {
     title: string;
     project?: string | null;
-  }) =>
-    `${String(task.project ?? "").trim()}|${task.title.trim()}`;
+  }) => {
+    const normalizePart = (value: string | null | undefined) =>
+      String(value ?? "")
+        .normalize("NFKC")
+        .trim()
+        .toLocaleLowerCase("id-ID")
+        .replace(/\s+/g, " ");
+
+    return `${normalizePart(task.project)}|${normalizePart(task.title)}`;
+  };
 
   const getUncopiedYesterdayTasks = () => {
     const existingCounts = new Map<string, number>();

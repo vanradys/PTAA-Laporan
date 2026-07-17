@@ -236,7 +236,14 @@ function getMonitoringReviewStatus(
 }
 
 function getTaskIdentityKey(task: { title: string; project?: string | null }) {
-  return `${String(task.project ?? "").trim()}|${task.title.trim()}`;
+  const normalizePart = (value: string | null | undefined) =>
+    String(value ?? "")
+      .normalize("NFKC")
+      .trim()
+      .toLocaleLowerCase("id-ID")
+      .replace(/\s+/g, " ");
+
+  return `${normalizePart(task.project)}|${normalizePart(task.title)}`;
 }
 
 function getSubmittedAtFallback(status: string, timestamp?: Date | null) {
@@ -246,6 +253,8 @@ function getSubmittedAtFallback(status: string, timestamp?: Date | null) {
 function getLatestTasksByProjectTitle<T extends {
   title: string;
   project?: string | null;
+  progress?: number | null;
+  status?: string | null;
   reportDate?: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -256,6 +265,14 @@ function getLatestTasksByProjectTitle<T extends {
     const key = getTaskIdentityKey(task);
     const current = latestByKey.get(key);
     if (!current) {
+      latestByKey.set(key, task);
+      continue;
+    }
+
+    const taskIsComplete = isTaskCompleteForCarryForward(task);
+    const currentIsComplete = isTaskCompleteForCarryForward(current);
+    if (currentIsComplete && !taskIsComplete) continue;
+    if (taskIsComplete && !currentIsComplete) {
       latestByKey.set(key, task);
       continue;
     }
@@ -378,8 +395,71 @@ async function getLatestUnfinishedTasksBeforeReport(userId: number, reportDate: 
   );
 }
 
+async function repairRegressedTasksInReport(
+  userId: number,
+  reportId: number,
+  reportDate: string,
+) {
+  const [historicalTasks, reportTasks] = await Promise.all([
+    db
+      .select({
+        title: dailyTasksTable.title,
+        project: dailyTasksTable.project,
+        progress: dailyTasksTable.progress,
+        status: dailyTasksTable.status,
+      })
+      .from(dailyTasksTable)
+      .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+      .where(and(
+        eq(dailyReportsTable.userId, userId),
+        gte(dailyReportsTable.date, CARRY_FORWARD_START_DATE),
+        sql`${dailyReportsTable.date} < ${reportDate}`,
+      )),
+    db
+      .select({
+        id: dailyTasksTable.id,
+        title: dailyTasksTable.title,
+        project: dailyTasksTable.project,
+        progress: dailyTasksTable.progress,
+        status: dailyTasksTable.status,
+      })
+      .from(dailyTasksTable)
+      .where(eq(dailyTasksTable.reportId, reportId)),
+  ]);
+
+  const completedKeys = new Set(
+    historicalTasks
+      .filter(isTaskCompleteForCarryForward)
+      .map(getTaskIdentityKey),
+  );
+  const regressedTaskIds = reportTasks
+    .filter((task) =>
+      completedKeys.has(getTaskIdentityKey(task)) &&
+      !isTaskCompleteForCarryForward(task),
+    )
+    .map((task) => task.id);
+
+  if (regressedTaskIds.length === 0) return 0;
+
+  const repairedAt = new Date();
+  for (const taskId of regressedTaskIds) {
+    await db
+      .update(dailyTasksTable)
+      .set({
+        status: "delivered",
+        progress: 100,
+        carryForwardStoppedAt: repairedAt,
+        updatedAt: repairedAt,
+      })
+      .where(eq(dailyTasksTable.id, taskId));
+  }
+
+  return regressedTaskIds.length;
+}
+
 async function copyUnfinishedPreviousTasksToReport(userId: number, reportId: number, reportDate: string) {
   await ensureDailyTasksSchema();
+  await repairRegressedTasksInReport(userId, reportId, reportDate);
 
   const sourceTasks = await getLatestUnfinishedTasksBeforeReport(userId, reportDate);
   if (sourceTasks.length === 0) return 0;
