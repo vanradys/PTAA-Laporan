@@ -130,6 +130,40 @@ function ensureDailyTasksSchema() {
         alter column edit_count set default 0,
         alter column updated_at set default now()
     `);
+
+    // One-time, bounded remediation for Purchasing tasks whose Delivered state
+    // was only stored in the browser on 16 July 2026 and never reached the API.
+    await db.execute(sql`
+      update daily_tasks as task
+      set
+        status = 'delivered',
+        progress = 100,
+        carry_forward_stopped_at = coalesce(task.carry_forward_stopped_at, now()),
+        updated_at = now()
+      from daily_reports as report, users as report_user, departments as department
+      where task.report_id = report.id
+        and report.user_id = report_user.id
+        and report_user.department_id = department.id
+        and report.date <= '2026-07-17'
+        and (
+          upper(coalesce(department.code, '')) = 'PUR'
+          or lower(coalesce(department.name, '')) like '%purchas%'
+        )
+        and (
+          (
+            lower(regexp_replace(trim(task.title), '[[:space:]]+', ' ', 'g')) = 'po cat'
+            and lower(regexp_replace(trim(coalesce(task.project, '')), '[[:space:]]+', ' ', 'g')) = 'pt itama ranoraya'
+          )
+          or (
+            lower(regexp_replace(trim(task.title), '[[:space:]]+', ' ', 'g')) = 'po kebutuhan pengecatan musashi'
+            and lower(regexp_replace(trim(coalesce(task.project, '')), '[[:space:]]+', ' ', 'g')) = 'pt musashi (pengecatan bodijoist)'
+          )
+          or (
+            lower(regexp_replace(trim(task.title), '[[:space:]]+', ' ', 'g')) = 'po belt'
+            and lower(regexp_replace(trim(coalesce(task.project, '')), '[[:space:]]+', ' ', 'g')) = 'pt indowrld'
+          )
+        )
+    `);
   })();
 
   return dailyTasksSchemaReady.catch((error) => {
@@ -1225,15 +1259,23 @@ router.get("/reports/today", async (req, res) => {
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
 
   const today = getJakartaDateString();
-  const reports = await db
+  let reports = await db
     .select({ id: dailyReportsTable.id })
     .from(dailyReportsTable)
     .where(and(eq(dailyReportsTable.userId, user.id), eq(dailyReportsTable.date, today)))
     .limit(1);
 
   if (!reports[0]) {
-    res.status(404).json({ error: "Tidak ada laporan hari ini" });
-    return;
+    const [createdReport] = await db
+      .insert(dailyReportsTable)
+      .values({
+        userId: user.id,
+        departmentId: user.departmentId ?? null,
+        date: today,
+        status: "draf",
+      })
+      .returning({ id: dailyReportsTable.id });
+    reports = [createdReport];
   }
 
   await copyUnfinishedPreviousTasksToReport(user.id, reports[0].id, today);

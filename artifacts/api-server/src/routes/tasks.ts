@@ -404,6 +404,35 @@ async function stopDeletedTaskFromFutureCarryForward(
   }
 }
 
+async function stopCompletedTaskFromFutureCarryForward(
+  task: typeof dailyTasksTable.$inferSelect,
+  report: typeof dailyReportsTable.$inferSelect,
+) {
+  await ensureDailyTasksCarryForwardStopSchema();
+  const historicalTasks = await db
+    .select({
+      id: dailyTasksTable.id,
+      title: dailyTasksTable.title,
+      project: dailyTasksTable.project,
+    })
+    .from(dailyTasksTable)
+    .innerJoin(dailyReportsTable, eq(dailyTasksTable.reportId, dailyReportsTable.id))
+    .where(and(
+      eq(dailyReportsTable.userId, report.userId),
+      sql`${dailyReportsTable.date} <= ${report.date}`,
+    ));
+  const identityKey = getTaskIdentityKey(task);
+  const completedAt = new Date();
+
+  for (const historicalTask of historicalTasks) {
+    if (getTaskIdentityKey(historicalTask) !== identityKey) continue;
+    await db
+      .update(dailyTasksTable)
+      .set({ carryForwardStoppedAt: completedAt })
+      .where(eq(dailyTasksTable.id, historicalTask.id));
+  }
+}
+
 router.get("/assigned-tasks/pending", async (req, res) => {
   const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
@@ -815,6 +844,10 @@ router.patch("/tasks/:taskId", async (req, res) => {
     })
     .where(eq(dailyTasksTable.id, taskId))
     .returning();
+
+  if (updated.progress >= 100 || ["delivered", "selesai"].includes(updated.status)) {
+    await stopCompletedTaskFromFutureCarryForward(updated, report[0]);
+  }
 
   res.json(buildTaskResponse(updated));
 });

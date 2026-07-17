@@ -1169,7 +1169,7 @@ useEffect(() => {
       description: "Tugas ini sudah tidak bisa diedit. Batas edit/hapus 2x sudah habis atau tanggal laporan sudah berganti.",
       variant: "destructive",
     });
-    return;
+    return false;
   }
 
   try {
@@ -1180,14 +1180,33 @@ useEffect(() => {
       title: "Tugas diperbarui",
       description: `Sisa kesempatan edit/hapus: ${Math.max(0, task.remainingActions - 1)}x.`,
     });
+    return true;
   } catch (error) {
     toast({
       title: "Gagal",
       description: error instanceof Error ? error.message : "Gagal memperbarui tugas",
       variant: "destructive",
     });
+    return false;
   }
 };
+
+  const handleEditableTaskStatusChange = async (
+    task: ExistingTask,
+    status: string,
+  ) => {
+    if (!isTaskCompleteForCarryForward({ status, progress: getTaskProgress(status) })) {
+      updateEditableTask(task.id, "status", status);
+      return;
+    }
+
+    const saved = await handleUpdateExistingTask(task.id, "status", status);
+    if (saved) {
+      setEditableTasks((current) =>
+        current.filter((editableTask) => editableTask.id !== task.id),
+      );
+    }
+  };
 
   const handleDeleteExistingTask = async (taskId: number) => {
   const task = existingTasks.find(t => t.id === taskId);
@@ -1657,7 +1676,17 @@ useEffect(() => {
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <div className="space-y-1">
                                 <Label className="text-xs">Status</Label>
-                                  <Select disabled={taskLocked} defaultValue={task.status} onValueChange={v => isEditingSubmitted ? updateEditableTask(task.id, "status", v) : handleUpdateExistingTask(task.id, "status", v)}>
+                                  <Select
+                                    disabled={taskLocked}
+                                    defaultValue={task.status}
+                                    onValueChange={(value) => {
+                                      if (isEditingSubmitted) {
+                                        void handleEditableTaskStatusChange(task, value);
+                                      } else {
+                                        void handleUpdateExistingTask(task.id, "status", value);
+                                      }
+                                    }}
+                                  >
                                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     {TASK_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
