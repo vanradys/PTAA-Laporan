@@ -149,19 +149,10 @@ function ensureDailyTasksSchema() {
           upper(coalesce(department.code, '')) = 'PUR'
           or lower(coalesce(department.name, '')) like '%purchas%'
         )
-        and (
-          (
-            lower(regexp_replace(trim(task.title), '[[:space:]]+', ' ', 'g')) = 'po cat'
-            and lower(regexp_replace(trim(coalesce(task.project, '')), '[[:space:]]+', ' ', 'g')) = 'pt itama ranoraya'
-          )
-          or (
-            lower(regexp_replace(trim(task.title), '[[:space:]]+', ' ', 'g')) = 'po kebutuhan pengecatan musashi'
-            and lower(regexp_replace(trim(coalesce(task.project, '')), '[[:space:]]+', ' ', 'g')) = 'pt musashi (pengecatan bodijoist)'
-          )
-          or (
-            lower(regexp_replace(trim(task.title), '[[:space:]]+', ' ', 'g')) = 'po belt'
-            and lower(regexp_replace(trim(coalesce(task.project, '')), '[[:space:]]+', ' ', 'g')) = 'pt indowrld'
-          )
+        and lower(regexp_replace(trim(task.title), '[[:space:]]+', ' ', 'g')) in (
+          'po cat',
+          'po kebutuhan pengecatan musashi',
+          'po belt'
         )
     `);
   })();
