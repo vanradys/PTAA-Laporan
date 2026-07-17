@@ -20,8 +20,18 @@ import {
 import { getUserFromToken } from "./auth";
 import { Router } from "express";
 import { canEditByPermission } from "../services/editPermissions";
+import { ensureProjectsPoCustomerFieldsSchema } from "../services/projectsPoSchema";
 
 const router = Router();
+
+router.use(async (_req, _res, next) => {
+  try {
+    await ensureProjectsPoCustomerFieldsSchema();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 const CUSTOMER_TRACKING_STAGE_KEYS = [
   "po_diterima",
@@ -597,6 +607,7 @@ async function buildPoItem(
     trackingStages: normalizeTrackingStages(po.trackingStages),
     trackingTimeline: normalizeTrackingTimeline(po.trackingTimeline),
     catatan: po.catatan,
+    projectIssueAction: po.projectIssueAction,
     closedAt: po.closedAt ? po.closedAt.toISOString() : null,
     isEditLocked: isPoEditLocked(po),
     editLockNotice: getPoEditLockNotice(po),
@@ -973,6 +984,7 @@ router.post("/po", async (req, res) => {
     trackingStages,
     trackingTimeline,
     catatan,
+    projectIssueAction,
   } = req.body;
   const targetValue = targetPengiriman ?? deadline ?? tanggal_Delivery;
   const usesPainting = Boolean(hasPainting);
@@ -1032,6 +1044,9 @@ router.post("/po", async (req, res) => {
       hasPainting: usesPainting,
       trackingStages: normalizeTrackingStages(trackingStages),
       trackingTimeline: normalizeTrackingTimeline(trackingTimeline),
+      projectIssueAction: projectIssueAction
+        ? String(projectIssueAction).trim()
+        : null,
       ...(parsedStatus === "closed"
         ? { closedAt: new Date(), closedByUserId: user.id }
         : {}),
@@ -1081,6 +1096,7 @@ router.post("/po", async (req, res) => {
       "trackingStages",
       "trackingTimeline",
       "catatan",
+      "projectIssueAction",
     ]),
   });
   const item = await buildPoItem(po, {
@@ -1350,6 +1366,7 @@ router.patch("/po/:id", async (req, res) => {
   const hasFullManagePermission = await canEditByPermission(user, "po_edit_data");
   const hasProgressPermission = await canEditByPermission(user, "po_update_progress");
   const hasTimelinePermission = await canEditByPermission(user, "po_edit_customer_timeline");
+  const canEditIssueAction = hasFullManagePermission || hasProgressPermission;
 
   if (!hasFullManagePermission && !hasProgressPermission && !hasTimelinePermission) {
     res.status(403).json({
@@ -1400,6 +1417,7 @@ router.patch("/po/:id", async (req, res) => {
     trackingStages,
     trackingTimeline,
     catatan,
+    projectIssueAction,
   } = req.body;
 
   if (!hasFullManagePermission) {
@@ -1440,6 +1458,12 @@ router.patch("/po/:id", async (req, res) => {
   if (!hasTimelinePermission && trackingTimeline !== undefined) {
     res.status(403).json({
       error: "Tidak diizinkan mengubah Timeline Customer",
+    });
+    return;
+  }
+  if (!canEditIssueAction && projectIssueAction !== undefined) {
+    res.status(403).json({
+      error: "Tidak diizinkan mengubah Project Issue & Action internal",
     });
     return;
   }
@@ -1498,6 +1522,10 @@ router.patch("/po/:id", async (req, res) => {
 
   if (hasTimelinePermission && trackingTimeline !== undefined)
     updates.trackingTimeline = normalizeTrackingTimeline(trackingTimeline);
+  if (canEditIssueAction && projectIssueAction !== undefined)
+    updates.projectIssueAction = projectIssueAction
+      ? String(projectIssueAction).trim()
+      : null;
 
   if (status !== undefined) {
     const nextStatus = normalizeProjectProgress(status);
@@ -1567,6 +1595,7 @@ router.patch("/po/:id", async (req, res) => {
     "trackingStages",
     "trackingTimeline",
     "catatan",
+    "projectIssueAction",
     "closedAt",
     "closedByUserId",
   ]);
@@ -1714,6 +1743,7 @@ router.delete("/po/:id", async (req, res) => {
       "progress",
       "hasPainting",
       "catatan",
+      "projectIssueAction",
     ]),
   });
   res.json({ success: true, message: "PO berhasil dihapus" });

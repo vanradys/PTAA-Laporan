@@ -14,8 +14,18 @@ import {
 import { Router } from "express";
 import { getUserFromToken } from "./auth";
 import { canEditByPermission } from "../services/editPermissions";
+import { ensureProjectsPoCustomerFieldsSchema } from "../services/projectsPoSchema";
 
 const router = Router();
+
+router.use(async (_req, _res, next) => {
+  try {
+    await ensureProjectsPoCustomerFieldsSchema();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 const TRACKING_STAGES = [
   { key: "po_received", label: "PO Received", progress: 0 },

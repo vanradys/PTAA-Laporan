@@ -289,6 +289,7 @@ interface PoItem {
   trackingStages?: string[];
   trackingTimeline?: TrackingTimelineItem[];
   catatan?: string | null;
+  projectIssueAction?: string | null;
   closedAt?: string | null;
   isEditLocked?: boolean;
   editLockNotice?: string | null;
@@ -313,6 +314,7 @@ interface PoFormState {
   trackingStages: string[];
   trackingTimeline: TrackingTimelineItem[];
   catatan: string;
+  projectIssueAction: string;
 }
 
 interface TrackingTimelineItem {
@@ -378,6 +380,7 @@ const PO_FIELD_LABELS: Record<string, string> = {
   trackingStages: "Project Progress",
   trackingTimeline: "Timeline Customer",
   catatan: "Catatan",
+  projectIssueAction: "Project Issue & Action",
   closedAt: "Tanggal Close",
   closedByUserId: "Ditutup Oleh",
 };
@@ -400,6 +403,7 @@ const EMPTY_FORM: PoFormState = {
   trackingStages: [],
   trackingTimeline: [],
   catatan: "",
+  projectIssueAction: "",
 };
 const NONE_VALUE = "none";
 function formatRupiah(value: number) {
@@ -1079,6 +1083,7 @@ export default function JadwalProject() {
         ? po.trackingTimeline
         : [],
       catatan: "",
+      projectIssueAction: po.projectIssueAction ?? "",
     });
     setShowForm(true);
   };
@@ -1314,6 +1319,9 @@ export default function JadwalProject() {
       }
       if (!editingId || canManageCustomerTimeline) {
         payload.trackingTimeline = timelinePayload;
+      }
+      if (!editingId || canEditPoData || canUpdateProjectProgress) {
+        payload.projectIssueAction = form.projectIssueAction.trim() || null;
       }
       if (!editingId && form.catatan.trim()) {
         payload.catatan = form.catatan.trim();
@@ -2958,7 +2966,7 @@ export default function JadwalProject() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-slate-700">
-                      {viewingPo.catatan?.trim() ||
+                      {viewingPo.projectIssueAction?.trim() ||
                         "Tidak ada kendala yang dilaporkan."}
                     </p>
                   </CardContent>
@@ -3560,6 +3568,31 @@ export default function JadwalProject() {
                 </div>
               </div>
               )}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  Project Issue &amp; Action
+                </Label>
+                <Textarea
+                  value={form.projectIssueAction}
+                  disabled={
+                    Boolean(editingId) &&
+                    !canEditPoData &&
+                    !canUpdateProjectProgress
+                  }
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      projectIssueAction: event.target.value,
+                    }))
+                  }
+                  placeholder="Tulis kendala project dan tindakan yang dilakukan..."
+                  rows={3}
+                  className="resize-none text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Informasi internal dan tidak ditampilkan di Customer Tracking.
+                </p>
+              </div>
             </div>
             <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 rounded-b-xl border-t border-border bg-background px-4 py-4 sm:px-6">
               <Button

@@ -27,6 +27,7 @@ export const projectsPoTable = pgTable("projects_po", {
     { date: string; description: string }[]
   >(),
   catatan: text("catatan"),
+  projectIssueAction: text("project_issue_action"),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   closedByUserId: integer("closed_by_user_id").references(() => usersTable.id),
   createdByUserId: integer("created_by_user_id").references(() => usersTable.id),
