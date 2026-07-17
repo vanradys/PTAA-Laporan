@@ -155,6 +155,23 @@ function ensureDailyTasksSchema() {
           'po belt'
         )
     `);
+
+    // One-time, bounded remediation for Engineering 1's Gambar Quotation.
+    // Its 100% state was also only stored in the browser and later regressed.
+    await db.execute(sql`
+      update daily_tasks as task
+      set
+        status = 'delivered',
+        progress = 100,
+        carry_forward_stopped_at = coalesce(task.carry_forward_stopped_at, now()),
+        updated_at = now()
+      from daily_reports as report, users as report_user
+      where task.report_id = report.id
+        and report.user_id = report_user.id
+        and report.date <= '2026-07-17'
+        and lower(coalesce(report_user.email, '')) = 'engineering1@adiyasa.com'
+        and lower(regexp_replace(trim(task.title), '[[:space:]]+', ' ', 'g')) = 'gambar quotation'
+    `);
   })();
 
   return dailyTasksSchemaReady.catch((error) => {
