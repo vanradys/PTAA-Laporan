@@ -452,23 +452,20 @@ export default function CustomerTracking() {
                       </div>
                     ))
                   )}
+                  {internalDetail && (
+                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Project Issue &amp; Action
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                        {internalDetail.projectIssueAction?.trim() ||
+                          "Tidak ada kendala yang dilaporkan."}
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </section>
-
-            {internalDetail && (
-              <Card className="border border-amber-200 bg-amber-50 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Project Issue &amp; Action</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="whitespace-pre-wrap text-sm text-slate-700">
-                    {internalDetail.projectIssueAction?.trim() ||
-                      "Tidak ada kendala yang dilaporkan."}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
 
             <Card className="border border-slate-200 bg-white shadow-sm">
               <CardHeader>
