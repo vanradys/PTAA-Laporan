@@ -140,7 +140,6 @@ export default function CustomerTracking() {
   const [detail, setDetail] = useState<TrackingDetail | null>(null);
   const [internalDetail, setInternalDetail] =
     useState<InternalTrackingDetail | null>(null);
-  const [internalDetailError, setInternalDetailError] = useState("");
   const [comments, setComments] = useState<TrackingComment[]>([]);
   const [commentName, setCommentName] = useState("");
   const [comment, setComment] = useState("");
@@ -224,15 +223,13 @@ export default function CustomerTracking() {
   }, [detail, isSearching, location]);
 
   useEffect(() => {
-    if (!user || !detail) {
+    if (!detail) {
       setInternalDetail(null);
-      setInternalDetailError("");
       return;
     }
 
     const controller = new AbortController();
     setInternalDetail(null);
-    setInternalDetailError("");
 
     apiRequest<InternalTrackingDetail[]>(
       `/api/po?search=${encodeURIComponent(detail.noPo)}`,
@@ -245,17 +242,13 @@ export default function CustomerTracking() {
         }
         setInternalDetail(matchingPo);
       })
-      .catch((requestError) => {
+      .catch(() => {
         if (controller.signal.aborted) return;
-        setInternalDetailError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Data internal gagal dimuat",
-        );
+        setInternalDetail(null);
       });
 
     return () => controller.abort();
-  }, [detail, user]);
+  }, [detail]);
 
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
@@ -319,7 +312,6 @@ export default function CustomerTracking() {
   const resetSearch = () => {
     setDetail(null);
     setInternalDetail(null);
-    setInternalDetailError("");
     setComments([]);
     setError("");
     setLocation(TRACKING_ROUTE);
@@ -464,7 +456,7 @@ export default function CustomerTracking() {
               </Card>
             </section>
 
-            {user && (
+            {internalDetail && (
               <Card className="border border-amber-200 bg-amber-50 shadow-sm">
                 <CardHeader>
                   <CardTitle>Project Issue &amp; Action</CardTitle>
@@ -473,16 +465,10 @@ export default function CustomerTracking() {
                   </p>
                 </CardHeader>
                 <CardContent>
-                  {internalDetailError ? (
-                    <p className="text-sm text-red-600">{internalDetailError}</p>
-                  ) : (
-                    <p className="whitespace-pre-wrap text-sm text-slate-700">
-                      {internalDetail
-                        ? internalDetail.projectIssueAction?.trim() ||
-                          "Tidak ada kendala yang dilaporkan."
-                        : "Memuat informasi internal..."}
-                    </p>
-                  )}
+                  <p className="whitespace-pre-wrap text-sm text-slate-700">
+                    {internalDetail.projectIssueAction?.trim() ||
+                      "Tidak ada kendala yang dilaporkan."}
+                  </p>
                 </CardContent>
               </Card>
             )}
