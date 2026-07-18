@@ -56,6 +56,7 @@ interface TrackingDetail {
 }
 
 interface InternalTrackingDetail {
+  id: number;
   projectIssueAction?: string | null;
 }
 
@@ -233,11 +234,17 @@ export default function CustomerTracking() {
     setInternalDetail(null);
     setInternalDetailError("");
 
-    apiRequest<InternalTrackingDetail>(
-      `/api/customer-tracking/internal/${detail.id}/project-issue-action`,
+    apiRequest<InternalTrackingDetail[]>(
+      `/api/po?search=${encodeURIComponent(detail.noPo)}`,
       { signal: controller.signal },
     )
-      .then(setInternalDetail)
+      .then((items) => {
+        const matchingPo = items.find((item) => item.id === detail.id);
+        if (!matchingPo) {
+          throw new Error("Data internal PO tidak ditemukan");
+        }
+        setInternalDetail(matchingPo);
+      })
       .catch((requestError) => {
         if (controller.signal.aborted) return;
         setInternalDetailError(
