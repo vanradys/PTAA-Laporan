@@ -418,7 +418,11 @@ export default function CustomerTracking() {
               </Card>
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-2">
+            <section
+              className={`grid gap-4 ${
+                internalDetail ? "lg:grid-cols-3" : "lg:grid-cols-2"
+              }`}
+            >
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
                   <CardTitle>Project Progress</CardTitle>
@@ -437,6 +441,20 @@ export default function CustomerTracking() {
                 </CardContent>
               </Card>
 
+              {internalDetail && (
+                <Card className="border border-amber-200 bg-amber-50 shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Project Issue &amp; Action</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="whitespace-pre-wrap text-sm text-slate-700">
+                      {internalDetail.projectIssueAction?.trim() ||
+                        "Tidak ada kendala yang dilaporkan."}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
                   <CardTitle>Timeline Progress</CardTitle>
@@ -451,17 +469,6 @@ export default function CustomerTracking() {
                         <p className="text-sm text-slate-600">{item.title}</p>
                       </div>
                     ))
-                  )}
-                  {internalDetail && (
-                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Project Issue &amp; Action
-                      </p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                        {internalDetail.projectIssueAction?.trim() ||
-                          "Tidak ada kendala yang dilaporkan."}
-                      </p>
-                    </div>
                   )}
                 </CardContent>
               </Card>
