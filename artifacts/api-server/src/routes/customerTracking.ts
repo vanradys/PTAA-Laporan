@@ -299,6 +299,7 @@ async function buildTrackingDetail(po: typeof projectsPoTable.$inferSelect) {
     tanggalDelivery: po.deadline,
     picName: po.picProject ?? pic?.name ?? null,
     departmentName: department?.name ?? null,
+    projectIssueAction: po.projectIssueAction,
     status: po.status,
     statusLabel:
       TRACKING_STAGES.find((stage) => stage.key === currentStage)?.label ??

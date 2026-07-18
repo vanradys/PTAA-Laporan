@@ -48,16 +48,12 @@ interface TrackingDetail {
   tanggalPoMasuk: string;
   tanggalDelivery?: string | null;
   picName?: string | null;
+  projectIssueAction?: string | null;
   statusLabel: string;
   progress: number;
   stages: TrackingStage[];
   timeline: TrackingTimelineItem[];
   history: TrackingHistoryItem[];
-}
-
-interface InternalTrackingDetail {
-  id: number;
-  projectIssueAction?: string | null;
 }
 
 interface TrackingComment {
@@ -138,8 +134,6 @@ export default function CustomerTracking() {
   const [customerName, setCustomerName] = useState("");
   const [poNumber, setPoNumber] = useState("");
   const [detail, setDetail] = useState<TrackingDetail | null>(null);
-  const [internalDetail, setInternalDetail] =
-    useState<InternalTrackingDetail | null>(null);
   const [comments, setComments] = useState<TrackingComment[]>([]);
   const [commentName, setCommentName] = useState("");
   const [comment, setComment] = useState("");
@@ -222,34 +216,6 @@ export default function CustomerTracking() {
       .finally(() => setIsSearching(false));
   }, [detail, isSearching, location]);
 
-  useEffect(() => {
-    if (!detail) {
-      setInternalDetail(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    setInternalDetail(null);
-
-    apiRequest<InternalTrackingDetail[]>(
-      `/api/po?search=${encodeURIComponent(detail.noPo)}`,
-      { signal: controller.signal },
-    )
-      .then((items) => {
-        const matchingPo = items.find((item) => item.id === detail.id);
-        if (!matchingPo) {
-          throw new Error("Data internal PO tidak ditemukan");
-        }
-        setInternalDetail(matchingPo);
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setInternalDetail(null);
-      });
-
-    return () => controller.abort();
-  }, [detail]);
-
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
@@ -311,7 +277,6 @@ export default function CustomerTracking() {
 
   const resetSearch = () => {
     setDetail(null);
-    setInternalDetail(null);
     setComments([]);
     setError("");
     setLocation(TRACKING_ROUTE);
@@ -418,11 +383,7 @@ export default function CustomerTracking() {
               </Card>
             </section>
 
-            <section
-              className={`grid gap-4 ${
-                internalDetail ? "lg:grid-cols-3" : "lg:grid-cols-2"
-              }`}
-            >
+            <section className="grid gap-4 lg:grid-cols-3">
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
                   <CardTitle>Project Progress</CardTitle>
@@ -441,19 +402,17 @@ export default function CustomerTracking() {
                 </CardContent>
               </Card>
 
-              {internalDetail && (
-                <Card className="border border-amber-200 bg-amber-50 shadow-sm">
-                  <CardHeader>
-                    <CardTitle>Project Issue &amp; Action</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="whitespace-pre-wrap text-sm text-slate-700">
-                      {internalDetail.projectIssueAction?.trim() ||
-                        "Tidak ada kendala yang dilaporkan."}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
+              <Card className="border border-amber-200 bg-amber-50 shadow-sm">
+                <CardHeader>
+                  <CardTitle>Project Issue &amp; Action</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="whitespace-pre-wrap text-sm text-slate-700">
+                    {detail.projectIssueAction?.trim() ||
+                      "Tidak ada kendala yang dilaporkan."}
+                  </p>
+                </CardContent>
+              </Card>
 
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardHeader>
