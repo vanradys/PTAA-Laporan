@@ -460,9 +460,6 @@ export default function CustomerTracking() {
               <Card className="border border-amber-200 bg-amber-50 shadow-sm">
                 <CardHeader>
                   <CardTitle>Project Issue &amp; Action</CardTitle>
-                  <p className="text-xs font-medium text-amber-700">
-                    Informasi internal - tidak dapat dilihat oleh customer.
-                  </p>
                 </CardHeader>
                 <CardContent>
                   <p className="whitespace-pre-wrap text-sm text-slate-700">
