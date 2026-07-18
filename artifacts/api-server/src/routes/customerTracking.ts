@@ -411,6 +411,43 @@ router.get("/customer-tracking/internal/comments", async (req, res) => {
   );
 });
 
+router.get(
+  "/customer-tracking/internal/:poId/project-issue-action",
+  async (req, res) => {
+    const token = req.cookies?.session_token;
+    if (!token) {
+      res.status(401).json({ error: "Tidak terautentikasi" });
+      return;
+    }
+
+    const user = await getUserFromToken(token);
+    if (!user) {
+      res.status(401).json({ error: "Sesi tidak valid" });
+      return;
+    }
+
+    const poId = Number(req.params.poId);
+    if (!Number.isInteger(poId) || poId <= 0) {
+      res.status(400).json({ error: "ID PO tidak valid" });
+      return;
+    }
+
+    const [po] = await db
+      .select({ projectIssueAction: projectsPoTable.projectIssueAction })
+      .from(projectsPoTable)
+      .where(eq(projectsPoTable.id, poId))
+      .limit(1);
+
+    if (!po) {
+      res.status(404).json({ error: "Data PO tidak ditemukan" });
+      return;
+    }
+
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ projectIssueAction: po.projectIssueAction });
+  },
+);
+
 router.get("/po/:poId/internal-comments", async (req, res) => {
   const token = req.cookies?.session_token;
   if (!token) {

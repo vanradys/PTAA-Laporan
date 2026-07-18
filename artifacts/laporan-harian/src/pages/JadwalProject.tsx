@@ -3457,7 +3457,7 @@ export default function JadwalProject() {
                   className="resize-none text-sm"
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Kendala project yang ingin di sampaikan ke customer
+                  Informasi internal dan tidak ditampilkan kepada customer.
                 </p>
               </div>
               {canManageCustomerTimeline && (

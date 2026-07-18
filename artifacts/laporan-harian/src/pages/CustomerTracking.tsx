@@ -55,6 +55,10 @@ interface TrackingDetail {
   history: TrackingHistoryItem[];
 }
 
+interface InternalTrackingDetail {
+  projectIssueAction?: string | null;
+}
+
 interface TrackingComment {
   id: number;
   displayName?: string;
@@ -133,6 +137,9 @@ export default function CustomerTracking() {
   const [customerName, setCustomerName] = useState("");
   const [poNumber, setPoNumber] = useState("");
   const [detail, setDetail] = useState<TrackingDetail | null>(null);
+  const [internalDetail, setInternalDetail] =
+    useState<InternalTrackingDetail | null>(null);
+  const [internalDetailError, setInternalDetailError] = useState("");
   const [comments, setComments] = useState<TrackingComment[]>([]);
   const [commentName, setCommentName] = useState("");
   const [comment, setComment] = useState("");
@@ -215,6 +222,34 @@ export default function CustomerTracking() {
       .finally(() => setIsSearching(false));
   }, [detail, isSearching, location]);
 
+  useEffect(() => {
+    if (!user || !detail) {
+      setInternalDetail(null);
+      setInternalDetailError("");
+      return;
+    }
+
+    const controller = new AbortController();
+    setInternalDetail(null);
+    setInternalDetailError("");
+
+    apiRequest<InternalTrackingDetail>(
+      `/api/customer-tracking/internal/${detail.id}/project-issue-action`,
+      { signal: controller.signal },
+    )
+      .then(setInternalDetail)
+      .catch((requestError) => {
+        if (controller.signal.aborted) return;
+        setInternalDetailError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Data internal gagal dimuat",
+        );
+      });
+
+    return () => controller.abort();
+  }, [detail, user]);
+
   const handleSearch = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
@@ -276,6 +311,8 @@ export default function CustomerTracking() {
 
   const resetSearch = () => {
     setDetail(null);
+    setInternalDetail(null);
+    setInternalDetailError("");
     setComments([]);
     setError("");
     setLocation(TRACKING_ROUTE);
@@ -419,6 +456,29 @@ export default function CustomerTracking() {
                 </CardContent>
               </Card>
             </section>
+
+            {user && (
+              <Card className="border border-amber-200 bg-amber-50 shadow-sm">
+                <CardHeader>
+                  <CardTitle>Project Issue &amp; Action</CardTitle>
+                  <p className="text-xs font-medium text-amber-700">
+                    Informasi internal - tidak dapat dilihat oleh customer.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  {internalDetailError ? (
+                    <p className="text-sm text-red-600">{internalDetailError}</p>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm text-slate-700">
+                      {internalDetail
+                        ? internalDetail.projectIssueAction?.trim() ||
+                          "Tidak ada kendala yang dilaporkan."
+                        : "Memuat informasi internal..."}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card className="border border-slate-200 bg-white shadow-sm">
               <CardHeader>
