@@ -3435,6 +3435,31 @@ export default function JadwalProject() {
                 />
                 <span className="font-medium">Painting / Pengecatan</span>
               </label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  Project Issue &amp; Action
+                </Label>
+                <Textarea
+                  value={form.projectIssueAction}
+                  disabled={
+                    Boolean(editingId) &&
+                    !canEditPoData &&
+                    !canUpdateProjectProgress
+                  }
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      projectIssueAction: event.target.value,
+                    }))
+                  }
+                  placeholder="Tulis kendala project dan tindakan yang dilakukan..."
+                  rows={3}
+                  className="resize-none text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Kendala project yang ingin di sampaikan ke customer
+                </p>
+              </div>
               {canManageCustomerTimeline && (
               <div className="space-y-3 rounded-lg border border-border bg-slate-50 p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -3568,31 +3593,6 @@ export default function JadwalProject() {
                 </div>
               </div>
               )}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">
-                  Project Issue &amp; Action
-                </Label>
-                <Textarea
-                  value={form.projectIssueAction}
-                  disabled={
-                    Boolean(editingId) &&
-                    !canEditPoData &&
-                    !canUpdateProjectProgress
-                  }
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      projectIssueAction: event.target.value,
-                    }))
-                  }
-                  placeholder="Tulis kendala project dan tindakan yang dilakukan..."
-                  rows={3}
-                  className="resize-none text-sm"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Informasi internal dan tidak ditampilkan di Customer Tracking.
-                </p>
-              </div>
             </div>
             <div className="sticky bottom-0 flex flex-wrap justify-end gap-3 rounded-b-xl border-t border-border bg-background px-4 py-4 sm:px-6">
               <Button
