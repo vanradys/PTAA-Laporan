@@ -70,6 +70,8 @@ export const defaultEditPermissionBySubject: Record<string, string[]> = {
     "po_export",
     "project_comment_add",
     "project_comment_delete",
+    "daily_report_edit_own",
+    "daily_report_submit",
     "daily_report_review",
     "monitoring_send_reminder",
   ],
@@ -124,7 +126,8 @@ export type PermissionUser = {
 function isEmployeeDailyReportUser(user: PermissionUser) {
   const role = String(user.role ?? "").trim().toLowerCase();
   if (role === "admin") return true;
-  if (["direktur", "director", "dir", "monitoring_dummy", "monitoring", "monitor"].includes(role)) {
+  if (["direktur", "director", "dir"].includes(role)) return true;
+  if (["monitoring_dummy", "monitoring", "monitor"].includes(role)) {
     return false;
   }
 
@@ -141,6 +144,21 @@ function hasMandatoryEmployeeDailyReportPermission(
   return (
     mandatoryEmployeeDailyReportPermissions.has(permissionKey as EditPermissionKey) &&
     isEmployeeDailyReportUser(user)
+  );
+}
+
+export function isMandatoryDailyReportPermissionForSubject(
+  subject: PermissionSubject,
+  permissionKey: string,
+) {
+  if (!mandatoryEmployeeDailyReportPermissions.has(permissionKey as EditPermissionKey)) {
+    return false;
+  }
+
+  return (
+    subject.locked === true ||
+    subject.key === "role:direktur" ||
+    subject.key.startsWith("DEPT:")
   );
 }
 
@@ -194,7 +212,12 @@ export function getEffectiveEditPermission(
   permissionKey: string,
   savedByKey: Map<string, boolean>,
 ) {
-  if (subject.locked) return true;
+  if (
+    subject.locked ||
+    isMandatoryDailyReportPermissionForSubject(subject, permissionKey)
+  ) {
+    return true;
+  }
 
   const directSaved = savedByKey.get(`${subject.key}:${permissionKey}`);
   if (directSaved !== undefined) return directSaved;

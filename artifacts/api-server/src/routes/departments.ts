@@ -15,6 +15,7 @@ import {
   getEditPermissionsForUser,
   getEffectiveEditPermission,
   getSavedEditPermissionMap,
+  isMandatoryDailyReportPermissionForSubject,
 } from "../services/editPermissions";
 
 const router = Router();
@@ -339,6 +340,12 @@ router.patch("/user-management/edit-permissions", async (req, res) => {
   }
   if (subject.locked) {
     res.status(403).json({ error: "Permission Admin bersifat absolute dan tidak bisa diubah" });
+    return;
+  }
+  if (isMandatoryDailyReportPermissionForSubject(subject, permissionKey)) {
+    res.status(403).json({
+      error: "Permission edit dan submit laporan sendiri wajib aktif untuk profile ini",
+    });
     return;
   }
 

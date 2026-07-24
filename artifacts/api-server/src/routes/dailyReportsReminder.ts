@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 import {
   canManageDailyReportReminder,
   getMissingDailyReportUsers,
@@ -12,7 +12,7 @@ import { canEditByPermission } from "../services/editPermissions";
 const router = Router();
 
 async function getAuthenticatedUser(req: Request) {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) return null;
   return getUserFromToken(token);
 }

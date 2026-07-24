@@ -61,11 +61,16 @@ export default function Layout({ children }: LayoutProps) {
     : 0;
 
   const handleLogout = async () => {
-    await logout.mutateAsync(undefined as unknown as void);
-    localStorage.removeItem(MONITORING_FILTERS_STORAGE_KEY);
-    clearUser();
-    queryClient.clear();
-    window.location.href = import.meta.env.BASE_URL || "/";
+    try {
+      await logout.mutateAsync(undefined as unknown as void);
+    } catch (error) {
+      console.warn("Server logout failed; clearing the local session.", error);
+    } finally {
+      localStorage.removeItem(MONITORING_FILTERS_STORAGE_KEY);
+      clearUser();
+      queryClient.clear();
+      window.location.href = import.meta.env.BASE_URL || "/";
+    }
   };
 
   const closeMobileSidebar = () => {

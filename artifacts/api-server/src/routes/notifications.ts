@@ -1,11 +1,11 @@
 import express from "express";
 import { and, dailyReportsTable, db, deviceTokensTable, eq, inArray, notificationsTable, or, sql } from "@workspace/db";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 
 const router = (express as any).Router();
 
 async function getAuthenticatedUser(req: any) {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
 
   if (!token) {
     return null;

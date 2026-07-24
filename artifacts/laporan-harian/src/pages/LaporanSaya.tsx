@@ -1209,21 +1209,11 @@ useEffect(() => {
   }
 };
 
-  const handleEditableTaskStatusChange = async (
+  const handleEditableTaskStatusChange = (
     task: ExistingTask,
     status: string,
   ) => {
-    if (!isTaskCompleteForCarryForward({ status, progress: getTaskProgress(status) })) {
-      updateEditableTask(task.id, "status", status);
-      return;
-    }
-
-    const saved = await handleUpdateExistingTask(task.id, "status", status);
-    if (saved) {
-      setEditableTasks((current) =>
-        current.filter((editableTask) => editableTask.id !== task.id),
-      );
-    }
+    updateEditableTask(task.id, "status", status);
   };
 
   const handleDeleteExistingTask = async (taskId: number) => {

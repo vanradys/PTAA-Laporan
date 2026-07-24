@@ -14,7 +14,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { Router } from "express";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 import { getJakartaDateString, reportingUserCondition } from "../services/dailyReportReminder";
 
 const router = Router();
@@ -77,7 +77,7 @@ async function getWorkingDates(start: string, end: string) {
 }
 
 router.get("/dashboard/summary", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 
@@ -186,7 +186,7 @@ router.get("/dashboard/summary", async (req, res) => {
 });
 
 router.get("/dashboard/department-productivity", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   const user = token ? await getUserFromToken(token) : null;
   if (!user) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
 

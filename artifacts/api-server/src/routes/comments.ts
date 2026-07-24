@@ -1,11 +1,11 @@
 import { and, db, reportCommentsTable, usersTable, eq } from "@workspace/db";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 import { Router } from "express";
 
 const router = Router();
 
 router.get("/reports/:id/comments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -34,7 +34,7 @@ router.get("/reports/:id/comments", async (req, res) => {
 });
 
 router.post("/reports/:id/comments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -57,7 +57,7 @@ router.post("/reports/:id/comments", async (req, res) => {
 });
 
 router.patch("/reports/:reportId/comments/:commentId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -88,7 +88,7 @@ router.patch("/reports/:reportId/comments/:commentId", async (req, res) => {
 });
 
 router.delete("/reports/:reportId/comments/:commentId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }

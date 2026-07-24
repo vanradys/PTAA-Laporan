@@ -15,7 +15,7 @@ import {
   todoTasksTable,
   usersTable,
 } from "@workspace/db";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 
 const router = Router();
 let todoTypeConstraintReady: Promise<void> | null = null;
@@ -55,7 +55,7 @@ function ensureTodoTypeConstraint() {
 }
 
 async function getUser(req: any, res: any) {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   const user = token ? await getUserFromToken(token) : null;
   if (!user) res.status(401).json({ error: "Tidak terautentikasi" });
   return user;

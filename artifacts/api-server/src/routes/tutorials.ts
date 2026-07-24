@@ -5,7 +5,7 @@ import {
   sql,
   websiteTutorialsTable,
 } from "@workspace/db";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
@@ -22,7 +22,7 @@ const DEFAULT_TUTORIALS = [
 ] as const;
 
 async function authenticate(req: any, res: any) {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   const user = token ? await getUserFromToken(token) : null;
   if (!user) res.status(401).json({ error: "Tidak terautentikasi" });
   return user;

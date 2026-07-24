@@ -10,7 +10,7 @@ import {
   projectsPoTable,
 } from "@workspace/db";
 import { Router } from "express";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 
 const router = Router();
 
@@ -72,7 +72,7 @@ function sanitizePoChanges(
 }
 
 router.get("/monitoring-overall", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) {
     res.status(401).json({ error: "Tidak terautentikasi" });
     return;

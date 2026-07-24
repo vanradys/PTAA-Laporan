@@ -852,14 +852,28 @@ export default function UserManagement() {
                                 department.locked === true ||
                                 department.code === "role:admin" ||
                                 department.displayCode === "ADMIN";
-                              const checked = isLockedProfile
+                              const isMandatoryDailyReportPermission =
+                                (
+                                  permission.key === "daily_report_edit_own" ||
+                                  permission.key === "daily_report_submit"
+                                ) &&
+                                (
+                                  department.code === "role:direktur" ||
+                                  department.code.startsWith("DEPT:")
+                                );
+                              const isLockedPermission =
+                                isLockedProfile || isMandatoryDailyReportPermission;
+                              const checked = isLockedPermission
                                 ? true
                                 : editPermissionByKey.get(permissionKey) ?? false;
                               return (
                                 <td key={permissionKey} className="px-4 py-3 text-center">
                                   <Checkbox
                                     checked={checked}
-                                    disabled={updatingEditPermissionKey !== null || isLockedProfile}
+                                    disabled={
+                                      updatingEditPermissionKey !== null ||
+                                      isLockedPermission
+                                    }
                                     onCheckedChange={(value) =>
                                       void updateDepartmentEditPermission(
                                         department.code,

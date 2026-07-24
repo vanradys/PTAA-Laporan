@@ -12,7 +12,7 @@ import {
   departmentsTable,
 } from "@workspace/db";
 import { Router } from "express";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 import { canEditByPermission } from "../services/editPermissions";
 import { ensureProjectsPoCustomerFieldsSchema } from "../services/projectsPoSchema";
 
@@ -372,7 +372,7 @@ router.post("/customer-tracking/search", async (req, res) => {
 });
 
 router.get("/customer-tracking/internal/comments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) {
     res.status(401).json({ error: "Tidak terautentikasi" });
     return;
@@ -413,7 +413,7 @@ router.get("/customer-tracking/internal/comments", async (req, res) => {
 });
 
 router.get("/po/:poId/internal-comments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) {
     res.status(401).json({ error: "Tidak terautentikasi" });
     return;
@@ -447,7 +447,7 @@ router.get("/po/:poId/internal-comments", async (req, res) => {
 });
 
 router.post("/po/:poId/internal-comments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) {
     res.status(401).json({ error: "Tidak terautentikasi" });
     return;
@@ -513,7 +513,7 @@ router.post("/po/:poId/internal-comments", async (req, res) => {
 });
 
 router.delete("/po/:poId/internal-comments/:commentId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) {
     res.status(401).json({ error: "Tidak terautentikasi" });
     return;
@@ -545,7 +545,7 @@ router.delete("/po/:poId/internal-comments/:commentId", async (req, res) => {
 });
 
 router.patch("/po/:poId/internal-comments/:commentId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -647,7 +647,7 @@ router.post("/customer-tracking/:poId/comments", async (req, res) => {
 });
 
 router.delete("/customer-tracking/:poId/comments/:commentId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) {
     res.status(401).json({ error: "Tidak terautentikasi" });
     return;
@@ -679,7 +679,7 @@ router.delete("/customer-tracking/:poId/comments/:commentId", async (req, res) =
 });
 
 router.patch("/customer-tracking/:poId/comments/:commentId", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }

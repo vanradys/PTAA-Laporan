@@ -24,7 +24,7 @@ import {
   sql,
   usersTable,
 } from "@workspace/db";
-import { getUserFromToken } from "./auth";
+import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 import { canEditByPermission } from "../services/editPermissions";
 
 const router = Router();
@@ -274,7 +274,7 @@ function requestedPeriod(req: any, res: any) {
 }
 
 async function authenticate(req: any, res: any): Promise<AuthUser | null> {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   const user = token ? await getUserFromToken(token) : null;
   if (!user) res.status(401).json({ error: "Tidak terautentikasi" });
   return user;
