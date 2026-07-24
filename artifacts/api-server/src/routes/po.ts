@@ -24,7 +24,17 @@ import { ensureProjectsPoCustomerFieldsSchema } from "../services/projectsPoSche
 
 const router = Router();
 
-router.use(async (_req, _res, next) => {
+router.use(async (req, _res, next) => {
+  if (req.path !== "/po" && !req.path.startsWith("/po/")) {
+    next();
+    return;
+  }
+
+  if (!getSessionTokenFromRequest(req)) {
+    next();
+    return;
+  }
+
   try {
     await ensureProjectsPoCustomerFieldsSchema();
     next();

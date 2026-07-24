@@ -18,7 +18,32 @@ import { ensureProjectsPoCustomerFieldsSchema } from "../services/projectsPoSche
 
 const router = Router();
 
-router.use(async (_req, _res, next) => {
+router.use(async (req, _res, next) => {
+  const isCustomerTrackingPath =
+    req.path === "/customer-tracking" ||
+    req.path.startsWith("/customer-tracking/");
+  const isInternalPoPath = req.path.startsWith("/po/");
+
+  if (
+    !isCustomerTrackingPath &&
+    !isInternalPoPath
+  ) {
+    next();
+    return;
+  }
+
+  const isAuthenticatedRoute =
+    isInternalPoPath ||
+    req.path === "/customer-tracking/internal/comments" ||
+    (
+      ["DELETE", "PATCH"].includes(req.method) &&
+      req.path.includes("/comments/")
+    );
+  if (isAuthenticatedRoute && !getSessionTokenFromRequest(req)) {
+    next();
+    return;
+  }
+
   try {
     await ensureProjectsPoCustomerFieldsSchema();
     next();
