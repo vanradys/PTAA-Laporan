@@ -58,6 +58,10 @@ const attendanceManagePermissions = [
   "attendance_manual_corrections",
   "attendance_export",
 ] satisfies EditPermissionKey[];
+const mandatoryEmployeeDailyReportPermissions = new Set<EditPermissionKey>([
+  "daily_report_edit_own",
+  "daily_report_submit",
+]);
 
 export const defaultEditPermissionBySubject: Record<string, string[]> = {
   "role:admin": allEditPermissionKeys,
@@ -116,6 +120,29 @@ export type PermissionUser = {
   departmentCode?: string | null;
   departmentName?: string | null;
 };
+
+function isEmployeeDailyReportUser(user: PermissionUser) {
+  const role = String(user.role ?? "").trim().toLowerCase();
+  if (role === "admin") return true;
+  if (["direktur", "director", "dir", "monitoring_dummy", "monitoring", "monitor"].includes(role)) {
+    return false;
+  }
+
+  return Boolean(
+    String(user.departmentCode ?? "").trim() ||
+    String(user.departmentName ?? "").trim(),
+  );
+}
+
+function hasMandatoryEmployeeDailyReportPermission(
+  user: PermissionUser,
+  permissionKey: string,
+) {
+  return (
+    mandatoryEmployeeDailyReportPermissions.has(permissionKey as EditPermissionKey) &&
+    isEmployeeDailyReportUser(user)
+  );
+}
 
 export async function ensureEditPermissionTable() {
   await db.execute(sql`
@@ -182,6 +209,7 @@ export function getEffectiveEditPermission(
 
 export async function canEditByPermission(user: PermissionUser, permissionKey: string) {
   if (!editPermissionFeatureKeys.has(permissionKey)) return false;
+  if (hasMandatoryEmployeeDailyReportPermission(user, permissionKey)) return true;
   const subject = getPermissionSubjectForUser(user);
   if (!subject) return false;
   const savedByKey = await getSavedEditPermissionMap();
@@ -194,7 +222,11 @@ export async function getEditPermissionsForUser(user: PermissionUser) {
   return Object.fromEntries(
     editPermissionFeatures.map((feature) => [
       feature.key,
-      subject ? getEffectiveEditPermission(subject, feature.key, savedByKey) : false,
+      hasMandatoryEmployeeDailyReportPermission(user, feature.key)
+        ? true
+        : subject
+          ? getEffectiveEditPermission(subject, feature.key, savedByKey)
+          : false,
     ]),
   );
 }

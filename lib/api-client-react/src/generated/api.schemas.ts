@@ -39,6 +39,10 @@ export interface LoginInput {
   password: string;
 }
 
+export type AuthenticatedUser = User & {
+  sessionToken: string;
+};
+
 export interface PoYearlyTrendItem {
   month: string;
   monthNumber: number;

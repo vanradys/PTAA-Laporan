@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AuthenticatedUser,
   CommentInput,
   DailyTask,
   DashboardSummary,
@@ -235,9 +236,9 @@ export const getLoginUrl = () => {
 /**
  * @summary Login
  */
-export const login = async (loginInput: LoginInput, options?: RequestInit): Promise<User> => {
+export const login = async (loginInput: LoginInput, options?: RequestInit): Promise<AuthenticatedUser> => {
 
-  return customFetch<User>(getLoginUrl(),
+  return customFetch<AuthenticatedUser>(getLoginUrl(),
   {
     ...options,
     method: 'POST',

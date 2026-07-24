@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getCurrentUser, getGetCurrentUserQueryKey } from "@workspace/api-client-react";
+import { clearSessionAuthToken } from "@/lib/sessionAuth";
 
 interface User {
   id: number;
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const user = (data as User | undefined) ?? null;
 
   const clearUser = () => {
+    clearSessionAuthToken();
     setEnabled(false);
     queryClient.removeQueries({ queryKey: getGetCurrentUserQueryKey() });
     setTimeout(() => setEnabled(true), 100);

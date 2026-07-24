@@ -35,15 +35,18 @@ function getSessionCookieOptions(req: Request, expiresAt?: Date): CookieOptions 
 }
 
 export function getSessionTokenFromRequest(req: Request): string | null {
-  const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
-  if (typeof cookieToken === "string" && cookieToken.trim()) {
-    return cookieToken.trim();
-  }
-
   const authorization = req.headers.authorization;
   const headerValue = Array.isArray(authorization) ? authorization[0] : authorization;
   const match = /^Bearer\s+(.+)$/i.exec(String(headerValue ?? ""));
-  return match?.[1]?.trim() || null;
+  const bearerToken = match?.[1]?.trim();
+  if (bearerToken) {
+    return bearerToken;
+  }
+
+  const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
+  return typeof cookieToken === "string" && cookieToken.trim()
+    ? cookieToken.trim()
+    : null;
 }
 
 async function getUserFromToken(token: string) {
@@ -418,6 +421,7 @@ router.post("/login", async (req, res) => {
     departmentName: user.departmentName ?? null,
     departmentCode: user.departmentCode ?? null,
     avatarInitials: initials,
+    sessionToken: token,
   });
 });
 

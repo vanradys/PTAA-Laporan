@@ -1,5 +1,10 @@
 import { db, departmentsTable, usersTable, eq, ilike, inArray, sql } from "@workspace/db";
-import { getUserFromToken, hashPassword, ptaaUsers } from "./auth";
+import {
+  getSessionTokenFromRequest,
+  getUserFromToken,
+  hashPassword,
+  ptaaUsers,
+} from "./auth";
 import { activeDepartmentCodes } from "./auth";
 import { Router } from "express";
 import { activeUserCondition } from "../services/dailyReportReminder";
@@ -15,7 +20,7 @@ import {
 const router = Router();
 
 router.get("/departments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -29,7 +34,7 @@ router.get("/departments", async (req, res) => {
 });
 
 router.get("/employees", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -56,7 +61,7 @@ router.get("/employees", async (req, res) => {
 });
 
 router.get("/users", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -84,7 +89,7 @@ router.get("/users", async (req, res) => {
 });
 
 router.get("/user-management/departments", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -101,7 +106,7 @@ router.get("/user-management/departments", async (req, res) => {
 });
 
 router.get("/user-management/department-visibility", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -149,7 +154,7 @@ router.get("/user-management/department-visibility", async (req, res) => {
 });
 
 router.get("/department-visibility/me", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -191,7 +196,7 @@ router.get("/department-visibility/me", async (req, res) => {
 });
 
 router.patch("/user-management/department-visibility", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -240,7 +245,7 @@ router.patch("/user-management/department-visibility", async (req, res) => {
 });
 
 router.get("/user-management/edit-permissions", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -277,7 +282,7 @@ router.get("/user-management/edit-permissions", async (req, res) => {
 });
 
 router.get("/edit-permissions/me", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -300,7 +305,7 @@ router.get("/edit-permissions/me", async (req, res) => {
 });
 
 router.patch("/user-management/edit-permissions", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -567,6 +572,9 @@ function getEffectiveVisibility(
   savedByKey: Map<string, boolean>,
 ) {
   if (subject.locked) return true;
+  if (subject.key === "role:direktur" && featureKey === "daily_reports") {
+    return true;
+  }
 
   const directSaved = savedByKey.get(`${subject.key}:${featureKey}`);
   if (directSaved !== undefined) return directSaved;
@@ -663,7 +671,7 @@ async function resolveUserManagementDepartmentId(
 }
 
 router.post("/users", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -738,7 +746,7 @@ router.post("/users", async (req, res) => {
 });
 
 router.get("/users/:id/password", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -807,7 +815,7 @@ router.get("/users/:id/password", async (req, res) => {
 });
 
 router.patch("/users/:id/password", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -847,7 +855,7 @@ router.patch("/users/:id/password", async (req, res) => {
 });
 
 router.patch("/users/:id", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }
@@ -938,7 +946,7 @@ router.patch("/users/:id", async (req, res) => {
 });
 
 router.delete("/users/:id", async (req, res) => {
-  const token = req.cookies?.session_token;
+  const token = getSessionTokenFromRequest(req);
   if (!token) { res.status(401).json({ error: "Tidak terautentikasi" }); return; }
   const user = await getUserFromToken(token);
   if (!user) { res.status(401).json({ error: "Sesi tidak valid" }); return; }

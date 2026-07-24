@@ -48,7 +48,9 @@ export const LoginResponse = zod.object({
   "departmentName": zod.string().nullish(),
   "departmentCode": zod.string().nullish(),
   "avatarInitials": zod.string()
-})
+}).and(zod.object({
+  "sessionToken": zod.string()
+}))
 
 
 /**
@@ -455,7 +457,8 @@ export const CreateTaskBody = zod.object({
   "completionValue": zod.string().optional(),
   "progress": zod.number(),
   "status": zod.string(),
-  "notes": zod.string().optional()
+  "notes": zod.string().optional(),
+  "carryForwardSourceTaskId": zod.number().nullish()
 })
 
 
@@ -474,7 +477,8 @@ export const UpdateTaskBody = zod.object({
   "completionValue": zod.string().optional(),
   "progress": zod.number().optional(),
   "status": zod.string().optional(),
-  "notes": zod.string().optional()
+  "notes": zod.string().optional(),
+  "carryForwardSourceTaskId": zod.number().nullish()
 })
 
 export const UpdateTaskResponse = zod.object({

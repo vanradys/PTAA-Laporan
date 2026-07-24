@@ -1,3 +1,5 @@
+import { getSessionAuthToken } from "@/lib/sessionAuth";
+
 export type ApiRequestOptions = RequestInit & {
   responseType?: "json" | "text" | "blob";
 };
@@ -31,10 +33,16 @@ export async function apiRequest<T = unknown>(
   options: ApiRequestOptions = {},
 ): Promise<T> {
   const { responseType = "json", headers, ...init } = options;
+  const requestHeaders = new Headers(headers);
+  const sessionToken = getSessionAuthToken();
+
+  if (sessionToken && !requestHeaders.has("authorization")) {
+    requestHeaders.set("authorization", `Bearer ${sessionToken}`);
+  }
 
   const response = await fetch(buildApiUrl(input), {
     ...init,
-    headers,
+    headers: requestHeaders,
     credentials: init.credentials ?? "include",
   });
 

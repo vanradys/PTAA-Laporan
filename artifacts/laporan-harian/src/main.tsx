@@ -1,7 +1,8 @@
 import { createRoot } from "react-dom/client";
-import { setBaseUrl } from "@workspace/api-client-react";
+import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import App from "./App";
 import "./index.css";
+import { getSessionAuthToken } from "@/lib/sessionAuth";
 
 function getApiBaseUrl() {
   const envUrl = String(import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
@@ -17,5 +18,6 @@ function getApiBaseUrl() {
 
 const apiUrl = getApiBaseUrl();
 setBaseUrl(apiUrl);
+setAuthTokenGetter(getSessionAuthToken);
 
 createRoot(document.getElementById("root")!).render(<App />);

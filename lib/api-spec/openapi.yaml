@@ -67,7 +67,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/AuthenticatedUser"
 
   /auth/logout:
     post:
@@ -867,6 +867,14 @@ components:
         email: { type: string }
         password: { type: string }
       required: [email, password]
+
+    AuthenticatedUser:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            sessionToken: { type: string }
+          required: [sessionToken]
     PoYearlyTrendItem:
       type: object
       properties:

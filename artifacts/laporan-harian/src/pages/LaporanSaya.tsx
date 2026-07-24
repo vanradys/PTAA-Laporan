@@ -618,12 +618,8 @@ const canAssignDailyTasks = canEdit("daily_report_assign_tasks", true);
 const isLocked = isReviewed || isPastReport;
 const showSubmittedReadOnly = isSubmitted && !isEditingSubmitted;
 const displayedExistingTasks = isEditingSubmitted ? editableTasks : existingTasks;
-const visibleExistingTasks = displayedExistingTasks.filter(
-  (task) => !isTaskCompleteForCarryForward(task),
-);
-const visibleNewTasks = newTasks.filter(
-  (task) => !isTaskCompleteForCarryForward(task),
-);
+const visibleExistingTasks = displayedExistingTasks;
+const visibleNewTasks = newTasks;
 
 const canEditReportFields =
   canEditOwnDailyReport &&
@@ -631,6 +627,11 @@ const canEditReportFields =
 
 const canModifyExistingTasks =
   canEditOwnDailyReport && !!report && !isReviewed && !isPastReport;
+const canEditDraftTaskNotes =
+  canEditOwnDailyReport &&
+  report?.status === "draf" &&
+  report.date === today &&
+  !isWeekendToday;
 
 const canAddNewTasks = canEditReportFields;
 const showSubmitActions = canEditReportFields && !isLocked && !isEditingSubmitted && !isWeekendToday;
@@ -1158,11 +1159,19 @@ useEffect(() => {
     value?: string | number,
   ) => {
   const task = existingTasks.find(t => t.id === taskId);
+  const isDraftNotesUpdate =
+    canEditDraftTaskNotes &&
+    (fieldOrData === "notes" ||
+      (typeof fieldOrData === "object" &&
+        Object.keys(fieldOrData).length === 1 &&
+        Object.prototype.hasOwnProperty.call(fieldOrData, "notes")));
 
   if (
     !task ||
     !canModifyExistingTasks ||
-    (!isFinanceUser && (task.isLocked || task.remainingActions <= 0))
+    (!isDraftNotesUpdate &&
+      !isFinanceUser &&
+      (task.isLocked || task.remainingActions <= 0))
   ) {
     toast({
       title: "Tugas terkunci",
@@ -1174,11 +1183,20 @@ useEffect(() => {
 
   try {
     const data = typeof fieldOrData === "string" ? { [fieldOrData]: value } : fieldOrData;
+    if (
+      isDraftNotesUpdate &&
+      String(data.notes ?? "") === String(task.notes ?? "")
+    ) {
+      return true;
+    }
+
     await updateTask.mutateAsync({ taskId, data });
     queryClient.invalidateQueries({ queryKey: getGetTodayReportQueryKey() });
     toast({
       title: "Tugas diperbarui",
-      description: `Sisa kesempatan edit/hapus: ${Math.max(0, task.remainingActions - 1)}x.`,
+      description: isDraftNotesUpdate
+        ? "Job yang dikerjakan berhasil disimpan."
+        : `Sisa kesempatan edit/hapus: ${Math.max(0, task.remainingActions - 1)}x.`,
     });
     return true;
   } catch (error) {
@@ -1567,12 +1585,6 @@ useEffect(() => {
                               {statusInfo.label}
                             </span>
 
-                            {task.isDelay && (
-                              <span className="text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 bg-red-100 text-red-700 border-red-200">
-                                Delay
-                              </span>
-                            )}
-
                             {!isFinanceUser && task.remainingActions <= 0 && (
                               <span className="text-xs px-2 py-0.5 rounded-full border font-medium shrink-0 bg-slate-100 text-slate-700 border-slate-200">
                                 Terkunci
@@ -1588,7 +1600,7 @@ useEffect(() => {
                               )}
 
                               {task.deadline && (
-                                <span className={`text-xs ${task.isDelay ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                                <span className="text-xs text-muted-foreground">
                                   Tanggal Tugas Diberikan: {formatDeliveryValue(task.deadline)}
                                 </span>
                               )}
@@ -1668,7 +1680,9 @@ useEffect(() => {
                                 {isCarryForwardTask
                                   ? "Tugas lanjutan dari laporan sebelumnya. Nama tugas dan project dikunci; lanjutkan dengan mengubah status/tanggal atau hapus jika tidak perlu diteruskan."
                                   : taskLocked
-                                  ? "Tugas terkunci. Batas edit/hapus sudah habis atau tanggal laporan sudah berganti."
+                                  ? canEditDraftTaskNotes
+                                    ? "Data tugas terkunci, tetapi Job yang dikerjakan tetap bisa diedit selama laporan masih draf."
+                                    : "Tugas terkunci. Batas edit/hapus sudah habis atau tanggal laporan sudah berganti."
                                   : isFinanceUser
                                     ? "Tugas Finance tidak dibatasi jumlah edit/hapus."
                                   : `Sisa kesempatan edit/hapus tugas ini: ${task.remainingActions}x.`}
@@ -1710,7 +1724,7 @@ useEffect(() => {
                               <Label className="text-xs">Job yang dikerjakan</Label>
                                 <Input
                                   defaultValue={task.notes ?? ""}
-                                  disabled={taskLocked}
+                                  disabled={taskLocked && !canEditDraftTaskNotes}
                                   onBlur={e => isEditingSubmitted ? updateEditableTask(task.id, "notes", e.target.value) : handleUpdateExistingTask(task.id, "notes", e.target.value)}
                                   className="h-8 text-sm"
                                   placeholder="Catatan opsional..."

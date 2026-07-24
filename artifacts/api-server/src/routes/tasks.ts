@@ -312,6 +312,9 @@ function getModifyTaskError(
     departmentCode?: string | null;
     departmentName?: string | null;
   },
+  options: {
+    bypassActionLimit?: boolean;
+  } = {},
 ): string | null {
   if (String(user?.role ?? "").toLowerCase() === "admin") {
     return null;
@@ -327,6 +330,7 @@ function getModifyTaskError(
 
   if (
     task.reviewStatus !== "revisi" &&
+    !options.bypassActionLimit &&
     !canBypassTaskActionLimit(user) &&
     isTaskLockedByCount(task.editCount ?? 0)
   ) {
@@ -765,13 +769,24 @@ router.patch("/tasks/:taskId", async (req, res) => {
     return;
   }
 
-  const modifyTaskError = getModifyTaskError(report[0], task[0], user);
+  const { title, project, deadline, completionInputType, completionValue, status, notes } = req.body;
+  const isDraftNotesOnlyUpdate =
+    report[0].status === "draf" &&
+    notes !== undefined &&
+    title === undefined &&
+    project === undefined &&
+    deadline === undefined &&
+    completionInputType === undefined &&
+    completionValue === undefined &&
+    status === undefined;
+
+  const modifyTaskError = getModifyTaskError(report[0], task[0], user, {
+    bypassActionLimit: isDraftNotesOnlyUpdate,
+  });
   if (modifyTaskError) {
     res.status(400).json({ error: modifyTaskError });
     return;
   }
-
-  const { title, project, deadline, completionInputType, completionValue, status, notes } = req.body;
 
   if (task[0].carryForwardSourceTaskId && (title !== undefined || project !== undefined)) {
     res.status(400).json({ error: "Nama tugas dan project carry-forward tidak bisa diubah" });
@@ -794,6 +809,11 @@ router.patch("/tasks/:taskId", async (req, res) => {
 
   if (!hasUpdate) {
     res.status(400).json({ error: "Tidak ada data tugas yang diubah" });
+    return;
+  }
+
+  if (isDraftNotesOnlyUpdate && String(notes ?? "") === String(task[0].notes ?? "")) {
+    res.json(buildTaskResponse(task[0]));
     return;
   }
 
@@ -839,7 +859,9 @@ router.patch("/tasks/:taskId", async (req, res) => {
         progress: getTaskProgress(status),
       }),
       ...(notes !== undefined && { notes }),
-      editCount: sql`${dailyTasksTable.editCount} + 1`,
+      ...(!isDraftNotesOnlyUpdate && {
+        editCount: sql`${dailyTasksTable.editCount} + 1`,
+      }),
       updatedAt: new Date(),
     })
     .where(eq(dailyTasksTable.id, taskId))

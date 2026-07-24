@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './authenticatedUser';
 export * from './commentInput';
 export * from './dailyTask';
 export * from './dashboardSummary';

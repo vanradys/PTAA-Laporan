@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLogin } from "@workspace/api-client-react";
 import { Loader2 } from "lucide-react";
+import { setSessionAuthToken } from "@/lib/sessionAuth";
 
 const logoSrc = new URL("../assets/adiyasa-logo.png", import.meta.url).href;
 
@@ -25,7 +26,8 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     setError("");
     try {
-      await login.mutateAsync({ data });
+      const loginResult = await login.mutateAsync({ data });
+      setSessionAuthToken(loginResult.sessionToken);
       refetchUser();
     } catch (e: unknown) {
       const err = e as {

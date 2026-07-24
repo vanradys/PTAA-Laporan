@@ -80,7 +80,7 @@ export default function Layout({ children }: LayoutProps) {
   const userRole = String(user?.role ?? "").toLowerCase();
   const canViewOverallMonitoring = ["admin", "monitoring_dummy"].includes(userRole);
   const canViewProjectCommentsNav = true;
-  const hideDailyReportsNav = ["direktur", "director", "dir", "monitoring_dummy"].includes(userRole);
+  const hideDailyReportsNav = userRole === "monitoring_dummy";
   const visibleNavItems = [
     ...(canViewFeature("dashboard", true) ? [navItems[0]] : []),
     ...(canViewFeature("daily_reports", true) && !hideDailyReportsNav ? [navItems[1]] : []),
