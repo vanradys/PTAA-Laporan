@@ -613,6 +613,7 @@ export const ListTodoTasksResponseItem = zod.object({
   "type": zod.string(),
   "startDate": zod.string(),
   "dueDate": zod.string(),
+  "dueTime": zod.string().nullable(),
   "priority": zod.string(),
   "status": zod.string(),
   "createdByUserId": zod.number().nullish(),
@@ -652,6 +653,7 @@ export const CreateTodoTaskBody = zod.object({
   "type": zod.string(),
   "startDate": zod.string(),
   "dueDate": zod.string(),
+  "dueTime": zod.string().nullish().describe('Optional HH:mm deadline for personal tasks; omitted or null remains supported for legacy clients'),
   "priority": zod.string(),
   "assigneeIds": zod.array(zod.number()).optional(),
   "checklist": zod.array(zod.string()).optional()
@@ -672,6 +674,7 @@ export const GetTodoTaskResponse = zod.object({
   "type": zod.string(),
   "startDate": zod.string(),
   "dueDate": zod.string(),
+  "dueTime": zod.string().nullable(),
   "priority": zod.string(),
   "status": zod.string(),
   "createdByUserId": zod.number().nullish(),
@@ -702,23 +705,32 @@ export const GetTodoTaskResponse = zod.object({
 
 
 /**
- * @summary Update to-do task status
+ * @summary Update to-do task details or status
  */
-export const UpdateTodoTaskStatusParams = zod.object({
+export const UpdateTodoTaskParams = zod.object({
   "id": zod.coerce.number()
 })
 
-export const UpdateTodoTaskStatusBody = zod.object({
-  "status": zod.string()
+export const UpdateTodoTaskBody = zod.object({
+  "title": zod.string().optional(),
+  "description": zod.string().nullish(),
+  "type": zod.string().optional(),
+  "startDate": zod.string().optional(),
+  "dueDate": zod.string().optional(),
+  "dueTime": zod.string().nullish().describe('Optional HH:mm deadline for personal tasks; ignored for team and permanent task types'),
+  "priority": zod.string().optional(),
+  "status": zod.string().optional(),
+  "assigneeIds": zod.array(zod.number()).optional()
 })
 
-export const UpdateTodoTaskStatusResponse = zod.object({
+export const UpdateTodoTaskResponse = zod.object({
   "id": zod.number(),
   "title": zod.string(),
   "description": zod.string().nullish(),
   "type": zod.string(),
   "startDate": zod.string(),
   "dueDate": zod.string(),
+  "dueTime": zod.string().nullable(),
   "priority": zod.string(),
   "status": zod.string(),
   "createdByUserId": zod.number().nullish(),
@@ -745,6 +757,19 @@ export const UpdateTodoTaskStatusResponse = zod.object({
 })),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a personal to-do task
+ */
+export const DeleteTodoTaskParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTodoTaskResponse = zod.object({
+  "success": zod.boolean(),
+  "message": zod.string().optional()
 })
 
 

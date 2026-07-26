@@ -38,19 +38,19 @@ type ChecklistItem = { id: number; text: string; isCompleted: boolean };
 type TaskComment = { id: number; userName: string; comment: string; createdAt: string };
 type Task = {
   id: number; title: string; description: string | null; type: TaskType;
-  startDate: string; dueDate: string; priority: TaskPriority; status: TaskStatus;
+  startDate: string; dueDate: string; dueTime: string | null; priority: TaskPriority; status: TaskStatus;
   createdByUserId: number | null; createdByName: string;
   assignees: Array<{ id: number; userId: number; userName: string }>;
   checklist: ChecklistItem[]; comments: TaskComment[];
 };
 type TaskForm = {
-  title: string; type: TaskType; startDate: string; dueDate: string;
+  title: string; type: TaskType; startDate: string; dueDate: string; dueTime: string;
   priority: TaskPriority; description: string; assigneeIds: number[]; checklist: string[];
 };
 
 const today = getJakartaDateString();
 const emptyForm: TaskForm = {
-  title: "", type: "personal", startDate: today, dueDate: today,
+  title: "", type: "personal", startDate: today, dueDate: today, dueTime: "",
   priority: "Sedang", description: "", assigneeIds: [], checklist: [""],
 };
 const priorityStyles: Record<TaskPriority, string> = {
@@ -83,6 +83,10 @@ function formatLongDate(value: string) {
     year: "numeric",
   }).format(parseDate(value));
 }
+function formatDeadline(task: Task) {
+  const time = task.dueTime ? `, ${task.dueTime.replace(":", ".")} WIB` : "";
+  return `${formatDate(task.dueDate)}${time}`;
+}
 function initials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
@@ -91,10 +95,26 @@ function inRange(date: string, task: Task) {
   return date >= task.startDate && date <= task.dueDate;
 }
 function taskOverlapsPeriod(task: Task, start: string, end: string) {
+  if (isPermanentTaskType(task.type)) return true;
   return task.startDate <= end && task.dueDate >= start;
 }
 function isPermanentTaskType(type: TaskType) {
   return type === "personal_permanent" || type === "team_permanent";
+}
+function isPersonalTaskType(type: TaskType) {
+  return type === "personal" || type === "personal_permanent";
+}
+function taskTypeLabel(type: TaskType) {
+  if (type === "personal_permanent") return "Job Desk Pribadi";
+  if (type === "team_permanent") return "Job Desk Tim";
+  if (type === "team") return "Tugas Tim";
+  return "Tugas Pribadi dengan Deadline";
+}
+function taskKindBadgeLabel(type: TaskType) {
+  if (type === "personal") return "Deadline";
+  if (type === "personal_permanent") return "Job Desk Permanen";
+  if (type === "team_permanent") return "Job Desk Tim";
+  return "Tugas Tim";
 }
 
 function ViewButton({ active, icon: Icon, label, onClick }: {
@@ -112,12 +132,19 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: (task: Task) => void }
       className="w-full rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <h3 className="font-black text-slate-950">{task.title}</h3>
-        <Badge className={cn("border", priorityStyles[task.priority])}>{task.priority}</Badge>
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <Badge variant="outline">{taskKindBadgeLabel(task.type)}</Badge>
+          <Badge className={cn("border", priorityStyles[task.priority])}>{task.priority}</Badge>
+        </div>
       </div>
       <p className="mt-2 line-clamp-2 text-sm text-slate-600">{task.description || "Tidak ada deskripsi."}</p>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
         <span className="flex items-center gap-1 font-semibold">
-          {isPermanentTaskType(task.type) ? "Selalu tampil" : <><CalendarDays className="h-3.5 w-3.5" />{formatDate(task.startDate)} - {formatDate(task.dueDate)}</>}
+          {isPermanentTaskType(task.type)
+            ? "Permanen · tampil setiap hari"
+            : task.type === "personal"
+              ? <><CalendarDays className="h-3.5 w-3.5" />Deadline {formatDeadline(task)}</>
+              : <><CalendarDays className="h-3.5 w-3.5" />{formatDate(task.startDate)} - {formatDate(task.dueDate)}</>}
         </span>
         <Badge className={cn("border", statusStyles[task.status])}>{task.status}</Badge>
       </div>
@@ -181,6 +208,7 @@ export default function ToDoList() {
     type: "personal",
     startDate: today,
     dueDate: today,
+    dueTime: "",
     priority: "Sedang",
     description: "",
     assigneeIds: [],
@@ -203,6 +231,17 @@ export default function ToDoList() {
         .includes(String(employee.role ?? "").toLowerCase()),
     );
 
+  useEffect(() => {
+    const createType = new URLSearchParams(search).get("create");
+    if (!createType) return;
+    const type: TaskType = ["personal", "personal_permanent", "team", "team_permanent"].includes(createType)
+      ? createType as TaskType
+      : "personal";
+    setForm({ ...emptyForm, type });
+    setIsFormOpen(true);
+    navigate("/to-do-list", { replace: true });
+  }, [navigate, search]);
+
   const openTask = async (task: Task) => {
     try {
       const detail = await apiRequest<Task>(`/api/todo-tasks/${task.id}`);
@@ -212,6 +251,7 @@ export default function ToDoList() {
         type: detail.type,
         startDate: detail.startDate,
         dueDate: detail.dueDate,
+        dueTime: detail.dueTime ?? "",
         priority: detail.priority,
         description: detail.description ?? "",
         assigneeIds: detail.assignees.map((assignee) => assignee.userId),
@@ -255,9 +295,12 @@ export default function ToDoList() {
       : taskOverlapsPeriod(task, periodStart, periodEnd),
   );
   const personal = filteredTasks.filter((task) => task.type === "personal" || task.type === "personal_permanent");
+  const personalDeadline = personal.filter((task) => task.type === "personal");
+  const personalJobDesk = personal.filter((task) => task.type === "personal_permanent");
   const team = filteredTasks.filter((task) => task.type === "team" || task.type === "team_permanent");
   const completed = filteredTasks.filter((task) => task.status === "Selesai");
-  const openPersonal = personal.filter((task) => task.status !== "Selesai");
+  const openPersonalDeadline = personalDeadline.filter((task) => task.status !== "Selesai");
+  const openPersonalJobDesk = personalJobDesk.filter((task) => task.status !== "Selesai");
   const openTeam = team.filter((task) => task.status !== "Selesai");
 
   const calendarDays = useMemo(() => {
@@ -311,6 +354,10 @@ export default function ToDoList() {
 
   const submitTask = async (event: FormEvent) => {
     event.preventDefault();
+    if (form.type === "personal" && !form.dueTime) {
+      toast({ title: "Jam deadline wajib diisi", description: "Pilih jam batas penyelesaian tugas.", variant: "destructive" });
+      return;
+    }
     if ((form.type === "team" || form.type === "team_permanent") && form.assigneeIds.length === 0) {
       toast({ title: "Pilih karyawan", description: "Tugas tim wajib memiliki minimal 1 karyawan.", variant: "destructive" });
       return;
@@ -341,6 +388,9 @@ export default function ToDoList() {
       selectedTask.assignees.some((assignee) => assignee.userId === user?.id)
     ),
   );
+  const canDeleteSelectedTask = Boolean(
+    selectedTask && canManageSelectedTask && isPersonalTaskType(selectedTask.type),
+  );
 
   const patchSelectedTask = async (changes: Partial<Omit<TaskForm, "checklist">>) => {
     if (!selectedTask || !canManageSelectedTask) return;
@@ -358,6 +408,7 @@ export default function ToDoList() {
         type: updated.type,
         startDate: updated.startDate,
         dueDate: updated.dueDate,
+        dueTime: updated.dueTime ?? "",
         priority: updated.priority,
         description: updated.description ?? "",
         assigneeIds: updated.assignees.map((assignee) => assignee.userId),
@@ -432,6 +483,23 @@ export default function ToDoList() {
     }
   };
 
+  const deleteSelectedTask = async () => {
+    if (!selectedTask || !canDeleteSelectedTask) return;
+    if (!window.confirm(`Hapus tugas pribadi "${selectedTask.title}"? Tindakan ini tidak dapat dibatalkan.`)) return;
+    try {
+      await apiRequest(`/api/todo-tasks/${selectedTask.id}`, { method: "DELETE" });
+      setSelectedTask(null);
+      navigate("/to-do-list");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["todo-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() }),
+      ]);
+      toast({ title: "Tugas pribadi dihapus" });
+    } catch (error) {
+      toast({ title: "Gagal menghapus tugas", description: error instanceof Error ? error.message : "Terjadi kesalahan", variant: "destructive" });
+    }
+  };
+
   return (
     <>
       <Layout>
@@ -482,12 +550,18 @@ export default function ToDoList() {
           </p>
           <p className="text-xs font-bold text-[#06258d]">Filter aktif: {periodLabel}</p>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <SummaryCard
-              title={filterMode === "date" && selectedDate === today ? "Tugas Pribadi Hari Ini" : "Tugas Pribadi"}
-              value={personal.length}
+              title="Pribadi dengan Deadline"
+              value={personalDeadline.length}
               icon={ListChecks}
               description={`${filterMode === "date" ? "Pada tanggal" : "Dalam periode"} yang dipilih`}
+            />
+            <SummaryCard
+              title="Job Desk Pribadi"
+              value={personalJobDesk.length}
+              icon={ListChecks}
+              description="Permanen dan tampil setiap hari"
             />
             <SummaryCard
               title={filterMode === "date" && selectedDate === today ? "Tugas Tim Hari Ini" : "Tugas Tim"}
@@ -590,8 +664,8 @@ export default function ToDoList() {
                   Kelompokkan tugas berdasarkan jenis dan status penyelesaian.
                 </p>
               </div>
-            <div className="grid gap-5 xl:grid-cols-3">
-              {([["Tugas Pribadi", openPersonal], ["Tugas Tim", openTeam], ["Selesai", completed]] as const).map(([label, list]) => (
+            <div className="grid gap-5 xl:grid-cols-4">
+              {([["Pribadi - Deadline", openPersonalDeadline], ["Job Desk Pribadi", openPersonalJobDesk], ["Tugas Tim", openTeam], ["Selesai", completed]] as const).map(([label, list]) => (
                 <Card key={label} className="min-h-[480px] bg-slate-100/70"><CardHeader><CardTitle className="flex justify-between text-base">{label}<Badge>{list.length}</Badge></CardTitle></CardHeader>
                   <CardContent className="space-y-3">{list.length ? list.map((task) => <TaskCard key={task.id} task={task} onOpen={openTask} />) : <p className="rounded-lg border border-dashed bg-white p-8 text-center text-sm text-slate-400">Kosong</p>}</CardContent>
                 </Card>
@@ -599,8 +673,8 @@ export default function ToDoList() {
             </div>
             </section>
           ) : (
-            <div className="grid gap-5 xl:grid-cols-2">
-              {([["Tugas Pribadi", personal, ListChecks], ["Tugas Tim", team, UsersRound]] as const).map(([label, list, Icon]) => (
+            <div className="grid gap-5 xl:grid-cols-3">
+              {([["Pribadi dengan Deadline", personalDeadline, ListChecks], ["Job Desk Pribadi", personalJobDesk, ListChecks], ["Tugas Tim", team, UsersRound]] as const).map(([label, list, Icon]) => (
                 <Card key={label}><CardHeader><CardTitle className="flex items-center gap-2 text-base"><Icon className="h-4 w-4" />{label}<Badge className="ml-auto">{list.length}</Badge></CardTitle></CardHeader>
                   <CardContent className="space-y-3">{list.length ? list.map((task) => <TaskCard key={task.id} task={task} onOpen={openTask} />) : <p className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-400">Tidak ada tugas pada {formatDate(selectedDate)}</p>}</CardContent>
                 </Card>
@@ -628,14 +702,30 @@ export default function ToDoList() {
             <div><Label>Nama Tugas</Label><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></div>
             <div><Label>Deskripsi</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div><Label>Jenis Tugas</Label><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as TaskType, assigneeIds: [] })} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi</option><option value="personal_permanent">Jobdesk Pribadi</option><option value="team">Tugas Tim</option><option value="team_permanent">Jobdesk Team</option></select></div>
+              <div><Label>Jenis Tugas</Label><select value={form.type} onChange={(event) => {
+                const type = event.target.value as TaskType;
+                setForm({ ...form, type, assigneeIds: [], dueTime: type === "personal" ? form.dueTime : "" });
+              }} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi dengan Deadline</option><option value="personal_permanent">Job Desk Pribadi (Permanen)</option><option value="team">Tugas Tim</option><option value="team_permanent">Job Desk Tim (Permanen)</option></select></div>
               <div><Label>Prioritas</Label><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as TaskPriority })} className="h-10 w-full rounded-md border px-3"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select></div>
               {!isPermanentTaskType(form.type) && (
                 <>
-                  <div><Label>Tanggal Mulai</Label><Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, dueDate: event.target.value > form.dueDate ? event.target.value : form.dueDate })} /></div>
-                  <div><Label>Tanggal Selesai</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} /></div>
+                  <div><Label>Tanggal Mulai</Label><Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value, dueDate: event.target.value > form.dueDate ? event.target.value : form.dueDate })} required /></div>
+                  <div><Label>{form.type === "personal" ? "Tanggal Deadline" : "Tanggal Selesai"}</Label><Input type="date" value={form.dueDate} onChange={(event) => setForm({ ...form, dueDate: event.target.value })} required /></div>
+                  {form.type === "personal" && <div><Label>Jam Deadline</Label><Input type="time" value={form.dueTime} onChange={(event) => setForm({ ...form, dueTime: event.target.value })} required /></div>}
                 </>
               )}
+            </div>
+            <div className={cn(
+              "rounded-lg border px-4 py-3 text-sm",
+              isPermanentTaskType(form.type)
+                ? "border-blue-200 bg-blue-50 text-blue-800"
+                : "border-amber-200 bg-amber-50 text-amber-800",
+            )}>
+              {isPermanentTaskType(form.type)
+                ? "Job Desk adalah pekerjaan rutin permanen, tidak memiliki deadline, dan tampil setiap hari sampai dihapus."
+                : form.type === "personal"
+                  ? "Tugas pribadi dengan deadline adalah pekerjaan satu kali yang wajib memiliki tanggal dan jam batas penyelesaian."
+                  : "Tugas tim tetap menggunakan rentang tanggal mulai dan selesai; jam deadline tidak diwajibkan."}
             </div>
             <div><div className="flex items-center justify-between"><Label>Sub-task / Checklist</Label><Button type="button" variant="outline" size="sm" onClick={() => setForm({ ...form, checklist: [...form.checklist, ""] })}><Plus className="mr-1 h-3 w-3" />Tambah</Button></div>
               <div className="mt-2 space-y-2">{form.checklist.map((item, index) => <div key={index} className="flex gap-2"><Input value={item} onChange={(event) => setForm({ ...form, checklist: form.checklist.map((value, itemIndex) => itemIndex === index ? event.target.value : value) })} placeholder={`Sub-task ${index + 1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => setForm({ ...form, checklist: form.checklist.filter((_, itemIndex) => itemIndex !== index) })}><X className="h-4 w-4" /></Button></div>)}</div>
@@ -697,10 +787,21 @@ export default function ToDoList() {
           <aside className="border-t bg-slate-50 p-6 lg:border-l lg:border-t-0">
             <div className="space-y-5">
               <div><p className="text-xs font-bold text-slate-400">Karyawan Yang Ditugaskan</p><div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">{selectedTask.assignees.length ? selectedTask.assignees.map((item) => <div key={item.userId} className="flex items-center gap-2 rounded-md border bg-white p-2 text-xs font-bold"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px]">{initials(item.userName)}</span>{item.userName}</div>) : <p className="text-sm text-slate-500">Pribadi</p>}</div></div>
-              {!isPermanentTaskType(selectedTask.type) && <div><p className="text-xs font-bold text-slate-400">Tanggal Selesai</p>{canManageSelectedTask ? <Input type="date" value={taskDraft.dueDate} onChange={(event) => void patchSelectedTask({ dueDate: event.target.value })} className="mt-1" /> : <p className="mt-1 flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4" />{formatDate(selectedTask.dueDate)}</p>}</div>}
+              <div><p className="text-xs font-bold text-slate-400">Jenis Tugas</p><p className="mt-1 text-sm font-bold">{taskTypeLabel(selectedTask.type)}</p></div>
+              {!isPermanentTaskType(selectedTask.type) ? <>
+                <div><p className="text-xs font-bold text-slate-400">{selectedTask.type === "personal" ? "Tanggal Deadline" : "Tanggal Selesai"}</p>{canManageSelectedTask ? <Input type="date" value={taskDraft.dueDate} onChange={(event) => void patchSelectedTask({ dueDate: event.target.value })} className="mt-1" /> : <p className="mt-1 flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4" />{formatDate(selectedTask.dueDate)}</p>}</div>
+                {selectedTask.type === "personal" && <div><p className="text-xs font-bold text-slate-400">Jam Deadline</p>{canManageSelectedTask ? <Input type="time" value={taskDraft.dueTime} onChange={(event) => {
+                  if (!event.target.value) {
+                    toast({ title: "Jam deadline wajib diisi", description: "Tugas pribadi dengan deadline tidak dapat dikosongkan.", variant: "destructive" });
+                    return;
+                  }
+                  void patchSelectedTask({ dueTime: event.target.value });
+                }} className="mt-1" /> : <p className="mt-1 text-sm font-bold">{selectedTask.dueTime ? `${selectedTask.dueTime.replace(":", ".")} WIB` : "Belum ditentukan (data lama)"}</p>}</div>}
+              </> : <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-800">Job Desk permanen · tampil setiap hari tanpa deadline.</div>}
               <div><p className="text-xs font-bold text-slate-400">Prioritas</p>{canManageSelectedTask ? <select value={taskDraft.priority} onChange={(event) => void patchSelectedTask({ priority: event.target.value as TaskPriority })} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select> : <Badge className={cn("mt-1 border", priorityStyles[selectedTask.priority])}>{selectedTask.priority}</Badge>}</div>
               <div><Label>Status tugas</Label><select value={selectedTask.status} disabled={!canUpdateSelectedTaskStatus} onChange={(event) => updateStatus(event.target.value as TaskStatus)} className="mt-1 h-10 w-full rounded-md border bg-white px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"><option>Belum Mulai</option><option>In Progress</option><option>Selesai</option></select></div>
               <div><p className="text-xs font-bold text-slate-400">Dibuat oleh</p><p className="mt-1 text-sm font-bold">{selectedTask.createdByName}</p></div>
+              {canDeleteSelectedTask && <Button type="button" variant="outline" className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800" onClick={deleteSelectedTask}><Trash2 className="mr-2 h-4 w-4" />Hapus Tugas Pribadi</Button>}
             </div>
           </aside>
         </div>

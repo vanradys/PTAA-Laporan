@@ -54,4 +54,5 @@ export * from './todoCommentInput';
 export * from './todoStatusUpdate';
 export * from './todoTask';
 export * from './todoTaskInput';
+export * from './todoTaskUpdate';
 export * from './user';

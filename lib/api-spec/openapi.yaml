@@ -506,9 +506,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/TodoTask"
     patch:
-      operationId: updateTodoTaskStatus
+      operationId: updateTodoTask
       tags: [todo]
-      summary: Update to-do task status
+      summary: Update to-do task details or status
       parameters:
         - name: id
           in: path
@@ -519,7 +519,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TodoStatusUpdate"
+              $ref: "#/components/schemas/TodoTaskUpdate"
       responses:
         "200":
           description: Updated to-do task
@@ -527,6 +527,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TodoTask"
+    delete:
+      operationId: deleteTodoTask
+      tags: [todo]
+      summary: Delete a personal to-do task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Deleted personal to-do task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
 
   /todo-tasks/{taskId}/checklist/{itemId}:
     patch:
@@ -1103,6 +1119,9 @@ components:
         type: { type: string }
         startDate: { type: string }
         dueDate: { type: string }
+        dueTime:
+          type: ["string", "null"]
+          description: Optional HH:mm deadline for personal tasks; omitted or null remains supported for legacy clients
         priority: { type: string }
         assigneeIds:
           type: array
@@ -1111,6 +1130,23 @@ components:
           type: array
           items: { type: string }
       required: [title, type, startDate, dueDate, priority]
+
+    TodoTaskUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: ["string", "null"] }
+        type: { type: string }
+        startDate: { type: string }
+        dueDate: { type: string }
+        dueTime:
+          type: ["string", "null"]
+          description: Optional HH:mm deadline for personal tasks; ignored for team and permanent task types
+        priority: { type: string }
+        status: { type: string }
+        assigneeIds:
+          type: array
+          items: { type: integer }
 
     TodoStatusUpdate:
       type: object
@@ -1168,6 +1204,7 @@ components:
         type: { type: string }
         startDate: { type: string }
         dueDate: { type: string }
+        dueTime: { type: ["string", "null"] }
         priority: { type: string }
         status: { type: string }
         createdByUserId: { type: ["integer", "null"] }
@@ -1187,7 +1224,7 @@ components:
         createdAt: { type: string }
         updatedAt: { type: string }
       required:
-        [id, title, type, startDate, dueDate, priority, status, createdByName, assignees, checklist, comments, createdAt, updatedAt]
+        [id, title, type, startDate, dueDate, dueTime, priority, status, createdByName, assignees, checklist, comments, createdAt, updatedAt]
 
     DashboardSummary:
       type: object

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
 import { useListReports, useListDepartments, useListEmployees } from "@workspace/api-client-react";
-import { CheckCircle, XCircle, Eye, Search, Filter, X, Loader2, FileText, RefreshCw } from "lucide-react";
+import { CheckCircle, XCircle, Eye, Search, X, Loader2, FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -227,7 +227,6 @@ export default function Monitoring() {
   };
   const [filters, setFilters] = useState<MonitoringFilters>(readFiltersFromUrl);
   const [draftFilters, setDraftFilters] = useState<MonitoringFilters>(filters);
-  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(MONITORING_FILTERS_STORAGE_KEY, JSON.stringify(filters));
@@ -348,13 +347,6 @@ export default function Monitoring() {
   const missingSummaryText = buildMissingSummary(missingList, employeeList.length, reminderDate);
   const unsentReminderCount = missingList.filter((item) => !item.reminderSent).length;
   const isLoading = isLoadingReports || isLoadingEmployees;
-  const hasActiveFilters =
-    filters.dateFrom !== defaultFilters.dateFrom ||
-    filters.dateTo !== defaultFilters.dateTo ||
-    !!filters.departmentId ||
-    !!filters.userId ||
-    !!filters.status ||
-    !!filters.search;
 
   const buildMonitoringUrl = (nextFilters: MonitoringFilters) => {
     const params = new URLSearchParams();
@@ -402,12 +394,8 @@ export default function Monitoring() {
                 Reminder akan dikirim otomatis setiap jam 16.00 WIB.
               </div>
             )}
-            <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-              <Filter className="w-4 h-4 mr-2" />
-              Filter
-              {hasActiveFilters && (
-                <Badge className="ml-2 h-4 w-4 p-0 flex items-center justify-center text-xs bg-primary text-primary-foreground border-none">!</Badge>
-              )}
+            <Button type="button" size="sm" onClick={() => navigate("/to-do-list?create=personal")}>
+              + Tugas
             </Button>
           </div>
         </div>
@@ -497,92 +485,90 @@ export default function Monitoring() {
           </Card>
         )}
 
-        {showFilters && (
-          <Card className="border border-border">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between gap-3">
-                <CardTitle className="text-sm">Filter Laporan</CardTitle>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={resetFilters}
-                  className="h-8 shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-3.5 h-3.5 mr-1.5" />
-                  Reset
+        <Card className="border border-border">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-sm">Filter Laporan</CardTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetFilters}
+                className="h-8 shrink-0 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Reset
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+              <div className="space-y-1">
+                <Label className="text-xs">Dari Tanggal</Label>
+                <Input
+                  type="date"
+                  value={draftFilters.dateFrom}
+                  onChange={(event) => setDraftFilter("dateFrom", event.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Sampai Tanggal</Label>
+                <Input
+                  type="date"
+                  value={draftFilters.dateTo}
+                  onChange={(event) => setDraftFilter("dateTo", event.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Departemen</Label>
+                <Select value={draftFilters.departmentId || "all"} onValueChange={(value) => setDraftFilter("departmentId", value === "all" ? "" : value)}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Semua" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Departemen</SelectItem>
+                    {Array.isArray(departments) && departments.map((department: { id: number; name: string }) => (
+                      <SelectItem key={department.id} value={String(department.id)}>{department.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Progress</Label>
+                <Select value={draftFilters.status || "all"} onValueChange={(value) => setDraftFilter("status", value === "all" ? "" : value)}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Semua" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Status</SelectItem>
+                    {REPORT_STATUSES.map((status) => (
+                      <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Search</Label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={draftFilters.search}
+                    onChange={(event) => setDraftFilter("search", event.target.value)}
+                    placeholder="Cari nama karyawan..."
+                    className="h-8 text-sm pl-8"
+                  />
+                </div>
+              </div>
+              <div className="flex items-end gap-2 md:col-span-5">
+                <Button type="button" size="sm" onClick={applyFilters}>
+                  Terapkan Filter
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-                <div className="space-y-1">
-                  <Label className="text-xs">Dari Tanggal</Label>
-                  <Input
-                    type="date"
-                    value={draftFilters.dateFrom}
-                    onChange={(event) => setDraftFilter("dateFrom", event.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Sampai Tanggal</Label>
-                  <Input
-                    type="date"
-                    value={draftFilters.dateTo}
-                    onChange={(event) => setDraftFilter("dateTo", event.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Departemen</Label>
-                  <Select value={draftFilters.departmentId || "all"} onValueChange={(value) => setDraftFilter("departmentId", value === "all" ? "" : value)}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Semua" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Departemen</SelectItem>
-                      {Array.isArray(departments) && departments.map((department: { id: number; name: string }) => (
-                        <SelectItem key={department.id} value={String(department.id)}>{department.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Progress</Label>
-                  <Select value={draftFilters.status || "all"} onValueChange={(value) => setDraftFilter("status", value === "all" ? "" : value)}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Semua" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Status</SelectItem>
-                      {REPORT_STATUSES.map((status) => (
-                        <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Search</Label>
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={draftFilters.search}
-                      onChange={(event) => setDraftFilter("search", event.target.value)}
-                      placeholder="Cari nama karyawan..."
-                      className="h-8 text-sm pl-8"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-end gap-2 md:col-span-5">
-                  <Button type="button" size="sm" onClick={applyFilters}>
-                    Terapkan Filter
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border border-border">
           <CardContent className="p-0">

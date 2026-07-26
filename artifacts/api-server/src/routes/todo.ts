@@ -18,6 +18,8 @@ import {
 import { getSessionTokenFromRequest, getUserFromToken } from "./auth";
 
 const router = Router();
+const TODO_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+let todoTaskSchemaReady: Promise<void> | null = null;
 let todoTypeConstraintReady: Promise<void> | null = null;
 
 function getJakartaDateString(date = new Date()): string {
@@ -37,6 +39,22 @@ function isPermanentTodoType(type: string) {
   return type === "personal_permanent" || type === "team_permanent";
 }
 
+function isPersonalDeadlineTodoType(type: string) {
+  return type === "personal";
+}
+
+function ensureTodoTaskSchema() {
+  todoTaskSchemaReady ??= db.execute(sql`
+    ALTER TABLE todo_tasks
+      ADD COLUMN IF NOT EXISTS due_time text
+  `).then(() => undefined);
+
+  return todoTaskSchemaReady.catch((error) => {
+    todoTaskSchemaReady = null;
+    throw error;
+  });
+}
+
 function ensureTodoTypeConstraint() {
   if (!todoTypeConstraintReady) {
     todoTypeConstraintReady = (async () => {
@@ -51,7 +69,10 @@ function ensureTodoTypeConstraint() {
       `);
     })();
   }
-  return todoTypeConstraintReady;
+  return todoTypeConstraintReady.catch((error) => {
+    todoTypeConstraintReady = null;
+    throw error;
+  });
 }
 
 async function getUser(req: any, res: any) {
@@ -78,6 +99,7 @@ function parseId(value: unknown) {
 }
 
 async function canAccessTask(taskId: number, user: TodoActor) {
+  await ensureTodoTaskSchema();
   const [task] = await db.select().from(todoTasksTable)
     .where(eq(todoTasksTable.id, taskId)).limit(1);
   if (!task) return { task: null, allowed: false };
@@ -183,6 +205,7 @@ async function buildTask(task: typeof todoTasksTable.$inferSelect) {
 router.get("/todo-tasks", async (req, res) => {
   const user = await getUser(req, res);
   if (!user) return;
+  await ensureTodoTaskSchema();
 
   let tasks: Array<typeof todoTasksTable.$inferSelect>;
   if (isTodoManager(user)) {
@@ -221,6 +244,7 @@ router.get("/todo-tasks/:id", async (req, res) => {
 router.post("/todo-tasks", async (req, res) => {
   const user = await getUser(req, res);
   if (!user) return;
+  await ensureTodoTaskSchema();
 
   const title = String(req.body?.title ?? "").trim();
   const description = String(req.body?.description ?? "").trim();
@@ -240,6 +264,10 @@ router.post("/todo-tasks", async (req, res) => {
   const dueDate = isPermanentTodoType(type) && !/^\d{4}-\d{2}-\d{2}$/.test(rawDueDate)
     ? startDate
     : rawDueDate;
+  const rawDueTime = String(req.body?.dueTime ?? "").trim();
+  const dueTime = isPersonalDeadlineTodoType(type) && rawDueTime
+    ? rawDueTime
+    : null;
   const priority = ["Rendah", "Sedang", "Urgent"].includes(req.body?.priority)
     ? req.body.priority : "Sedang";
   const assigneeIds: number[] = ["team", "team_permanent"].includes(type)
@@ -249,8 +277,13 @@ router.post("/todo-tasks", async (req, res) => {
     : [];
   const checklist: string[] = (Array.isArray(req.body?.checklist) ? req.body.checklist : [])
     .map((item: unknown) => String(item).trim()).filter(Boolean);
-  if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-    res.status(400).json({ error: "Nama tugas dan tanggal wajib diisi" }); return;
+  if (
+    !title ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ||
+    (dueTime !== null && !TODO_TIME_PATTERN.test(dueTime))
+  ) {
+    res.status(400).json({ error: "Nama tugas dan tanggal wajib diisi; jam deadline harus berformat HH:mm" }); return;
   }
   if (dueDate < startDate) {
     res.status(400).json({ error: "Due date tidak boleh sebelum tanggal mulai" }); return;
@@ -277,7 +310,7 @@ router.post("/todo-tasks", async (req, res) => {
 
   const created = await db.transaction(async (tx) => {
     const [task] = await tx.insert(todoTasksTable).values({
-      title, description: description || null, type, startDate, dueDate, priority,
+      title, description: description || null, type, startDate, dueDate, dueTime, priority,
       createdByUserId: user.id, createdByName: user.name,
     }).returning();
 
@@ -361,6 +394,16 @@ router.patch("/todo-tasks/:id", async (req, res) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { res.status(400).json({ error: "Tanggal selesai tidak valid" }); return; }
       updateData.dueDate = dueDate;
     }
+    if (req.body?.dueTime !== undefined) {
+      const dueTime = String(req.body.dueTime ?? "").trim();
+      const requestedType = updateData.type ?? access.task.type;
+      if (isPersonalDeadlineTodoType(requestedType) && dueTime && !TODO_TIME_PATTERN.test(dueTime)) {
+        res.status(400).json({ error: "Jam deadline tidak valid" }); return;
+      }
+      updateData.dueTime = isPersonalDeadlineTodoType(requestedType) && dueTime
+        ? dueTime
+        : null;
+    }
     if (req.body?.priority !== undefined) {
       updateData.priority = ["Rendah", "Sedang", "Urgent"].includes(req.body.priority)
         ? req.body.priority
@@ -373,13 +416,27 @@ router.patch("/todo-tasks/:id", async (req, res) => {
     return;
   }
 
-  let assigneesForUpdate: Array<{ id: number; name: string }> | null = null;
+  const nextType = updateData.type ?? access.task.type;
+  if (
+    !isPersonalDeadlineTodoType(nextType) &&
+    (updateData.type !== undefined || req.body?.dueTime !== undefined)
+  ) {
+    updateData.dueTime = null;
+  }
+
+  const nextStartDate = updateData.startDate ?? access.task.startDate;
+  const nextDueDate = updateData.dueDate ?? access.task.dueDate;
+  if (nextDueDate < nextStartDate) {
+    res.status(400).json({ error: "Due date tidak boleh sebelum tanggal mulai" });
+    return;
+  }
+
   if (updateData.type !== undefined) {
     await ensureTodoTypeConstraint();
   }
 
+  let assigneesForUpdate: Array<{ id: number; name: string }> | null = null;
   if (manager && req.body?.assigneeIds !== undefined) {
-    const nextType = updateData.type ?? access.task.type;
     const assigneeIds: number[] = ["team", "team_permanent"].includes(nextType)
       ? [...new Set<number>((Array.isArray(req.body?.assigneeIds) ? req.body.assigneeIds : [])
           .map(Number)
@@ -415,6 +472,29 @@ router.patch("/todo-tasks/:id", async (req, res) => {
   }
 
   res.json(await buildTask(updated));
+});
+
+router.delete("/todo-tasks/:id", async (req, res) => {
+  const user = await getUser(req, res);
+  if (!user) return;
+  const id = parseId(req.params.id);
+  if (!id) { res.status(400).json({ error: "ID tugas tidak valid" }); return; }
+  const access = await canAccessTask(id, user);
+  if (!access.task) { res.status(404).json({ error: "Tugas tidak ditemukan" }); return; }
+  if (!canManageTask(access.task, user)) {
+    res.status(403).json({ error: "Tidak diizinkan" });
+    return;
+  }
+  if (!["personal", "personal_permanent"].includes(access.task.type)) {
+    res.status(400).json({ error: "Hanya tugas pribadi yang dapat dihapus dari menu ini" });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(notificationsTable).where(eq(notificationsTable.relatedTodoId, id));
+    await tx.delete(todoTasksTable).where(eq(todoTasksTable.id, id));
+  });
+  res.json({ success: true });
 });
 
 router.patch("/todo-tasks/:taskId/checklist/:itemId", async (req, res) => {

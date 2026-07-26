@@ -12,6 +12,11 @@ export interface TodoTaskInput {
   type: string;
   startDate: string;
   dueDate: string;
+  /**
+     * Optional HH:mm deadline for personal tasks; omitted or null remains supported for legacy clients
+     * @nullable
+     */
+  dueTime?: string | null;
   priority: string;
   assigneeIds?: number[];
   checklist?: string[];
