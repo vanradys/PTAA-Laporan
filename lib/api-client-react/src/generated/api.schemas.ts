@@ -468,7 +468,13 @@ export interface PoSummary {
 
 export type ListReportsParams = {
 date?: string;
+/**
+ * Inclusive lower date bound used by Monitoring Laporan (Tanggal X)
+ */
 dateFrom?: string;
+/**
+ * Inclusive upper date bound used by Monitoring Laporan (Tanggal Y)
+ */
 dateTo?: string;
 month?: string;
 year?: string;

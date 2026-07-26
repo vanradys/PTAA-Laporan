@@ -93,9 +93,11 @@ paths:
           schema: { type: string }
         - name: dateFrom
           in: query
+          description: Inclusive lower date bound used by Monitoring Laporan (Tanggal X)
           schema: { type: string }
         - name: dateTo
           in: query
+          description: Inclusive upper date bound used by Monitoring Laporan (Tanggal Y)
           schema: { type: string }
         - name: month
           in: query

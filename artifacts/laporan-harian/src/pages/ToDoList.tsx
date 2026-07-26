@@ -27,6 +27,7 @@ type TaskStatus = "Belum Mulai" | "In Progress" | "Selesai";
 type TaskPriority = "Rendah" | "Sedang" | "Urgent";
 type ViewMode = "today" | "calendar" | "cards";
 type FilterMode = "date" | "month" | "year";
+type CreationSource = "todo" | "monitoring";
 type Employee = {
   id: number;
   name: string;
@@ -103,6 +104,9 @@ function isPermanentTaskType(type: TaskType) {
 }
 function isPersonalTaskType(type: TaskType) {
   return type === "personal" || type === "personal_permanent";
+}
+function isAssignedTaskType(type: TaskType) {
+  return type === "team" || type === "team_permanent";
 }
 function taskTypeLabel(type: TaskType) {
   if (type === "personal_permanent") return "Job Desk Pribadi";
@@ -201,6 +205,7 @@ export default function ToDoList() {
   const [filterMode, setFilterMode] = useState<FilterMode>("date");
   const [selectedDate, setSelectedDate] = useState(today);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [creationSource, setCreationSource] = useState<CreationSource>("todo");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [form, setForm] = useState<TaskForm>(emptyForm);
   const [taskDraft, setTaskDraft] = useState<Omit<TaskForm, "checklist">>({
@@ -224,7 +229,7 @@ export default function ToDoList() {
     queryKey: ["todo-tasks"],
     queryFn: () => apiRequest<Task[]>("/api/todo-tasks"),
   });
-  const { data: employeesData } = useListEmployees();
+  const { data: employeesData, isLoading: isLoadingEmployees } = useListEmployees();
   const employees = ((Array.isArray(employeesData) ? employeesData : []) as Employee[])
     .filter((employee) =>
       !["admin", "direktur", "director", "dir", "hr", "monitoring_dummy"]
@@ -232,15 +237,32 @@ export default function ToDoList() {
     );
 
   useEffect(() => {
-    const createType = new URLSearchParams(search).get("create");
+    const params = new URLSearchParams(search);
+    const createType = params.get("create");
     if (!createType) return;
-    const type: TaskType = ["personal", "personal_permanent", "team", "team_permanent"].includes(createType)
-      ? createType as TaskType
-      : "personal";
+    const isMonitoringAssignment = params.get("source") === "monitoring";
+    const type: TaskType = isMonitoringAssignment
+      ? "team"
+      : ["personal", "personal_permanent", "team", "team_permanent"].includes(createType)
+        ? createType as TaskType
+        : "personal";
+    setCreationSource(isMonitoringAssignment ? "monitoring" : "todo");
     setForm({ ...emptyForm, type });
     setIsFormOpen(true);
     navigate("/to-do-list", { replace: true });
   }, [navigate, search]);
+
+  const closeCreateForm = () => {
+    setIsFormOpen(false);
+    setCreationSource("todo");
+  };
+
+  const openDefaultCreateForm = () => {
+    setCreationSource("todo");
+    setIsFormOpen(true);
+  };
+
+  const isMonitoringAssignmentFlow = creationSource === "monitoring";
 
   const openTask = async (task: Task) => {
     try {
@@ -358,8 +380,12 @@ export default function ToDoList() {
       toast({ title: "Jam deadline wajib diisi", description: "Pilih jam batas penyelesaian tugas.", variant: "destructive" });
       return;
     }
-    if ((form.type === "team" || form.type === "team_permanent") && form.assigneeIds.length === 0) {
-      toast({ title: "Pilih karyawan", description: "Tugas tim wajib memiliki minimal 1 karyawan.", variant: "destructive" });
+    if (isAssignedTaskType(form.type) && form.assigneeIds.length === 0) {
+      toast({
+        title: "Pilih penerima tugas",
+        description: "Pilih minimal 1 karyawan aktif yang akan menerima tugas ini.",
+        variant: "destructive",
+      });
       return;
     }
     setSaving(true);
@@ -368,7 +394,9 @@ export default function ToDoList() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      setIsFormOpen(false); setForm(emptyForm);
+      setIsFormOpen(false);
+      setCreationSource("todo");
+      setForm({ ...emptyForm });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["todo-tasks"] }),
         queryClient.invalidateQueries({ queryKey: getListNotificationsQueryKey() }),
@@ -515,7 +543,7 @@ export default function ToDoList() {
                   {formatLongDate(selectedDate)}
                 </p>
               </div>
-              <Button onClick={() => setIsFormOpen(true)} className="bg-white font-bold text-[#06258d] hover:bg-blue-50"><Plus className="mr-2 h-4 w-4" />Tambah To Do List</Button>
+              <Button onClick={openDefaultCreateForm} className="bg-white font-bold text-[#06258d] hover:bg-blue-50"><Plus className="mr-2 h-4 w-4" />Tambah To Do List</Button>
             </div>
           </section>
 
@@ -691,21 +719,56 @@ export default function ToDoList() {
             variant="outline"
             size="icon"
             className="absolute -right-3 -top-3 z-10 h-11 w-11 rounded-full border-slate-300 bg-white shadow-lg"
-            onClick={() => setIsFormOpen(false)}
+            onClick={closeCreateForm}
             title="Tutup"
           >
             <X className="h-6 w-6" />
           </Button>
         <form onSubmit={submitTask} className="max-h-[92vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-          <div className="border-b p-5"><div><h2 className="text-lg font-black">Tambah To Do List</h2><p className="text-sm text-slate-500">Lengkapi detail tugas yang akan dibuat.</p></div></div>
+          <div className="border-b p-5">
+            <div>
+              <h2 className="text-lg font-black">
+                {isMonitoringAssignmentFlow ? "Tambah Tugas untuk Karyawan" : "Tambah To Do List"}
+              </h2>
+              <p className="text-sm text-slate-500">
+                {isMonitoringAssignmentFlow
+                  ? "Pilih satu atau beberapa karyawan penerima. Tugas akan muncul di To Do List mereka."
+                  : "Lengkapi detail tugas yang akan dibuat."}
+              </p>
+            </div>
+          </div>
           <div className="space-y-4 p-5">
             <div><Label>Nama Tugas</Label><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required /></div>
             <div><Label>Deskripsi</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div><Label>Jenis Tugas</Label><select value={form.type} onChange={(event) => {
-                const type = event.target.value as TaskType;
-                setForm({ ...form, type, assigneeIds: [], dueTime: type === "personal" ? form.dueTime : "" });
-              }} className="h-10 w-full rounded-md border px-3"><option value="personal">Tugas Pribadi dengan Deadline</option><option value="personal_permanent">Job Desk Pribadi (Permanen)</option><option value="team">Tugas Tim</option><option value="team_permanent">Job Desk Tim (Permanen)</option></select></div>
+              <div>
+                <Label>Jenis Tugas</Label>
+                <select
+                  value={form.type}
+                  onChange={(event) => {
+                    const type = event.target.value as TaskType;
+                    const keepAssignees = isAssignedTaskType(form.type) && isAssignedTaskType(type);
+                    setForm({
+                      ...form,
+                      type,
+                      assigneeIds: keepAssignees ? form.assigneeIds : [],
+                      dueTime: type === "personal" ? form.dueTime : "",
+                    });
+                  }}
+                  className="h-10 w-full rounded-md border px-3"
+                >
+                  {!isMonitoringAssignmentFlow && (
+                    <>
+                      <option value="personal">Tugas Pribadi dengan Deadline</option>
+                      <option value="personal_permanent">Job Desk Pribadi (Permanen)</option>
+                    </>
+                  )}
+                  <option value="team">{isMonitoringAssignmentFlow ? "Tugas untuk Karyawan" : "Tugas Tim"}</option>
+                  <option value="team_permanent">
+                    {isMonitoringAssignmentFlow ? "Job Desk Karyawan (Permanen)" : "Job Desk Tim (Permanen)"}
+                  </option>
+                </select>
+              </div>
               <div><Label>Prioritas</Label><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value as TaskPriority })} className="h-10 w-full rounded-md border px-3"><option>Rendah</option><option>Sedang</option><option>Urgent</option></select></div>
               {!isPermanentTaskType(form.type) && (
                 <>
@@ -730,12 +793,62 @@ export default function ToDoList() {
             <div><div className="flex items-center justify-between"><Label>Sub-task / Checklist</Label><Button type="button" variant="outline" size="sm" onClick={() => setForm({ ...form, checklist: [...form.checklist, ""] })}><Plus className="mr-1 h-3 w-3" />Tambah</Button></div>
               <div className="mt-2 space-y-2">{form.checklist.map((item, index) => <div key={index} className="flex gap-2"><Input value={item} onChange={(event) => setForm({ ...form, checklist: form.checklist.map((value, itemIndex) => itemIndex === index ? event.target.value : value) })} placeholder={`Sub-task ${index + 1}`} /><Button type="button" variant="ghost" size="icon" onClick={() => setForm({ ...form, checklist: form.checklist.filter((_, itemIndex) => itemIndex !== index) })}><X className="h-4 w-4" /></Button></div>)}</div>
             </div>
-            {(form.type === "team" || form.type === "team_permanent") && <div><Label>Tag Karyawan</Label><p className="mb-2 text-xs text-slate-500">Data diambil dari database karyawan aktif.</p><div className="grid gap-2 sm:grid-cols-2">{employees.map((employee) => {
-              const checked = form.assigneeIds.includes(employee.id);
-              return <button key={employee.id} type="button" onClick={() => setForm({ ...form, assigneeIds: checked ? form.assigneeIds.filter((id) => id !== employee.id) : [...form.assigneeIds, employee.id] })} className={cn("flex items-center gap-3 rounded-lg border p-3 text-left", checked && "border-blue-600 bg-blue-50")}><span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-black">{initials(employee.name)}</span><span><b className="block text-sm">{employee.name}</b><small className="text-slate-500">{employee.departmentName || "Tanpa Departemen"}</small></span>{checked && <CheckCircle2 className="ml-auto h-4 w-4 text-blue-700" />}</button>;
-            })}</div></div>}
+            {isAssignedTaskType(form.type) && (
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label>Penerima Tugas *</Label>
+                  <span className="text-xs font-bold text-[#06258d]">
+                    {form.assigneeIds.length} karyawan dipilih
+                  </span>
+                </div>
+                <p className="mb-2 text-xs text-slate-500">
+                  Hanya karyawan aktif sesuai aturan penugasan yang dapat dipilih.
+                </p>
+                {isLoadingEmployees ? (
+                  <p className="rounded-lg border border-dashed p-4 text-center text-sm text-slate-500">
+                    Memuat daftar karyawan...
+                  </p>
+                ) : employees.length === 0 ? (
+                  <p className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                    Tidak ada karyawan aktif yang dapat menerima tugas.
+                  </p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {employees.map((employee) => {
+                      const checked = form.assigneeIds.includes(employee.id);
+                      return (
+                        <button
+                          key={employee.id}
+                          type="button"
+                          aria-pressed={checked}
+                          onClick={() => setForm({
+                            ...form,
+                            assigneeIds: checked
+                              ? form.assigneeIds.filter((id) => id !== employee.id)
+                              : [...form.assigneeIds, employee.id],
+                          })}
+                          className={cn(
+                            "flex items-center gap-3 rounded-lg border p-3 text-left",
+                            checked && "border-blue-600 bg-blue-50",
+                          )}
+                        >
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-black">
+                            {initials(employee.name)}
+                          </span>
+                          <span>
+                            <b className="block text-sm">{employee.name}</b>
+                            <small className="text-slate-500">{employee.departmentName || "Tanpa Departemen"}</small>
+                          </span>
+                          {checked && <CheckCircle2 className="ml-auto h-4 w-4 text-blue-700" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div className="flex justify-end gap-2 border-t p-5"><Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Batal</Button><Button disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</Button></div>
+          <div className="flex justify-end gap-2 border-t p-5"><Button type="button" variant="outline" onClick={closeCreateForm}>Batal</Button><Button disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</Button></div>
         </form>
         </div>
       </div>}

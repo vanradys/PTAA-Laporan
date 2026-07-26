@@ -67,8 +67,8 @@ export const LogoutResponse = zod.object({
  */
 export const ListReportsQueryParams = zod.object({
   "date": zod.coerce.string().optional(),
-  "dateFrom": zod.coerce.string().optional(),
-  "dateTo": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional().describe('Inclusive lower date bound used by Monitoring Laporan (Tanggal X)'),
+  "dateTo": zod.coerce.string().optional().describe('Inclusive upper date bound used by Monitoring Laporan (Tanggal Y)'),
   "month": zod.coerce.string().optional(),
   "year": zod.coerce.string().optional(),
   "departmentId": zod.coerce.number().nullish(),

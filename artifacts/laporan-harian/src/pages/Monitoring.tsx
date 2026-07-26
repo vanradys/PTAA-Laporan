@@ -18,6 +18,7 @@ import {
   useMissingDailyReportsToday,
 } from "@/hooks/use-daily-report-reminder";
 import { useEditPermissions } from "@/hooks/use-edit-permissions";
+import { useToast } from "@/hooks/use-toast";
 import { MONITORING_FILTERS_STORAGE_KEY } from "@/lib/storageKeys";
 
 const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
@@ -191,6 +192,7 @@ export default function Monitoring() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { canEdit } = useEditPermissions();
+  const { toast } = useToast();
   const defaultFilters: MonitoringFilters = {
     dateFrom: todayString,
     dateTo: todayString,
@@ -361,11 +363,24 @@ export default function Monitoring() {
   };
 
   const applyFilters = () => {
-    const nextFilters = {
-      ...draftFilters,
-      dateFrom: draftFilters.dateFrom || defaultFilters.dateFrom,
-      dateTo: draftFilters.dateTo || defaultFilters.dateTo,
-    };
+    if (!draftFilters.dateFrom || !draftFilters.dateTo) {
+      toast({
+        title: "Rentang tanggal belum lengkap",
+        description: "From Date (Tanggal X) dan To Date (Tanggal Y) wajib diisi.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (draftFilters.dateFrom > draftFilters.dateTo) {
+      toast({
+        title: "Rentang tanggal tidak valid",
+        description: "From Date (Tanggal X) tidak boleh setelah To Date (Tanggal Y).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const nextFilters = { ...draftFilters };
     setFilters(nextFilters);
     navigate(buildMonitoringUrl(nextFilters), { replace: true });
   };
@@ -377,7 +392,7 @@ export default function Monitoring() {
     navigate(buildMonitoringUrl(defaultFilters), { replace: true });
   };
 
-  const periodLabel = `${new Date(`${filters.dateFrom}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })} - ${new Date(`${filters.dateTo}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}`;
+  const periodLabel = `${new Date(`${filters.dateFrom}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })} - ${new Date(`${filters.dateTo}T00:00:00`).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })} (inklusif)`;
   const monitoringReturnTo = buildMonitoringUrl(filters);
 
   return (
@@ -394,7 +409,7 @@ export default function Monitoring() {
                 Reminder akan dikirim otomatis setiap jam 16.00 WIB.
               </div>
             )}
-            <Button type="button" size="sm" onClick={() => navigate("/to-do-list?create=personal")}>
+            <Button type="button" size="sm" onClick={() => navigate("/to-do-list?create=team&source=monitoring")}>
               + Tugas
             </Button>
           </div>
@@ -488,7 +503,12 @@ export default function Monitoring() {
         <Card className="border border-border">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle className="text-sm">Filter Laporan</CardTitle>
+              <div>
+                <CardTitle className="text-sm">Filter Laporan</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Rentang tanggal bersifat inklusif: Tanggal X dan Tanggal Y ikut dihitung.
+                </p>
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -504,20 +524,26 @@ export default function Monitoring() {
           <CardContent>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
               <div className="space-y-1">
-                <Label className="text-xs">Dari Tanggal</Label>
+                <Label htmlFor="monitoring-date-from" className="text-xs">From Date (Tanggal X)</Label>
                 <Input
+                  id="monitoring-date-from"
                   type="date"
                   value={draftFilters.dateFrom}
                   onChange={(event) => setDraftFilter("dateFrom", event.target.value)}
+                  max={draftFilters.dateTo || undefined}
+                  required
                   className="h-8 text-sm"
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Sampai Tanggal</Label>
+                <Label htmlFor="monitoring-date-to" className="text-xs">To Date (Tanggal Y)</Label>
                 <Input
+                  id="monitoring-date-to"
                   type="date"
                   value={draftFilters.dateTo}
                   onChange={(event) => setDraftFilter("dateTo", event.target.value)}
+                  min={draftFilters.dateFrom || undefined}
+                  required
                   className="h-8 text-sm"
                 />
               </div>
