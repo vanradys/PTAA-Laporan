@@ -17,6 +17,8 @@ export interface TodoTask {
   type: string;
   startDate: string;
   dueDate: string;
+  /** @nullable */
+  dueTime: string | null;
   priority: string;
   status: string;
   /** @nullable */

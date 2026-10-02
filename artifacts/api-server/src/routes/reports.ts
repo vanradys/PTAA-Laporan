@@ -255,6 +255,12 @@ function isTaskDelay(deadline: string | null, status: string): boolean {
   return deadline < getTodayString();
 }
 
+function isValidReportDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 function isTaskCompleteForCarryForward(task: {
   progress?: number | null;
   status?: string | null;
@@ -872,6 +878,18 @@ router.get("/reports", async (req, res) => {
   await ensureDailyTasksSchema();
 
   const { date, dateFrom, dateTo, month, year, departmentId, userId, status, search } = req.query as Record<string, string>;
+
+  if (
+    (dateFrom && !isValidReportDate(dateFrom)) ||
+    (dateTo && !isValidReportDate(dateTo))
+  ) {
+    res.status(400).json({ error: "From Date dan To Date harus berupa tanggal yang valid" });
+    return;
+  }
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    res.status(400).json({ error: "From Date tidak boleh setelah To Date" });
+    return;
+  }
 
   if (date) {
     if (isWeekendReportDate(date)) {

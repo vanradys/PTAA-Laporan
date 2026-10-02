@@ -201,9 +201,31 @@ export interface TodoTaskInput {
   type: string;
   startDate: string;
   dueDate: string;
+  /**
+     * Optional HH:mm deadline for personal tasks; omitted or null remains supported for legacy clients
+     * @nullable
+     */
+  dueTime?: string | null;
   priority: string;
   assigneeIds?: number[];
   checklist?: string[];
+}
+
+export interface TodoTaskUpdate {
+  title?: string;
+  /** @nullable */
+  description?: string | null;
+  type?: string;
+  startDate?: string;
+  dueDate?: string;
+  /**
+     * Optional HH:mm deadline for personal tasks; ignored for team and permanent task types
+     * @nullable
+     */
+  dueTime?: string | null;
+  priority?: string;
+  status?: string;
+  assigneeIds?: number[];
 }
 
 export interface TodoStatusUpdate {
@@ -250,6 +272,8 @@ export interface TodoTask {
   type: string;
   startDate: string;
   dueDate: string;
+  /** @nullable */
+  dueTime: string | null;
   priority: string;
   status: string;
   /** @nullable */
@@ -444,7 +468,13 @@ export interface PoSummary {
 
 export type ListReportsParams = {
 date?: string;
+/**
+ * Inclusive lower date bound used by Monitoring Laporan (Tanggal X)
+ */
 dateFrom?: string;
+/**
+ * Inclusive upper date bound used by Monitoring Laporan (Tanggal Y)
+ */
 dateTo?: string;
 month?: string;
 year?: string;

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS todo_tasks (
   type text NOT NULL DEFAULT 'personal',
   start_date date NOT NULL,
   due_date date NOT NULL,
+  due_time text,
   priority text NOT NULL DEFAULT 'Sedang',
   status text NOT NULL DEFAULT 'Belum Mulai',
   created_by_user_id integer REFERENCES users(id) ON DELETE SET NULL,
@@ -96,6 +97,15 @@ BEGIN
   ) THEN
     ALTER TABLE todo_tasks
       ADD CONSTRAINT todo_tasks_date_check CHECK (due_date >= start_date);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'todo_tasks'::regclass
+      AND conname = 'todo_tasks_due_time_check'
+  ) THEN
+    ALTER TABLE todo_tasks
+      ADD CONSTRAINT todo_tasks_due_time_check
+      CHECK (due_time IS NULL OR due_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
   END IF;
 END $$;
 

@@ -8,6 +8,7 @@ export const todoTasksTable = pgTable("todo_tasks", {
   type: text("type").notNull().default("personal"),
   startDate: date("start_date").notNull(),
   dueDate: date("due_date").notNull(),
+  dueTime: text("due_time"),
   priority: text("priority").notNull().default("Sedang"),
   status: text("status").notNull().default("Belum Mulai"),
   createdByUserId: integer("created_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
