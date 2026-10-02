@@ -885,6 +885,7 @@ export default function JadwalProject() {
     editingPo?.createdByUserId === user?.id;
   const matchesDeliveryFilter = (po: PoItem) => {
     if (filterDeliveryStatus === "semua") return true;
+    if (filterDeliveryStatus === "belum_100") return po.progress < 100;
     if (filterDeliveryStatus === "delay")
       return String(po.deliveryStatus ?? "").startsWith("Delay");
     if (filterDeliveryStatus === "on_time")
@@ -921,6 +922,7 @@ export default function JadwalProject() {
     }
     if (overallProgress !== "semua" && po.status !== overallProgress)
       return false;
+    if (overallDeliveryStatus === "belum_100") return po.progress < 100;
     if (overallDeliveryStatus === "delay")
       return String(po.deliveryStatus ?? "").startsWith("Delay");
     if (overallDeliveryStatus === "on_time")
@@ -2131,6 +2133,7 @@ export default function JadwalProject() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="semua">Semua Status</SelectItem>
+                    <SelectItem value="belum_100">Belum 100%</SelectItem>
                     <SelectItem value="on_time">On Time</SelectItem>
                     <SelectItem value="delay">Delay</SelectItem>
                     <SelectItem value="belum_diisi">
@@ -2580,6 +2583,7 @@ export default function JadwalProject() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="semua">Semua Status</SelectItem>
+                    <SelectItem value="belum_100">Belum 100%</SelectItem>
                     <SelectItem value="on_time">On Time</SelectItem>
                     <SelectItem value="delay">Delay</SelectItem>
                     <SelectItem value="belum_diisi">
